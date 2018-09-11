@@ -18,6 +18,11 @@ from PIL import Image
 
 import json
 
+import logging
+
+# configuring logging
+logging.basicConfig(filename="log_file.txt", format="%(asctime)s : %(name)s : %(levelname)s : %(message)s", level=logging.DEBUG)
+
 # initializing environmental variables
 DEBUG = config('DEBUG', default=True, cast=bool)
 TF_HOST = config('TF_HOST', default='tf-serving-service')
@@ -78,35 +83,57 @@ def process_image(img_name, img_url, model_name, version):
     Returns URL of zipfile in S3
     Each failure case has a custom error class to send helpful status codes
     """
-    print("downloading")
+    logging.debug("downloading")
     local_img = download_file(img_name)
-    print("downloaded")
+    if local_img == "error":
+        logging.debug("didn't download")
+        output_file_location = "none"
+        return output_file_location
+    logging.debug("downloaded")
 
-    print( "making array" )
+    logging.debug( "making array" )
     try:
         img = img_to_array(local_img)
     except Exception as err:
+        logging.debug("didn't make array")
         errmsg = 'Could not read input image into numpy array: {}'.format(err)
-        raise ImageToArrayError(errmsg)
-    print( "made array" )
+        logging.debug(errmsg)
+        output_file_location = "none"
+        return output_file_location
+        #raise ImageToArrayError(errmsg)
+    logging.debug( "made array" )
 
-    print( "sending to tf_serving" )
+    logging.debug( "sending to tf_serving" )
     tf_results = send_img_to_tfserving(img, model_name, version)
-    print( "sent to tf_serving" )
+    if tf_results == "error":
+        logging.debug("sent to, but didn't receive from tensorflow-serving")
+        output_file_location = "none"
+        return output_file_location
+    logging.debug( "sent to tf_serving" )
 
-    print( "saving" )
+    logging.debug( "saving" )
     out_paths = save_tf_serving_results(tf_results)
+    if out_paths == "error":
+        output_file_location = "none"
+        return output_file_location
 
     zip_file = save_zip_file(out_paths)
-    print( "saved" )
+    if zip_file == "error":
+        output_file_location = "none"
+        return output_file_location
+    logging.debug( "saved" )
 
-    print( "uploading" )
+    logging.debug( "uploading" )
     try:
         upload_return_value = s3.upload_file(zip_file, AWS_S3_BUCKET, zip_file)
     except Exception as err:
+        logging.debug("didn't upload")
         errmsg = 'Failed to upload zipfile to S3 bucket: {}'.format(err)
-        raise UploadFileError(errmsg)
-    print( "uploaded" )
+        logging.debug(errmsg)
+        output_file_location = "none"
+        return output_file_location
+        #raise UploadFileError(errmsg)
+    logging.debug( "uploaded" )
 
     output_file_location = 'https://s3.amazonaws.com/{}/{}'.format(AWS_S3_BUCKET, zip_file)
     return output_file_location
@@ -121,10 +148,13 @@ def download_file(image_name):
         return local_image
     except Exception as err:
         errmsg = 'Could not download file from S3 bucket: {}'.format(err)
-        raise S3DownloadError(errmsg)
+        logging.debug(errmsg)
+        local_image = "error"
+        return local_image
+        #raise S3DownloadError(errmsg)
 
 
-def send_img_to_tfserving(img, model_name, version, tf_timeout=300):
+def send_img_to_tfserving(img, model_name, version, tf_timeout=600):
     """
     Send img as numpy array to tensorflow-serving,
     return result as numpy array of features
@@ -141,11 +171,18 @@ def send_img_to_tfserving(img, model_name, version, tf_timeout=300):
             ]
         }
 
+        logging.debug("  http request sent")
         # Post to API URL
         prediction = requests.post(api_url, json=payload, timeout=tf_timeout)
+        logging.debug("  http response received")
 
+        logging.debug("  fixing json")
         # Fix JSON format (Temporary fix)
         prediction_fixed = fix_json(prediction)
+        if prediction_fixed == "error":
+            final_prediction = "error"
+            return final_prediction
+        logging.debug("  fixed json")
 
         # Check for Server errors
         if not prediction.status_code == 200:
@@ -154,10 +191,14 @@ def send_img_to_tfserving(img, model_name, version, tf_timeout=300):
                 prediction_error, prediction.status_code))
 
         # Convert prediction to numpy array
-        return np.array(list(prediction_fixed['predictions'][0]))
+        final_prediction =  np.array(list(prediction_fixed['predictions'][0]))
+        return final_prediction
     except Exception as err:
         errmsg = 'Error during model prediction: {}'.format(err)
-        raise TensorFlowServingError(errmsg)
+        logging.debug(errmsg)
+        final_prediction = "error"
+        return final_prediction
+        #raise TensorFlowServingError(errmsg)
 
 
 def get_tfserving_url(model_name, version):
@@ -178,7 +219,10 @@ def fix_json(response):
         return fixed_json
     except Exception as err:
         errmsg = 'Failed to fix json response: {}'.format(str(err))
-        raise FixJsonError(errmsg)
+        logging.debug(errmsg)
+        fixed_json = "error"
+        return fixed_json
+        #raise FixJsonError(errmsg)
 
 
 def save_tf_serving_results(tf_results):
@@ -195,7 +239,9 @@ def save_tf_serving_results(tf_results):
             out_paths.append(path)
         except Exception as err:
             errmsg = 'Could not save predictions as image: {}'.format(err)
-            raise SaveResultsError(errmsg)
+            logging.debug(errmsg)
+            out_paths = "error"
+            #raise SaveResultsError(errmsg)
     return out_paths
 
 
@@ -212,7 +258,10 @@ def save_zip_file(out_paths):
         return hash_filename
     except Exception as err:
         errmsg = 'Failed to write zipfile: {}'.format(err)
-        raise ZipFileException(errmsg)
+        logging.debug(errmsg)
+        hash_filename = "error"
+        return hash_filename
+        #raise ZipFileException(errmsg)
 
 
 def main():
@@ -222,8 +271,8 @@ def main():
         # get all keys, accounting for the possibility that there are none
 	try:
 	    all_keys = redis.keys()
-            print("all_keys: ")
-            print( str(all_keys) )
+            logging.debug("all_keys: ")
+            logging.debug( str(all_keys) )
         except:
 	    all_keys = []
 
@@ -233,38 +282,44 @@ def main():
             key_type = redis.type(key)
             if key_type=="hash":
                 all_hashes.append(key)
-        print("all_hashes: ")
-        print( str(all_hashes) )
+        logging.debug("all_hashes: ")
+        logging.debug( str(all_hashes) )
 
         # look at each hash and decide whether or not to process it
 	all_values = []
         for one_hash in all_hashes:
-            print("all_values: ")
-            print(all_values)
-            print("")
+            #logging.debug("all_values: ")
+            #logging.debug(all_values)
+            #logging.debug("")
             hash_values = redis.hgetall(one_hash)
             img_name = one_hash
             url = hash_values['url']
             model_name = hash_values['model_name']
             model_version = hash_values['model_version']
             processing_status = hash_values['processed']
+            logging.debug("current_image: " + img_name)
+            logging.debug("image_url: " + url)
+            logging.debug("model_name: " + model_name)
+            logging.debug("model_version: " + model_version)
+            logging.debug("processing_status: " + processing_status)
             if processing_status=="no":
                 # this image has not yet been claimed by any Tensorflow-serving instance
                 # let's process it
                 hset_response = redis.hset( one_hash, 'processed', 'processing' )
-                print("processing image:")
-                print( img_name )
+                logging.debug("processing image:")
+                logging.debug( img_name )
                 new_image_path = process_image( img_name, url, model_name, model_version )
-                print(new_image_path)
-                print(" ")
+                logging.debug("new_image_path: " + new_image_path)
+                logging.debug(" ")
                 hset_response = redis.hset( one_hash, 'output_url', new_image_path )
                 hset_response = redis.hset( one_hash, 'processed', 'yes' )
 
             all_values.append(hash_values)
 
-        print("all_values: ")
-	print(all_values)
-        print("")
+        logging.debug("")
+        logging.debug("all_values: ")
+	logging.debug(all_values)
+        logging.debug("")
 
 	time.sleep(10)
 
