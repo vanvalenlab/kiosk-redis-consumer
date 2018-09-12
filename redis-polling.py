@@ -1,24 +1,19 @@
-from decouple import config
-from redis import Redis
-import time
-
-#import pdb
-#from skimage import io
-import boto3
-
-from tensorflow.python.keras.preprocessing.image import  img_to_array
-import requests
-import numpy as np
 import os
-from skimage.external import tifffile as tiff
 import hashlib
+import json
+import logging
+import time
 import zipfile
 
+import boto3
+from decouple import config
+from redis import StrictRedis
+from skimage.external import tifffile as tiff
+from tensorflow.python.keras.preprocessing.image import  img_to_array
 from PIL import Image
+import requests
+import numpy as np
 
-import json
-
-import logging
 
 # configuring logging
 logging.basicConfig(filename="log_file.txt", format="%(asctime)s : %(name)s : %(levelname)s : %(message)s", level=logging.DEBUG)
