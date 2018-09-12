@@ -68,10 +68,10 @@ redis = StrictRedis(
     charset='utf-8')
 
 # initialize S3 connection
-s3 = boto3.client('s3', \
-    region_name = AWS_REGION, \
-    aws_access_key_id = AWS_ACCESS_KEY_ID, \
-    aws_secret_access_key = AWS_SECRET_ACCESS_KEY)
+s3 = boto3.client('s3',
+    region_name=AWS_REGION,
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
 
 
 def process_image(img_name, img_url, model_name, version):
@@ -270,24 +270,24 @@ def main():
     while True:
 
         # get all keys, accounting for the possibility that there are none
-	try:
-	    all_keys = redis.keys()
-            logging.debug("all_keys: ")
-            logging.debug( str(all_keys) )
+        try:
+            all_keys = redis.keys()
+            logging.debug("all_keys: %s", all_keys)
         except:
-	    all_keys = []
+            all_keys = []
 
         # find the hashes from among the keys
         all_hashes = []
         for key in all_keys:
             key_type = redis.type(key)
-            if key_type=="hash":
+
+            if key_type == "hash":
                 all_hashes.append(key)
-        logging.debug("all_hashes: ")
-        logging.debug( str(all_hashes) )
+
+        logging.debug("all_hashes: %s", all_hashes)
 
         # look at each hash and decide whether or not to process it
-	all_values = []
+        all_values = []
         for one_hash in all_hashes:
             #logging.debug("all_values: ")
             #logging.debug(all_values)
@@ -298,19 +298,19 @@ def main():
             model_name = hash_values['model_name']
             model_version = hash_values['model_version']
             processing_status = hash_values['processed']
-            logging.debug("current_image: " + img_name)
-            logging.debug("image_url: " + url)
-            logging.debug("model_name: " + model_name)
-            logging.debug("model_version: " + model_version)
-            logging.debug("processing_status: " + processing_status)
-            if processing_status=="no":
+            logging.debug("current_image: %s", img_name)
+            logging.debug("image_url: %s", url)
+            logging.debug("model_name: %s", model_name)
+            logging.debug("model_version: %s", model_version)
+            logging.debug("processing_status: %s", processing_status)
+            if processing_status == "no":
                 # this image has not yet been claimed by any Tensorflow-serving instance
                 # let's process it
                 hset_response = redis.hset( one_hash, 'processed', 'processing' )
                 logging.debug("processing image:")
                 logging.debug( img_name )
                 new_image_path = process_image( img_name, url, model_name, model_version )
-                logging.debug("new_image_path: " + new_image_path)
+                logging.debug("new_image_path: %s", new_image_path)
                 logging.debug(" ")
                 hset_response = redis.hset( one_hash, 'output_url', new_image_path )
                 hset_response = redis.hset( one_hash, 'processed', 'yes' )
@@ -318,11 +318,10 @@ def main():
             all_values.append(hash_values)
 
         logging.debug("")
-        logging.debug("all_values: ")
-	logging.debug(all_values)
+        logging.debug("all_values: %s", all_values)
         logging.debug("")
 
-	time.sleep(10)
+    time.sleep(10)
 
 
 if __name__=='__main__':
