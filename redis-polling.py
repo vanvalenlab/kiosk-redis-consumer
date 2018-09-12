@@ -15,9 +15,6 @@ import requests
 import numpy as np
 
 
-# configuring logging
-logging.basicConfig(filename="log_file.txt", format="%(asctime)s : %(name)s : %(levelname)s : %(message)s", level=logging.DEBUG)
-
 # initializing environmental variables
 DEBUG = config('DEBUG', default=True, cast=bool)
 TF_HOST = config('TF_HOST', default='tf-serving-service')
@@ -32,15 +29,20 @@ AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default="specify_me")
 # Application Directories
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOAD_DIR = os.path.join(ROOT_DIR, 'download')
-try:
-    os.mkdir(DOWNLOAD_DIR)
-except OSError:
-    pass
 OUTPUT_DIR = os.path.join(ROOT_DIR, 'output')
-try:
-    os.mkdir(OUTPUT_DIR)
-except OSError:
-    pass
+LOG_DIR = os.path.join(ROOT_DIR, 'logs')
+
+for d in (DOWNLOAD_DIR, OUTPUT_DIR, LOG_DIR):
+    try:
+        os.mkdir(d)
+    except OSError:
+        pass
+
+# configuring logging
+logging.basicConfig(
+    filename=os.path.join(LOG_DIR, "log_file.txt"),
+    format="%(asctime)s : %(name)s : %(levelname)s : %(message)s",
+    level=logging.DEBUG)
 
 # Custom exceptions for error handling
 class S3DownloadError(Exception):
