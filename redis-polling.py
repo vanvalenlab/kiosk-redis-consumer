@@ -130,7 +130,7 @@ def process_image(img_name, img_url, model_name, version):
     except Exception as err:
         logging.debug("didn't upload")
         errmsg = 'Failed to upload zipfile to S3 bucket: {}'.format(err)
-        logging.debug(errmsg)
+        logging.error(errmsg)
         output_file_location = "none"
         return output_file_location
         #raise UploadFileError(errmsg)
@@ -149,7 +149,7 @@ def download_file(image_name):
         return local_image
     except Exception as err:
         errmsg = 'Could not download file from S3 bucket: {}'.format(err)
-        logging.debug(errmsg)
+        logging.error(errmsg)
         local_image = "error"
         return local_image
         #raise S3DownloadError(errmsg)
@@ -196,7 +196,7 @@ def send_img_to_tfserving(img, model_name, version, tf_timeout=600):
         return final_prediction
     except Exception as err:
         errmsg = 'Error during model prediction: {}'.format(err)
-        logging.debug(errmsg)
+        logging.error(errmsg)
         final_prediction = "error"
         return final_prediction
         #raise TensorFlowServingError(errmsg)
@@ -220,7 +220,7 @@ def fix_json(response):
         return fixed_json
     except Exception as err:
         errmsg = 'Failed to fix json response: {}'.format(str(err))
-        logging.debug(errmsg)
+        logging.error(errmsg)
         fixed_json = "error"
         return fixed_json
         #raise FixJsonError(errmsg)
@@ -240,7 +240,7 @@ def save_tf_serving_results(tf_results):
             out_paths.append(path)
         except Exception as err:
             errmsg = 'Could not save predictions as image: {}'.format(err)
-            logging.debug(errmsg)
+            logging.error(errmsg)
             out_paths = "error"
             #raise SaveResultsError(errmsg)
     return out_paths
@@ -259,7 +259,7 @@ def save_zip_file(out_paths):
         return hash_filename
     except Exception as err:
         errmsg = 'Failed to write zipfile: {}'.format(err)
-        logging.debug(errmsg)
+        logging.error(errmsg)
         hash_filename = "error"
         return hash_filename
         #raise ZipFileException(errmsg)
