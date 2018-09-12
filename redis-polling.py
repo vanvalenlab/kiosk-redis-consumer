@@ -61,7 +61,11 @@ class UploadFileError(Exception):
     pass
 
 # initialize Redis connection
-redis = Redis( host=REDIS_HOST, port=REDIS_PORT )
+redis = StrictRedis(
+    host=REDIS_HOST,
+    port=REDIS_PORT,
+    decode_responses=True,
+    charset='utf-8')
 
 # initialize S3 connection
 s3 = boto3.client('s3', \
