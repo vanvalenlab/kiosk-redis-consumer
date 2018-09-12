@@ -139,7 +139,7 @@ def process_image(img_name, img_url, model_name, version):
         #raise UploadFileError(errmsg)
     logging.debug( "uploaded" )
 
-    output_file_location = 'https://s3.amazonaws.com/{}/{}'.format(AWS_S3_BUCKET, zip_file)
+    output_file_location = 'https://s3.amazonaws.com/{}/{}'.format(AWS_S3_BUCKET, os.path.basename(zip_file))
     return output_file_location
 
 
@@ -326,7 +326,7 @@ def main():
         logging.debug("all_values: %s", all_values)
         logging.debug("")
 
-    time.sleep(10)
+        time.sleep(10)
 
 
 if __name__=='__main__':
