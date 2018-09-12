@@ -126,7 +126,10 @@ def process_image(img_name, img_url, model_name, version):
 
     logging.debug( "uploading" )
     try:
-        upload_return_value = s3.upload_file(zip_file, AWS_S3_BUCKET, zip_file)
+        upload_return_value = s3.upload_file(
+            zip_file,
+            AWS_S3_BUCKET,
+            os.path.basename(zip_file))
     except Exception as err:
         logging.debug("didn't upload")
         errmsg = 'Failed to upload zipfile to S3 bucket: {}'.format(err)
@@ -251,17 +254,19 @@ def save_zip_file(out_paths):
         pre_hashed_name = 'prediction_{}'.format(time.time()).encode('utf-8')
         hash_filename = '{}.zip'.format(hashlib.md5(pre_hashed_name).hexdigest())
 
+        zip_filename = os.path.join(OUTPUT_DIR, hash_filename)
+
         # Create ZipFile and Write tiff files to it
-        with zipfile.ZipFile(hash_filename, 'w') as zip_file:
+        with zipfile.ZipFile(zip_filename, 'w') as zip_file:
             # writing each file one by one
             for out_file in out_paths:
                 zip_file.write(out_file, arcname=os.path.basename(out_file))
-        return hash_filename
+        return zip_filename
     except Exception as err:
         errmsg = 'Failed to write zipfile: {}'.format(err)
         logging.error(errmsg)
-        hash_filename = "error"
-        return hash_filename
+        zip_filename = "error"
+        return zip_filename
         #raise ZipFileException(errmsg)
 
 
