@@ -25,6 +25,11 @@ AWS_REGION = config('AWS_REGION', default='us-east-1')
 AWS_S3_BUCKET = config('AWS_S3_BUCKET', default='default-bucket')
 AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='specify_me')
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default="specify_me")
+CLOUD = config('CLOUD', default="aws")
+GOOGLE_REGION = config('GOOGLE_REGION', default='us-east-1')
+GOOGLE_BUCKET = config('GOOGLE_BUCKET', default='default-bucket')
+GOOGLE_KEY = config('GOOGLE_KEY', default='specify_me')
+GOOGLE_SECRET_KEY = config('GOOGLE_SECRET_KEY', default="specify_me")
 
 # Application Directories
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -68,10 +73,18 @@ redis = StrictRedis(
     charset='utf-8')
 
 # initialize S3 connection
-s3 = boto3.client('s3',
-    region_name=AWS_REGION,
-    aws_access_key_id=AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+if CLOUD=='aws':
+    s3 = boto3.client('s3',
+        region_name=AWS_REGION,
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+elif CLOUD=='gke':
+    s3 = boto3.client('s3',
+        region_name=GOOGLE_REGION,
+        aws_access_key_id=GOOGLE_KEY,
+        aws_secret_access_key=GOOGLE_SECRET_KEY)
+else:
+    print("Unrecognized cloud.")
 
 
 def process_image(img_name, img_url, model_name, version):
@@ -126,10 +139,18 @@ def process_image(img_name, img_url, model_name, version):
 
     logging.debug( "uploading" )
     try:
-        upload_return_value = s3.upload_file(
-            zip_file,
-            AWS_S3_BUCKET,
-            os.path.basename(zip_file))
+        if MODEL=='aws':
+            upload_return_value = s3.upload_file(
+                zip_file,
+                AWS_S3_BUCKET,
+                os.path.basename(zip_file))
+        elif MODEL=='gke':
+            upload_return_value = s3.upload_file(
+                zip_file,
+                GOOGLE_BUCKET,
+                os.path.basename(zip_file))
+        else:
+            raise Exception
     except Exception as err:
         logging.debug("didn't upload")
         errmsg = 'Failed to upload zipfile to S3 bucket: {}'.format(err)
@@ -139,7 +160,13 @@ def process_image(img_name, img_url, model_name, version):
         #raise UploadFileError(errmsg)
     logging.debug( "uploaded" )
 
-    output_file_location = 'https://s3.amazonaws.com/{}/{}'.format(AWS_S3_BUCKET, os.path.basename(zip_file))
+    if MODEL=='aws':
+        output_file_location = 'https://s3.amazonaws.com/{}/{}'.format(AWS_S3_BUCKET, os.path.basename(zip_file))
+    elif MODEL=='gke':
+        #TODO
+        output_file_location = 'https://s3.amazonaws.com/{}/{}'.format(GOOGLE_BUCKET, os.path.basename(zip_file))
+    else:
+        print("MODEL not recognized.")
     return output_file_location
 
 
@@ -147,7 +174,12 @@ def download_file(image_name):
     """Download File from S3 Storage"""
     try:
         output_location = os.path.join( DOWNLOAD_DIR, image_name )
-        download_return_value = s3.download_file( AWS_S3_BUCKET, image_name, output_location)
+        if MODEL=='aws':
+            download_return_value = s3.download_file( AWS_S3_BUCKET, image_name, output_location)
+        elif MODEL=='gke':
+            download_return_value = s3.download_file( GOOGLE_BUCKET, image_name, output_location)
+        else:
+            raise Exception
         local_image = Image.open(output_location)
         return local_image
     except Exception as err:
