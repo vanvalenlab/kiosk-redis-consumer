@@ -13,5 +13,5 @@ COPY ./redis-polling.py /
 
 #CMD sleep 100000
 #CMD bash
-#CMD ["python redis-polling.py"]
-CMD python redis-polling.py
+CMD ["/bin/sh", "-c", "python redis-polling.py"]
+#CMD python redis-polling.py
