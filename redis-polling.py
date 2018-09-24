@@ -15,21 +15,21 @@ import requests
 import numpy as np
 
 
-# initializing environmental variables
+# initializing non-cloud environmental variables
 DEBUG = config('DEBUG', default=True, cast=bool)
 TF_HOST = config('TF_HOST', default='tf-serving-service')
 TF_PORT = config('TF_PORT', default=1337, cast=int)
 REDIS_HOST = config('REDIS_HOST', default='redis-master')
 REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
+
+# initializing cloud environmental variables
+CLOUD = config('CLOUD_PROVIDER', default="aws")
 AWS_REGION = config('AWS_REGION', default='us-east-1')
 AWS_S3_BUCKET = config('AWS_S3_BUCKET', default='default-bucket')
 AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='specify_me')
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default="specify_me")
-CLOUD = config('CLOUD', default="aws")
-GOOGLE_REGION = config('GOOGLE_REGION', default='us-east-1')
-GOOGLE_BUCKET = config('GOOGLE_BUCKET', default='default-bucket')
-GOOGLE_KEY = config('GOOGLE_KEY', default='specify_me')
-GOOGLE_SECRET_KEY = config('GOOGLE_SECRET_KEY', default="specify_me")
+GOOGLE_REGION = config('GKE_COMPUTE_ZONE', default='us-west1-b')
+GOOGLE_BUCKET = config('GKE_BUCKET', default='default-bucket')
 
 # Application Directories
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -80,9 +80,7 @@ if CLOUD=='aws':
         aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
 elif CLOUD=='gke':
     s3 = boto3.client('s3',
-        region_name=GOOGLE_REGION,
-        aws_access_key_id=GOOGLE_KEY,
-        aws_secret_access_key=GOOGLE_SECRET_KEY)
+        region_name=GOOGLE_REGION)
 else:
     print("Unrecognized cloud.")
 
@@ -164,7 +162,7 @@ def process_image(img_name, img_url, model_name, version):
         output_file_location = 'https://s3.amazonaws.com/{}/{}'.format(AWS_S3_BUCKET, os.path.basename(zip_file))
     elif MODEL=='gke':
         #TODO
-        output_file_location = 'https://s3.amazonaws.com/{}/{}'.format(GOOGLE_BUCKET, os.path.basename(zip_file))
+        output_file_location = 'https://www.googleapis.com/storage/v1/b/{}/o/{}?alt=media'.format(GOOGLE_BUCKET, os.path.basename(zip_file))
     else:
         print("MODEL not recognized.")
     return output_file_location
