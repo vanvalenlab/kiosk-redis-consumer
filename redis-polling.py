@@ -13,7 +13,7 @@ from tensorflow.python.keras.preprocessing.image import  img_to_array
 from PIL import Image
 import requests
 import numpy as np
-
+from google.cloud import storage
 
 # initializing non-cloud environmental variables
 DEBUG = config('DEBUG', default=True, cast=bool)
@@ -79,8 +79,9 @@ if CLOUD=='aws':
         aws_access_key_id=AWS_ACCESS_KEY_ID,
         aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
 elif CLOUD=='gke':
-    s3 = boto3.client('s3',
-        region_name=GOOGLE_REGION)
+    gcloud_client = storage.Client()
+#    s3 = boto3.client('s3',
+#        region_name=GOOGLE_REGION)
 else:
     print("Unrecognized cloud.")
 
@@ -96,7 +97,7 @@ def process_image(img_name, img_url, model_name, version):
     Each failure case has a custom error class to send helpful status codes
     """
     logging.debug("downloading")
-    local_img = download_file(img_name)
+    local_img = download_file(img_name, img_url)
     if local_img == "error":
         logging.debug("didn't download")
         output_file_location = "none"
@@ -137,16 +138,19 @@ def process_image(img_name, img_url, model_name, version):
 
     logging.debug( "uploading" )
     try:
-        if MODEL=='aws':
+        if CLOUD=='aws':
             upload_return_value = s3.upload_file(
                 zip_file,
                 AWS_S3_BUCKET,
                 os.path.basename(zip_file))
-        elif MODEL=='gke':
-            upload_return_value = s3.upload_file(
-                zip_file,
-                GOOGLE_BUCKET,
-                os.path.basename(zip_file))
+        elif CLOUD=='gke':
+            bucket = gcloud_client.get_bucket(GOOGLE_BUCKET)
+            blob = bucket.blob( os.path.basename(zip_file) )
+            blob.upload_from_filename( zip_file )
+            #upload_return_value = s3.upload_file(
+            #    zip_file,
+            #    GOOGLE_BUCKET,
+            #    os.path.basename(zip_file))
         else:
             raise Exception
     except Exception as err:
@@ -158,24 +162,29 @@ def process_image(img_name, img_url, model_name, version):
         #raise UploadFileError(errmsg)
     logging.debug( "uploaded" )
 
-    if MODEL=='aws':
+    if CLOUD=='aws':
         output_file_location = 'https://s3.amazonaws.com/{}/{}'.format(AWS_S3_BUCKET, os.path.basename(zip_file))
-    elif MODEL=='gke':
+    elif CLOUD=='gke':
         #TODO
         output_file_location = 'https://www.googleapis.com/storage/v1/b/{}/o/{}?alt=media'.format(GOOGLE_BUCKET, os.path.basename(zip_file))
     else:
-        print("MODEL not recognized.")
+        print("CLOUD not recognized.")
     return output_file_location
 
 
-def download_file(image_name):
+def download_file(image_name, image_url):
     """Download File from S3 Storage"""
     try:
         output_location = os.path.join( DOWNLOAD_DIR, image_name )
-        if MODEL=='aws':
+        if CLOUD=='aws':
             download_return_value = s3.download_file( AWS_S3_BUCKET, image_name, output_location)
-        elif MODEL=='gke':
-            download_return_value = s3.download_file( GOOGLE_BUCKET, image_name, output_location)
+        elif CLOUD=='gke':
+            # we can just use requests since the cluster should already be authenticated
+            response = requests.get(image_url)
+            image = response.content
+            with open(output_location) as new_file:
+                new_file.write()
+            #download_return_value = s3.download_file( GOOGLE_BUCKET, image_name, output_location)
         else:
             raise Exception
         local_image = Image.open(output_location)
