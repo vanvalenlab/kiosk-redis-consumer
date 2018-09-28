@@ -179,11 +179,10 @@ def download_file(image_name, image_url):
         if CLOUD=='aws':
             download_return_value = s3.download_file( AWS_S3_BUCKET, image_name, output_location)
         elif CLOUD=='gke':
-            # we can just use requests since the cluster should already be authenticated
-            response = requests.get(image_url)
-            image = response.content
-            with open(output_location) as new_file:
-                new_file.write()
+            bucket = gcloud_client.get_bucket(GOOGLE_BUCKET)
+            blob = bucket.blob( image_name )
+            with open(output_location,'wb') as new_file:
+                blob.download_to_file( new_file )
             #download_return_value = s3.download_file( GOOGLE_BUCKET, image_name, output_location)
         else:
             raise Exception
