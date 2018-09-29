@@ -14,6 +14,7 @@ from PIL import Image
 import requests
 import numpy as np
 from google.cloud import storage
+import pdb
 
 # initializing non-cloud environmental variables
 DEBUG = config('DEBUG', default=True, cast=bool)
@@ -100,7 +101,7 @@ def process_image(img_name, img_url, model_name, version):
     local_img = download_file(img_name, img_url)
     if local_img == "error":
         logging.debug("didn't download")
-        output_file_location = "none"
+        output_file_location = "fail1"
         return output_file_location
     logging.debug("downloaded")
 
@@ -111,7 +112,7 @@ def process_image(img_name, img_url, model_name, version):
         logging.debug("didn't make array")
         errmsg = 'Could not read input image into numpy array: {}'.format(err)
         logging.debug(errmsg)
-        output_file_location = "none"
+        output_file_location = "fail2"
         return output_file_location
         #raise ImageToArrayError(errmsg)
     logging.debug( "made array" )
@@ -120,19 +121,19 @@ def process_image(img_name, img_url, model_name, version):
     tf_results = send_img_to_tfserving(img, model_name, version)
     if tf_results == "error":
         logging.debug("sent to, but didn't receive from tensorflow-serving")
-        output_file_location = "none"
+        output_file_location = "fail3"
         return output_file_location
     logging.debug( "sent to tf_serving" )
 
     logging.debug( "saving" )
     out_paths = save_tf_serving_results(tf_results)
     if out_paths == "error":
-        output_file_location = "none"
+        output_file_location = "fail4"
         return output_file_location
 
     zip_file = save_zip_file(out_paths)
     if zip_file == "error":
-        output_file_location = "none"
+        output_file_location = "fail5"
         return output_file_location
     logging.debug( "saved" )
 
@@ -157,7 +158,7 @@ def process_image(img_name, img_url, model_name, version):
         logging.debug("didn't upload")
         errmsg = 'Failed to upload zipfile to S3 bucket: {}'.format(err)
         logging.error(errmsg)
-        output_file_location = "none"
+        output_file_location = "fail6"
         return output_file_location
         #raise UploadFileError(errmsg)
     logging.debug( "uploaded" )
@@ -173,6 +174,7 @@ def process_image(img_name, img_url, model_name, version):
 
 
 def download_file(image_name, image_url):
+    #pdb.set_trace()
     """Download File from S3 Storage"""
     try:
         output_location = os.path.join( DOWNLOAD_DIR, image_name )
@@ -355,8 +357,7 @@ def main():
                 new_image_path = process_image( img_name, url, model_name, model_version )
                 logging.debug("new_image_path: %s", new_image_path)
                 logging.debug(" ")
-                hset_response = redis.hset( one_hash, 'output_url', new_image_path )
-                hset_response = redis.hset( one_hash, 'processed', 'yes' )
+                hmset_response = redis.hmset( one_hash, {'output_url': new_image_path, 'processed': 'yes'} )
 
             all_values.append(hash_values)
 
