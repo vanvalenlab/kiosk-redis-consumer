@@ -1,4 +1,30 @@
+# Copyright 2016-2018 The Van Valen Lab at the California Institute of
+# Technology (Caltech), with support from the Paul Allen Family Foundation,
+# Google, & National Institutes of Health (NIH) under Grant U24CA224309-01.
+# All rights reserved.
+#
+# Licensed under a modified Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.github.com/vanvalenlab/kiosk-consumer/LICENSE
+#
+# The Work provided may be used for non-commercial academic purposes only.
+# For any other use of the Work, including commercial use, please contact:
+# vanvalenlab@gmail.com
+#
+# Neither the name of Caltech nor the names of its contributors may be used
+# to endorse or promote products derived from this software without specific
+# prior written permission.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
 import os
+import sys
 import hashlib
 import json
 import logging
@@ -29,8 +55,7 @@ AWS_REGION = config('AWS_REGION', default='us-east-1')
 AWS_S3_BUCKET = config('AWS_S3_BUCKET', default='default-bucket')
 AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='specify_me')
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default="specify_me")
-GOOGLE_REGION = config('GKE_COMPUTE_ZONE', default='us-west1-b')
-GOOGLE_BUCKET = config('GKE_BUCKET', default='default-bucket')
+GOOGLE_BUCKET = config('GCLOUD_STORAGE_BUCKET', default='default-bucket')
 
 # Application Directories
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -81,8 +106,6 @@ if CLOUD=='aws':
         aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
 elif CLOUD=='gke':
     gcloud_client = storage.Client()
-#    s3 = boto3.client('s3',
-#        region_name=GOOGLE_REGION)
 else:
     print("Unrecognized cloud.")
 
@@ -368,5 +391,22 @@ def main():
         time.sleep(10)
 
 
+def initialize_logger(debug_mode=False):
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter('[%(levelname)s]:[%(name)s]: %(message)s')
+    console = logging.StreamHandler(stream=sys.stdout)
+    console.setFormatter(formatter)
+
+    if debug_mode:
+        console.setLevel(logging.DEBUG)
+    else:
+        console.setLevel(logging.INFO)
+
+    logger.addHandler(console)
+
+
 if __name__=='__main__':
+    initialize_logger(DEBUG)
     main()
