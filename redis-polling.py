@@ -339,10 +339,10 @@ def main():
             #logging.debug("")
             hash_values = redis.hgetall(one_hash)
             img_name = one_hash
-            url = hash_values['url']
-            model_name = hash_values['model_name']
-            model_version = hash_values['model_version']
-            processing_status = hash_values['processed']
+            url = hash_values.get('url')
+            model_name = hash_values.get('model_name')
+            model_version = hash_values.get('model_version')
+            processing_status = hash_values.get('processed')
             logging.debug("current_image: %s", img_name)
             logging.debug("image_url: %s", url)
             logging.debug("model_name: %s", model_name)
