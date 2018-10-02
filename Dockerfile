@@ -25,12 +25,12 @@
 # ============================================================================
 FROM python:3.5
 
-WORKDIR /usr/src/app
+WORKDIR /kiosk/consumer
 
 COPY requirements.txt .
 
 RUN pip install -r requirements.txt
 
-COPY redis-polling.py .
+COPY . .
 
-CMD ["/bin/sh", "-c", "python redis-polling.py"]
+CMD ["/bin/sh", "-c", "python consume-redis-events.py"]
