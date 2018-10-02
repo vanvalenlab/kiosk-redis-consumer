@@ -148,6 +148,7 @@ def process_image(img_name, img_url, model_name, version):
             bucket = gcloud_client.get_bucket(GOOGLE_BUCKET)
             blob = bucket.blob( os.path.basename(zip_file) )
             blob.upload_from_filename( zip_file )
+            blob.make_public()
             #upload_return_value = s3.upload_file(
             #    zip_file,
             #    GOOGLE_BUCKET,
