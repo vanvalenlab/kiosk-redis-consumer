@@ -13,7 +13,7 @@ RUN pip3 install -r requirements.txt
 
 COPY ./redis-polling.py /
 
-CMD sleep 100000
+#CMD sleep 100000
 #CMD bash
-#CMD ["/bin/sh", "-c", "python3 redis-polling.py"]
+CMD ["/bin/sh", "-c", "python3 redis-polling.py"]
 #CMD python redis-polling.py
