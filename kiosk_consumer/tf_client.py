@@ -37,7 +37,7 @@ import json
 
 import numpy as np
 import requests
-
+import datetime
 
 class TensorFlowServingError(Exception):
     pass
@@ -91,22 +91,36 @@ class TensorFlowServingClient(object):
         }
 
         # Post to API URL
-        prediction = requests.post(
-            self.get_url(model_name, version),
-            json=payload,
-            timeout=timeout)
+        return_code = 0
+        retries = 0
+        while return_code!=200:
+            self.logger.debug('Sent request to tf-serving: %s',
+                datetime.datetime.now())
+            prediction = requests.post(
+                self.get_url(model_name, version),
+                json=payload,
+                timeout=timeout)
 
-        try:
-            prediction_json = prediction.json()
-        except:
-            prediction_json = self.fix_json(prediction)
+            try:
+                prediction_json = prediction.json()
+            except:
+                prediction_json = self.fix_json(prediction)
 
-        # Check for tf-serving errors
-        if not prediction.status_code == 200:
-            prediction_error = prediction.json()['error']
+            # Check for tf-serving errors
+            if not prediction.status_code == 200:
+                if retries < 2:
+                    retries += 1
+                else:
+                    self.logger.debug('Got response from tf-serving: %s',
+                        datetime.datetime.now())
+                    prediction_error = prediction.json()['error']
 
-            raise TensorFlowServingError('{}: {}'.format(
-                prediction_error, prediction.status_code))
+                    raise TensorFlowServingError('{}: {}'.format(
+                        prediction_error, prediction.status_code))
+            else:
+                self.logger.debug('Got response from tf-serving: %s',
+                    datetime.datetime.now())
+                return_code = prediction.status_code
 
         # Convert prediction to numpy array
         final_prediction = np.array(list(prediction_json['predictions'][0]))
