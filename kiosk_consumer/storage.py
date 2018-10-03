@@ -91,7 +91,7 @@ class GoogleStorage(Storage):
         dest = self.get_download_path(filename)
         self.logger.debug('Downloading %s to %s.', url, dest)
         try:
-            blob = self._client.get_bucket(self.bucket).blob(url)
+            blob = self._client.get_bucket(self.bucket).blob(filename)
             with open(dest, 'wb') as new_file:
                 blob.download_to_file(new_file)
             return dest
