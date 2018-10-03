@@ -161,7 +161,7 @@ class PredictionConsumer(Consumer):
             self.logger.debug('processing image: %s', h)
 
             new_image_path = self.process_image(
-                h,
+                hash_values['file_name'],
                 hash_values['url'],
                 hash_values['model_name'],
                 hash_values['model_version'])
