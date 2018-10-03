@@ -53,7 +53,8 @@ class Storage(object):
         return 'https://{url}/{obj}'.format(url=self.bucket_url, obj=filepath)
 
     def get_download_path(self, filename):
-        return os.path.join(self.download_dir, filename)
+        no_upload_dir = os.path.join(*(filename.split(os.path.sep)[1:]))
+        return os.path.join(self.download_dir, no_upload_dir)
 
     def download(self, filename, url):
         raise NotImplementedError
@@ -128,7 +129,6 @@ class S3Storage(Storage):
     
     def download(self, filename, url):
         """Download a  file from the cloud storage bucket"""
-        self.logger.debug(self._client)
         dest = self.get_download_path(filename)
         self.logger.debug('Downloading %s to %s.', url, dest)
         try:
