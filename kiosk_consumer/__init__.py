@@ -23,14 +23,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-FROM python:3.5
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-WORKDIR /kiosk/consumer
+from kiosk_consumer import consumers
+from kiosk_consumer import settings
+from kiosk_consumer import storage
 
-COPY requirements.txt .
-
-RUN pip install -r requirements.txt
-
-COPY . .
-
-CMD ["/bin/sh", "-c", "python consume-redis-events.py"]
+del absolute_import
+del division
+del print_function
