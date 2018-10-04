@@ -54,6 +54,9 @@ class Storage(object):
 
     def get_download_path(self, filename):
         no_upload_dir = os.path.join(*(filename.split(os.path.sep)[1:]))
+        dest = os.path.join(self.download_dir, no_upload_dir)
+        if not os.path.isdir(os.path.dirname(dest)):
+            os.makedirs(dest)
         return os.path.join(self.download_dir, no_upload_dir)
 
     def download(self, filename, url):
