@@ -133,6 +133,10 @@ class PredictionConsumer(Consumer):
         # Returns:
             output_url: URL of results zip file
         """
+        # Bucket keys don't need to start with "/"
+        if filename.startswith('/'):
+            filename = filename[1:]
+
         downloaded_filepath = self.storage.download(filename, storage_url)
         self.logger.debug('Loading the image into numpy array')
         if os.path.splitext(downloaded_filepath)[-1].lower() in {'.tif', '.tiff'}:
