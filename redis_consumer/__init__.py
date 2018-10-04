@@ -7,7 +7,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.github.com/vanvalenlab/kiosk-consumer/LICENSE
+#     http://www.github.com/vanvalenlab/kiosk-redis-consumer/LICENSE
 #
 # The Work provided may be used for non-commercial academic purposes only.
 # For any other use of the Work, including commercial use, please contact:
@@ -27,9 +27,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from kiosk_consumer import consumers
-from kiosk_consumer import settings
-from kiosk_consumer import storage
+from redis_consumer import consumers
+from redis_consumer import settings
+from redis_consumer import storage
 
 del absolute_import
 del division
