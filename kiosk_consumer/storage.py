@@ -75,7 +75,7 @@ class GoogleStorage(Storage):
         try:
             self.logger.debug('Uploading %s to bucket %s.',
                 filepath, self.bucket)
-            dest = os.path.basename(filepath)
+            dest = os.path.join('output', os.path.basename(filepath))
             bucket = self._client.get_bucket(self.bucket)
             blob = bucket.blob(dest)
             blob.upload_from_filename(filepath)
@@ -116,7 +116,7 @@ class S3Storage(Storage):
 
     def upload(self, filepath):
         """Upload a file to the cloud storage bucket"""
-        dest = os.path.basename(filepath)
+        dest = os.path.join('output', os.path.basename(filepath))
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         try:
             self._client.upload_file(filepath, self.bucket, dest)
