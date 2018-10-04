@@ -141,6 +141,9 @@ class PredictionConsumer(Consumer):
         self.logger.debug('Loading the image into numpy array')
         if os.path.splitext(downloaded_filepath)[-1].lower() in {'.tif', '.tiff'}:
             img = np.float32(tiff.TiffFile(downloaded_filepath).asarray())
+            # check for channel axis
+            if img.ndim == 2:
+                img = np.expand_dims(img, axis=-1)
         else:
             img = img_to_array(Image.open(downloaded_filepath))
         self.logger.debug('Loaded image into numpy array with '
@@ -218,13 +221,16 @@ class PredictionConsumer(Consumer):
                     hash_values.get('model_version'),
                     hash_values.get('cuts'))
 
-                self.redis.hmset(redis_hash, {
-                    'output_url': new_image_path,
-                    'processed': 'yes'
-                })
             except Exception as err:
+                new_image_path = 'failed'
                 self.logger.error('Failed to process redis key %s. Error: %s',
                     redis_hash, err)
+            
+            # Update redis with the results
+            self.redis.hmset(redis_hash, {
+                'output_url': new_image_path,
+                'processed': 'yes'
+            })
 
     def consume(self, interval):
         if not str(interval).isdigit():
