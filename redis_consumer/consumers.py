@@ -168,20 +168,18 @@ class PredictionConsumer(Consumer):
 
             for i in range(cuts):
                 for j in range(cuts):
-                    e, f = i * crop_x, (i + 1) * crop_x + 2 * win_x
-                    g, h = j * crop_y, (j + 1) * crop_y + 2 * win_y
+                    a, b = i * crop_x, (i + 1) * crop_x
+                    c, d = j * crop_y, (j + 1) * crop_y
+
                     if img.ndim >= 4:
-                        data = padded_img[:, e:f, g:h, :]
+                        data = padded_img[:, a:b + 2 * win_x, c:d + 2 * win_y, :]
                     else:
-                        data = padded_img[e:f, g:h, :]
+                        data = padded_img[a:b + 2 * win_x, c:d + 2 * win_y, :]
 
                     predicted = self.tf_client.post_image(data, model_name, model_version)
                     if tf_results is None:
                         tf_results = np.zeros(list(img.shape)[:-1] + [predicted.shape[-1]])
                         self.logger.debug('initialized output tensor of shape %s', tf_results.shape)
-
-                    a, b = i * crop_x, (i + 1) * crop_x
-                    c, d = j * crop_y, (j + 1) * crop_y
 
                     if predicted.ndim >= 4:
                         tf_results[:, a:b, c:d, :] = predicted[:, win_x:-win_x, win_y:-win_y, :]
