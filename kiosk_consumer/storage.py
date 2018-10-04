@@ -79,9 +79,10 @@ class GoogleStorage(Storage):
             bucket = self._client.get_bucket(self.bucket)
             blob = bucket.blob(dest)
             blob.upload_from_filename(filepath)
+            blob.make_public()
             self.logger.debug('Successfully uploaded {} to bucket {}'.format(
                 filepath, self.bucket))
-            return self._get_public_url(dest)
+            return blob.public_url
         except Exception as err:
             self.logger.error('Error while uploading image {}: {}'.format(
                 filepath, err))
