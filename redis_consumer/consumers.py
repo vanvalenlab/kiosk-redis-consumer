@@ -83,7 +83,6 @@ class PredictionConsumer(Consumer):
 
     def save_tf_serving_results(self, tf_results):
         """Split complete prediction into components and save each as a tiff
-        TODO: this looks to only work for 2D data
         """
         self.logger.debug('Saving results from tf-serving')
         out_paths = []
@@ -123,7 +122,7 @@ class PredictionConsumer(Consumer):
             raise err
 
     def process_image(self, filename, storage_url, model_name, model_version, cuts=0, field=61):
-        """POSTS image data to tf-serving then saves the result
+        """POSTs image data to tf-serving then saves the result
         as a zip and uploads into the cloud bucket.
         # Arguments:
             filename: path to cloud destination of image file
