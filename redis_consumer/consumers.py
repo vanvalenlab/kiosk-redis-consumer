@@ -38,7 +38,7 @@ from time import sleep, time
 import numpy as np
 from PIL import Image
 from skimage.external import tifffile as tiff
-from tensorflow.python.keras.preprocessing.image import img_to_array
+from keras_preprocessing.image import img_to_array
 
 from .settings import DOWNLOAD_DIR, OUTPUT_DIR
 
