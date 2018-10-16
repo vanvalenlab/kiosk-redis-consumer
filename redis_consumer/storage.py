@@ -99,6 +99,7 @@ class GoogleStorage(Storage):
             blob = self._client.get_bucket(self.bucket).blob(filename)
             with open(dest, 'wb') as new_file:
                 blob.download_to_file(new_file)
+            self.logger.debug('Downloaded %s', dest)
             return dest
         except Exception as err:
             self.logger.error('Error while downloading image {}: {}'.format(
@@ -137,7 +138,7 @@ class S3Storage(Storage):
         self.logger.debug('Downloading %s to %s.', url, dest)
         try:
             self._client.download_file(self.bucket, filename, dest)
-            self.logger.debug('downloaded %s', dest)
+            self.logger.debug('Downloaded %s', dest)
             return dest
         except Exception as err:
             self.logger.error('Error while downloading image {}: {}'.format(
