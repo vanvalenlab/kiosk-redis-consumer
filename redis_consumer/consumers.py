@@ -46,6 +46,7 @@ from .settings import DOWNLOAD_DIR, OUTPUT_DIR
 class Consumer(object):
 
     def __init__(self, redis_client, storage_client):
+        self.output_dir = OUTPUT_DIR
         self.redis = redis_client
         self.storage = storage_client
         self.logger = logging.getLogger(str(self.__class__.__name__))
@@ -71,7 +72,6 @@ class PredictionConsumer(Consumer):
 
     def __init__(self, redis_client, storage_client, tf_client):
         self.tf_client = tf_client
-        self.output_dir = OUTPUT_DIR
         super(PredictionConsumer, self).__init__(redis_client, storage_client)
     
     def iter_redis_hashes(self):
