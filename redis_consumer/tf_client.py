@@ -32,8 +32,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
+import os
 import json
+import logging
 
 import numpy as np
 import requests
@@ -50,22 +51,21 @@ class TensorFlowServingClient(object):
         self.host = host
         self.port = port
         self.logger = logging.getLogger(str(self.__class__.__name__))
-    
+
     def get_url(self, model_name, version):
         """Get API URL for TensorFlow Serving, based on model name and version
         """
         return 'http://{}:{}/v1/models/{}/versions/{}:predict'.format(
             self.host, self.port, model_name, version)
-    
-    def fix_json(self, response):
+
+    def fix_json(self, response_text):
         """Sometimes TF Serving has strange scientific notation e.g. '1e5.0,'
         so convert the float-exponent to an integer for JSON parsing.
         """
         self.logger.debug('tf-serving response is not well-formed JSON. '
                           'Attempting to fix the response.')
         try:
-            raw_text = response.text
-            fixed_text = raw_text.replace('.0,', ',').replace('.0],', '],')
+            fixed_text = response_text.replace('.0,', ',').replace('.0],', '],')
             fixed_json = json.loads(fixed_text)
             self.logger.debug('Successfully parsed tf-serving JSON response')
             return fixed_json
@@ -79,16 +79,10 @@ class TensorFlowServingClient(object):
             image: numpy array of image data passed to model
             model_name: hosted model to send image data
             version: model version to query
-        # Returns: tf-serving results as numpy array    
+        # Returns: tf-serving results as numpy array
         """
         # Define payload to send to API URL
-        payload = {
-            'instances': [
-                {
-                    'image': image.tolist()
-                }
-            ]
-        }
+        payload = { 'instances': [{ 'image': image.tolist() }] }
 
         # Post to API URL
         return_code = 0
@@ -100,12 +94,10 @@ class TensorFlowServingClient(object):
                 self.get_url(model_name, version),
                 json=payload,
                 timeout=timeout)
-
             try:
                 prediction_json = prediction.json()
             except:
                 prediction_json = self.fix_json(prediction)
-
             # Check for tf-serving errors
             if not prediction.status_code == 200:
                 if retries < 2:
