@@ -39,6 +39,10 @@ import logging
 import numpy as np
 import requests
 
+from tornado import httpclient
+from tornado.gen import multi
+from tornado import escape
+
 
 class TensorFlowServingError(Exception):
     pass
@@ -72,6 +76,59 @@ class TensorFlowServingClient(object):
         except Exception as err:
             self.logger.error('Cannot fix tf-serving response JSON: %s', err)
             raise err
+
+    async def tornado_images(self, images, model_name, model_version, timeout=300, max_clients=10):
+        httpclient.AsyncHTTPClient.configure(None,
+            max_body_size=1073741824,  # 1GB
+            max_clients=max_clients)
+        http_client = httpclient.AsyncHTTPClient()
+        # http_client.set_max_buffer_size(1073741824)  # 1GB
+        api_url = self.get_url(model_name, model_version)
+
+        json_payload = ({ 'instances': [{ 'image': i.tolist() }] } for i in images)
+        payloads = (escape.json_encode(jp) for jp in json_payload)
+
+        def iter_kwargs(payload):
+            for p in payload:
+                yield {
+                    'body': p,
+                    'method': 'POST',
+                    'request_timeout': timeout,
+                    'connect_timeout': timeout
+                }
+
+        all_tf_results = []
+        for kw in iter_kwargs(payloads):
+            try:
+                response = await http_client.fetch(api_url, **kw)
+                text = response.body
+                try:
+                    prediction_json = json.loads(text)
+                except:
+                    prediction_json = self.fix_json(text)
+
+                final_prediction = np.array(list(prediction_json['predictions'][0]))
+                all_tf_results.append(final_prediction)
+            except httpclient.HTTPError as err:
+                self.logger.error('Error: %s: %s', err, err.response.body)
+                raise err
+
+        # Using gen.multi - causes unpredictable 429 errors
+        # requests = (http_client.fetch(api_url, **kw) for kw in iter_kwargs(payloads))
+        # responses = await multi([r for r in requests])
+        # texts = (escape.native_str(r.body) for r in responses)
+        # for text in texts:
+        #     try:
+        #         prediction_json = json.loads(text)
+        #     except:
+        #         prediction_json = self.fix_json(text)
+        #
+        #     # Convert prediction to numpy array
+        #     final_prediction = np.array(list(prediction_json['predictions'][0]))
+        #     self.logger.debug('Got tf-serving results of shape: %s',
+        #         final_prediction.shape)
+        #     all_tf_results.append(final_prediction)
+        return all_tf_results
 
     def post_image(self, image, model_name, version, timeout=300):
         """Sends image to tensorflow serving and returns response

@@ -5,3 +5,4 @@ redis>=2.10.6
 requests>=2.19.1
 scikit-image>=0.14.0
 keras-preprocessing==1.0.5
+tornado==5.1

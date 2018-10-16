@@ -31,6 +31,8 @@ from __future__ import print_function
 import json
 import logging
 import os
+import tempfile
+import timeit
 import zipfile
 from hashlib import md5
 from time import sleep, time
@@ -39,6 +41,7 @@ import numpy as np
 from PIL import Image
 from skimage.external import tifffile as tiff
 from keras_preprocessing.image import img_to_array
+from tornado import ioloop
 
 from .settings import DOWNLOAD_DIR, OUTPUT_DIR
 
@@ -50,7 +53,7 @@ class Consumer(object):
         self.redis = redis_client
         self.storage = storage_client
         self.logger = logging.getLogger(str(self.__class__.__name__))
-    
+
     def iter_redis_hashes(self):
         """Iterate over all unprocessed keys in redis"""
         try:
@@ -58,11 +61,57 @@ class Consumer(object):
             self.logger.debug('Found %s redis keys', len(keys))
         except:
             keys = []
-        
+
         for key in keys:
             # Check if the key is a hash
             if self.redis.type(key) == 'hash':
                 yield key
+
+    def get_image(self, filepath):
+        """Open image file as numpy array
+        # Arguments:
+            filepath: full filepath of image file
+        # Returns:
+            img: numpy array of image data
+        """
+        self.logger.debug('Loading the image into numpy array')
+        if os.path.splitext(filepath)[-1].lower() in {'.tif', '.tiff'}:
+            img = np.float32(tiff.TiffFile(filepath).asarray())
+            # check for channel axis
+            if img.ndim == 2:
+                img = np.expand_dims(img, axis=-1)
+        else:
+            img = img_to_array(Image.open(filepath))
+
+        self.logger.debug('Loaded image into numpy array with '
+                          'shape %s', img.shape)
+        return img
+
+    def save_zip_file(self, files):
+        """Save files in zip archive and return the path
+        # Arguments:
+            files: all filepaths that will be saved in the zip
+        # Returns:
+            zip_filename: filepath to new zip archive
+        """
+        try:
+            filename = 'prediction_{}'.format(time()).encode('utf-8')
+            hashed_filename = '{}.zip'.format(md5(filename).hexdigest())
+
+            zip_filename = os.path.join(self.output_dir, hashed_filename)
+
+            # Create ZipFile and Write each file to it
+            with zipfile.ZipFile(zip_filename, 'w') as zip_file:
+                for f in files:  # writing each file one by one
+                    name = f.replace(self.output_dir, '')
+                    if name.startswith(os.path.sep):
+                        name = name[1:]
+
+                    zip_file.write(f, arcname=name)
+            return zip_filename
+        except Exception as err:
+            self.logger.error('Failed to write zipfile: %s', err)
+            raise err
 
     def consume(self):
         raise NotImplementedError
@@ -73,7 +122,7 @@ class PredictionConsumer(Consumer):
     def __init__(self, redis_client, storage_client, tf_client):
         self.tf_client = tf_client
         super(PredictionConsumer, self).__init__(redis_client, storage_client)
-    
+
     def iter_redis_hashes(self):
         """Iterate over all hashes, yield unprocessed tf-serving events"""
         for h in super(PredictionConsumer, self).iter_redis_hashes():
@@ -81,9 +130,12 @@ class PredictionConsumer(Consumer):
             if self.redis.hget(h, 'processed') == 'no':
                 yield h
 
-    def save_tf_serving_results(self, tf_results):
+    def save_tf_serving_results(self, tf_results, name='', subdir=''):
         """Split complete prediction into components and save each as a tiff
         """
+        if subdir.startswith(os.path.sep):
+            subdir = subdir[1:]
+
         self.logger.debug('Saving results from tf-serving')
         out_paths = []
         for channel in range(tf_results.shape[-1]):
@@ -93,7 +145,17 @@ class PredictionConsumer(Consumer):
                     img = tf_results[:, :, :, channel].astype('float32')
                 else:
                     img = tf_results[:, :, channel].astype('float32')
-                path = os.path.join(self.output_dir, 'feature_{}.tif'.format(channel))
+
+                _name = 'feature_{}.tif'.format(channel)
+                if name:
+                    _name = '{}_{}'.format(name, _name)
+
+                path = os.path.join(self.output_dir, subdir, _name)
+
+                # Create subdirs if they do not exist
+                if not os.path.isdir(os.path.dirname(path)):
+                    os.makedirs(os.path.dirname(path))
+
                 tiff.imsave(path, img)
                 self.logger.debug('saved channel %s to %s', channel, path)
                 out_paths.append(path)
@@ -103,23 +165,73 @@ class PredictionConsumer(Consumer):
                     channel, err)
         return out_paths
 
-    def save_zip_file(self, out_paths):
-        """Save output images as tiff files and return their paths"""
-        try:
-            filename = 'prediction_{}'.format(time()).encode('utf-8')
-            hashed_filename = '{}.zip'.format(md5(filename).hexdigest())
+    def pad_image(self, image, field):
+        """Pad each the input image for proper dimensions when stitiching
+        # Arguments:
+            image: np.array of image data
+            field: receptive field size of model
+        # Returns:
+            image data padded in the x and y axes
+        """
+        window = (field - 1) // 2
+        # Pad images by the field size in the x and y axes
+        pad_width = []
+        for i in range(len(image.shape)):
+            if i == image.ndim - 3:
+                pad_width.append((window, window))
+            elif i == image.ndim - 2:
+                pad_width.append((window, window))
+            else:
+                pad_width.append((0, 0))
 
-            zip_filename = os.path.join(self.output_dir, hashed_filename)
+        return np.pad(image, pad_width, mode='reflect')
 
-            # Create ZipFile and Write tiff files to it
-            with zipfile.ZipFile(zip_filename, 'w') as zip_file:
-                # writing each file one by one
-                for out_file in out_paths:
-                    zip_file.write(out_file, arcname=os.path.basename(out_file))
-            return zip_filename
-        except Exception as err:
-            self.logger.error('Failed to write zipfile: %s', err)
-            raise err
+    def _iter_cuts(self, img, cuts, field):
+        crop_x = img.shape[img.ndim - 3] // cuts
+        crop_y = img.shape[img.ndim - 2] // cuts
+        for i in range(cuts):
+            for j in range(cuts):
+                a, b = i * crop_x, (i + 1) * crop_x
+                c, d = j * crop_y, (j + 1) * crop_y
+                yield a, b, c, d
+
+    def process_big_image(self, cuts, img, field, model_name, model_version):
+        cuts = int(cuts)
+        win_x, win_y = (field - 1) // 2, (field - 1) // 2
+
+        tf_results = None  # Channel shape is unknown until first request
+        padded_img = self.pad_image(img, field)
+
+        images, coords = [], []
+
+        for a, b, c, d in self._iter_cuts(img, cuts, field):
+            if img.ndim >= 4:
+                data = padded_img[:, a:b + 2 * win_x, c:d + 2 * win_y, :]
+            else:
+                data = padded_img[a:b + 2 * win_x, c:d + 2 * win_y, :]
+
+            images.append(data)
+            coords.append((a, b, c, d))
+
+        def post_many():
+            timeout = 300 * len(images)
+            clients = len(images)
+            return self.tf_client.tornado_images(images, model_name, model_version,
+                timeout=timeout, max_clients=clients)
+
+        predicted = ioloop.IOLoop.current().run_sync(post_many)
+
+        for (a, b, c, d), pred in zip(coords, predicted):
+            if tf_results is None:
+                tf_results = np.zeros(list(img.shape)[:-1] + [pred.shape[-1]])
+                self.logger.debug('initialized output tensor of shape %s', tf_results.shape)
+
+            if pred.ndim >= 4:
+                tf_results[:, a:b, c:d, :] = pred[:, win_x:-win_x, win_y:-win_y, :]
+            else:
+                tf_results[a:b, c:d, :] = pred[win_x:-win_x, win_y:-win_y, :]
+
+        return tf_results
 
     def process_image(self, filename, storage_url, model_name, model_version, cuts=0, field=61):
         """POSTs image data to tf-serving then saves the result
@@ -129,61 +241,20 @@ class PredictionConsumer(Consumer):
             storage_url: URL of file in cloud storage bucket
             model_name: name of model in tf-serving
             model_version: integer version number of model in tf-serving
+            cuts: if > 1, slices large images and predicts on each slice
+            field: receptive field of model
         # Returns:
             output_url: URL of results zip file
         """
-        # Bucket keys don't need to start with "/"
+        # Bucket keys shouldn't start with "/"
         if filename.startswith('/'):
             filename = filename[1:]
 
-        downloaded_filepath = self.storage.download(filename, storage_url)
-        self.logger.debug('Loading the image into numpy array')
-        if os.path.splitext(downloaded_filepath)[-1].lower() in {'.tif', '.tiff'}:
-            img = np.float32(tiff.TiffFile(downloaded_filepath).asarray())
-            # check for channel axis
-            if img.ndim == 2:
-                img = np.expand_dims(img, axis=-1)
-        else:
-            img = img_to_array(Image.open(downloaded_filepath))
-        self.logger.debug('Loaded image into numpy array with '
-                          'shape %s', img.shape)
-        cuts = int(cuts)
-        if cuts > 1:
-            crop_x = img.shape[img.ndim - 3] // cuts
-            crop_y = img.shape[img.ndim - 2] // cuts
-            win_x, win_y = (field - 1) // 2, (field - 1) // 2
+        local_fname = self.storage.download(filename, storage_url)
+        img = self.get_image(local_fname)
 
-            tf_results = None
-            pad_width = []
-            for i in range(len(img.shape)):
-                if i == img.ndim - 3:
-                    pad_width.append((win_x, win_x))
-                elif i == img.ndim - 2:
-                    pad_width.append((win_y, win_y))
-                else:
-                    pad_width.append((0, 0))
-
-            padded_img = np.pad(img, pad_width, mode='reflect')
-
-            for i in range(cuts):
-                for j in range(cuts):
-                    a, b = i * crop_x, (i + 1) * crop_x
-                    c, d = j * crop_y, (j + 1) * crop_y
-
-                    if img.ndim >= 4:
-                        data = padded_img[:, a:b + 2 * win_x, c:d + 2 * win_y, :]
-                    else:
-                        data = padded_img[a:b + 2 * win_x, c:d + 2 * win_y, :]
-
-                    predicted = self.tf_client.post_image(data, model_name, model_version)
-                    if tf_results is None:
-                        tf_results = np.zeros(list(img.shape)[:-1] + [predicted.shape[-1]])
-                        self.logger.debug('initialized output tensor of shape %s', tf_results.shape)
-
-                    if predicted.ndim >= 4:
-                        tf_results[:, a:b, c:d, :] = predicted[:, win_x:-win_x, win_y:-win_y, :]
-                    else:
-                        tf_results[a:b, c:d, :] = predicted[win_x:-win_x, win_y:-win_y, :]
+        if int(cuts) > 1:
+            tf_results = self.process_big_image(cuts, img, field, model_name, model_version)
         else:
             # Get tf-serving predictions of image
             tf_results = self.tf_client.post_image(img, model_name, model_version)
@@ -193,6 +264,68 @@ class PredictionConsumer(Consumer):
 
         # Save each prediction image as zip file
         zip_file = self.save_zip_file(out_paths)
+
+        # Upload the zip file to cloud storage bucket
+        output_url = self.storage.upload(zip_file)
+        self.logger.debug('Saved output to: "%s"', output_url)
+
+        return output_url
+
+    def iter_image_files_from_archive(self, zip_path, destination):
+        archive = zipfile.ZipFile(zip_path, 'r')
+        for info in archive.infolist():
+            try:
+                extracted = archive.extract(info, path=destination)
+                if os.path.isfile(extracted):
+                    yield extracted
+            except:
+                self.logger.warning('Could not extract %s', info.filename)
+
+    def process_zip(self, filename, storage_url, model_name, model_version, cuts=0, field=61):
+        """Process each image inside a zip archive and save/upload resulting
+        zip archive with mirrored folder structure.
+        # Arguments:
+            filename: path to cloud destination of image file
+            storage_url: URL of file in cloud storage bucket
+            model_name: name of model in tf-serving
+            model_version: integer version number of model in tf-serving
+            cuts: if > 1, slices large images and predicts on each slice
+            field: receptive field of model
+        # Returns:
+            output_url: URL of results zip file
+        """
+        # Bucket keys shouldn't start with "/"
+        if filename.startswith('/'):
+            filename = filename[1:]
+
+        local_fname = self.storage.download(filename, storage_url)
+        if not zipfile.is_zipfile(local_fname):
+            self.logger.error('Invalid zip file: %s', local_fname)
+            raise ValueError('{} is not a zipfile'.format(local_fname))
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            image_files = [f for f in self.iter_image_files_from_archive(local_fname, tempdir)]
+            images = (self.get_image(f) for f in image_files)
+
+            def post_many():
+                timeout = 300 * len(image_files)
+                clients = len(image_files)
+                return self.tf_client.tornado_images(images, model_name, model_version,
+                    timeout=timeout, max_clients=clients)
+
+            tf_results = ioloop.IOLoop.current().run_sync(post_many)
+
+            all_output = []
+            # Save each tf-serving prediction channel as image file
+            for results, imfile in zip(tf_results, image_files):
+                subdir = os.path.dirname(imfile.replace(tempdir, ''))
+                name = os.path.splitext(os.path.basename(imfile))[0]
+
+                _out_paths = self.save_tf_serving_results(results, name=name, subdir=subdir)
+                all_output.extend(_out_paths)
+
+        # Save each prediction image as zip file
+        zip_file = self.save_zip_file(all_output)
 
         # Upload the zip file to cloud storage bucket
         output_url = self.storage.upload(zip_file)
@@ -211,18 +344,31 @@ class PredictionConsumer(Consumer):
             self.logger.debug('processing image: %s', redis_hash)
 
             try:
-                new_image_path = self.process_image(
-                    hash_values.get('file_name'),
-                    hash_values.get('url'),
-                    hash_values.get('model_name'),
-                    hash_values.get('model_version'),
-                    hash_values.get('cuts'))
+                start = timeit.default_timer()
+                fname = hash_values.get('file_name')
+                if os.path.splitext(fname)[-1].lower() == '.zip':
+                    new_image_path = self.process_zip(
+                        fname,
+                        hash_values.get('url'),
+                        hash_values.get('model_name'),
+                        hash_values.get('model_version'),
+                        hash_values.get('cuts'))
+                else:
+                    new_image_path = self.process_image(
+                        fname,
+                        hash_values.get('url'),
+                        hash_values.get('model_name'),
+                        hash_values.get('model_version'),
+                        hash_values.get('cuts'))
+
+                self.logger.debug('Processed key %s in %s s',
+                    redis_hash, timeit.default_timer() - start)
 
             except Exception as err:
                 new_image_path = 'failed'
                 self.logger.error('Failed to process redis key %s. Error: %s',
                     redis_hash, err)
-            
+
             # Update redis with the results
             self.redis.hmset(redis_hash, {
                 'output_url': new_image_path,
