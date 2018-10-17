@@ -81,8 +81,8 @@ class TensorFlowServingClient(object):
         httpclient.AsyncHTTPClient.configure(None,
             max_body_size=1073741824,  # 1GB
             max_clients=max_clients)
+
         http_client = httpclient.AsyncHTTPClient()
-        # http_client.set_max_buffer_size(1073741824)  # 1GB
         api_url = self.get_url(model_name, model_version)
 
         json_payload = ({ 'instances': [{ 'image': i.tolist() }] } for i in images)
@@ -113,7 +113,7 @@ class TensorFlowServingClient(object):
                 self.logger.error('Error: %s: %s', err, err.response.body)
                 raise err
 
-        # Using gen.multi - causes unpredictable 429 errors
+        # # Using gen.multi - causes unpredictable 429 errors
         # requests = (http_client.fetch(api_url, **kw) for kw in iter_kwargs(payloads))
         # responses = await multi([r for r in requests])
         # texts = (escape.native_str(r.body) for r in responses)
