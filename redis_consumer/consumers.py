@@ -273,11 +273,13 @@ class PredictionConsumer(Consumer):
 
     def iter_image_files_from_archive(self, zip_path, destination):
         archive = zipfile.ZipFile(zip_path, 'r')
+        is_valid = lambda x: os.path.splitext(x)[1] and '__MACOSX' not in x
         for info in archive.infolist():
             try:
                 extracted = archive.extract(info, path=destination)
                 if os.path.isfile(extracted):
-                    yield extracted
+                    if is_valid(extracted):
+                        yield extracted
             except:
                 self.logger.warning('Could not extract %s', info.filename)
 
