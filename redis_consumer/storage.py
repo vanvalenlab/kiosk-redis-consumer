@@ -59,10 +59,10 @@ class Storage(object):
             os.makedirs(dest)
         return os.path.join(self.download_dir, no_upload_dir)
 
-    def download(self, filename, url):
+    def download(self, filename):
         raise NotImplementedError
 
-    def upload(self, file_path):
+    def upload(self, filepath):
         raise NotImplementedError
 
 
@@ -91,10 +91,10 @@ class GoogleStorage(Storage):
                 filepath, err))
             raise err
 
-    def download(self, filename, url):
+    def download(self, filename):
         """Download a  file from the cloud storage bucket"""
         dest = self.get_download_path(filename)
-        self.logger.debug('Downloading %s to %s.', url, dest)
+        self.logger.debug('Downloading %s to %s.', filename, dest)
         try:
             blob = self._client.get_bucket(self.bucket).blob(filename)
             with open(dest, 'wb') as new_file:
@@ -103,7 +103,7 @@ class GoogleStorage(Storage):
             return dest
         except Exception as err:
             self.logger.error('Error while downloading image {}: {}'.format(
-                url, err))
+                filename, err))
             raise err
 
 
@@ -132,15 +132,19 @@ class S3Storage(Storage):
                 filepath, err))
             raise err
     
-    def download(self, filename, url):
+    def download(self, filename):
         """Download a  file from the cloud storage bucket"""
+        # Bucket keys shouldn't start with "/"
+        if filename.startswith('/'):
+            filename = filename[1:]
+
         dest = self.get_download_path(filename)
-        self.logger.debug('Downloading %s to %s.', url, dest)
+        self.logger.debug('Downloading %s to %s.', filename, dest)
         try:
             self._client.download_file(self.bucket, filename, dest)
             self.logger.debug('Downloaded %s', dest)
             return dest
         except Exception as err:
             self.logger.error('Error while downloading image {}: {}'.format(
-                url, err))
+                filename, err))
             raise err

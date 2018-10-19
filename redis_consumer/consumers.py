@@ -67,6 +67,12 @@ class Consumer(object):
             if self.redis.type(key) == 'hash':
                 yield key
 
+    def is_zip_file(self, filename):
+        """Returns boolean if cloud file is a zip file
+        If using on local file, use ZipFile.is_zipfile instead
+        """
+        return os.path.splitext(filename)[-1].lower() == '.zip'
+
     def get_image(self, filepath):
         """Open image file as numpy array
         # Arguments:
@@ -113,8 +119,33 @@ class Consumer(object):
             self.logger.error('Failed to write zipfile: %s', err)
             raise err
 
-    def consume(self):
+    def iter_image_files_from_archive(self, zip_path, destination):
+        archive = zipfile.ZipFile(zip_path, 'r')
+        is_valid = lambda x: os.path.splitext(x)[1] and '__MACOSX' not in x
+        for info in archive.infolist():
+            try:
+                extracted = archive.extract(info, path=destination)
+                if os.path.isfile(extracted):
+                    if is_valid(extracted):
+                        yield extracted
+            except:
+                self.logger.warning('Could not extract %s', info.filename)
+
+    def _consume(self):
         raise NotImplementedError
+
+    def consume(self, interval):
+        if not str(interval).isdigit():
+            raise ValueError('Expected `interval` to be a number. '
+                             'Got {}'.format(type(interval)))
+
+        while True:
+            try:
+                self._consume()
+            except Exception as err:
+                self.logger.error(err)
+
+            sleep(interval)
 
 
 class PredictionConsumer(Consumer):
@@ -233,12 +264,11 @@ class PredictionConsumer(Consumer):
 
         return tf_results
 
-    def process_image(self, filename, storage_url, model_name, model_version, cuts=0, field=61):
+    def process_image(self, filename, model_name, model_version, cuts=0, field=61):
         """POSTs image data to tf-serving then saves the result
         as a zip and uploads into the cloud bucket.
         # Arguments:
             filename: path to cloud destination of image file
-            storage_url: URL of file in cloud storage bucket
             model_name: name of model in tf-serving
             model_version: integer version number of model in tf-serving
             cuts: if > 1, slices large images and predicts on each slice
@@ -246,11 +276,7 @@ class PredictionConsumer(Consumer):
         # Returns:
             output_url: URL of results zip file
         """
-        # Bucket keys shouldn't start with "/"
-        if filename.startswith('/'):
-            filename = filename[1:]
-
-        local_fname = self.storage.download(filename, storage_url)
+        local_fname = self.storage.download(filename)
         img = self.get_image(local_fname)
 
         if int(cuts) > 1:
@@ -271,24 +297,11 @@ class PredictionConsumer(Consumer):
 
         return output_url
 
-    def iter_image_files_from_archive(self, zip_path, destination):
-        archive = zipfile.ZipFile(zip_path, 'r')
-        is_valid = lambda x: os.path.splitext(x)[1] and '__MACOSX' not in x
-        for info in archive.infolist():
-            try:
-                extracted = archive.extract(info, path=destination)
-                if os.path.isfile(extracted):
-                    if is_valid(extracted):
-                        yield extracted
-            except:
-                self.logger.warning('Could not extract %s', info.filename)
-
-    def process_zip(self, filename, storage_url, model_name, model_version, cuts=0, field=61):
+    def process_zip(self, filename, model_name, model_version, cuts=0, field=61):
         """Process each image inside a zip archive and save/upload resulting
         zip archive with mirrored folder structure.
         # Arguments:
             filename: path to cloud destination of image file
-            storage_url: URL of file in cloud storage bucket
             model_name: name of model in tf-serving
             model_version: integer version number of model in tf-serving
             cuts: if > 1, slices large images and predicts on each slice
@@ -296,11 +309,7 @@ class PredictionConsumer(Consumer):
         # Returns:
             output_url: URL of results zip file
         """
-        # Bucket keys shouldn't start with "/"
-        if filename.startswith('/'):
-            filename = filename[1:]
-
-        local_fname = self.storage.download(filename, storage_url)
+        local_fname = self.storage.download(filename)
         if not zipfile.is_zipfile(local_fname):
             self.logger.error('Invalid zip file: %s', local_fname)
             raise ValueError('{} is not a zipfile'.format(local_fname))
@@ -348,17 +357,15 @@ class PredictionConsumer(Consumer):
             try:
                 start = timeit.default_timer()
                 fname = hash_values.get('file_name')
-                if os.path.splitext(fname)[-1].lower() == '.zip':
+                if self.is_zip_file(fname):
                     new_image_path = self.process_zip(
                         fname,
-                        hash_values.get('url'),
                         hash_values.get('model_name'),
                         hash_values.get('model_version'),
                         hash_values.get('cuts'))
                 else:
                     new_image_path = self.process_image(
                         fname,
-                        hash_values.get('url'),
                         hash_values.get('model_name'),
                         hash_values.get('model_version'),
                         hash_values.get('cuts'))
@@ -377,15 +384,3 @@ class PredictionConsumer(Consumer):
                 'processed': 'yes'
             })
 
-    def consume(self, interval):
-        if not str(interval).isdigit():
-            raise ValueError('Expected `interval` to be a number. '
-                             'Got {}'.format(type(interval)))
-
-        while True:
-            try:
-                self._consume()
-            except Exception as err:
-                self.logger.error(err)
-
-            sleep(interval)
