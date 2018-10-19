@@ -357,7 +357,7 @@ class PredictionConsumer(Consumer):
             self.logger.debug('Found hash to process "%s": %s',
                               redis_hash, json.dumps(hash_values, indent=4))
 
-            self.redis.hset(redis_hash, 'processed', 'processing')
+            self.redis.hset(redis_hash, 'status', 'processing')
             self.logger.debug('processing image: %s', redis_hash)
 
             try:
@@ -389,6 +389,15 @@ class PredictionConsumer(Consumer):
                 })
 
             except Exception as err:
+                # Update redis with failed status
+                self.redis.hmset(redis_hash, {
+                    'reason': err,
+                    'status': 'failed'
+                })
+                self.logger.error('Failed to process redis key %s. Error: %s',
+                                  redis_hash, err)
+
+            except Exception as err:
                 new_image_path = 'failed'
                 self.logger.error('Failed to process redis key %s. Error: %s',
                                   redis_hash, err)
@@ -404,8 +413,6 @@ class PredictionConsumer(Consumer):
                                   redis_hash, timeit.default_timer() - start)
 
             except Exception as err:
-                new_image_path = 'failed'
                 self.logger.error('Failed to process redis key %s. Error: %s',
                                   redis_hash, err)
-
 
