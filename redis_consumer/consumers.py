@@ -315,12 +315,12 @@ class PredictionConsumer(Consumer):
         # Returns:
             output_url: URL of results zip file
         """
-        local_fname = self.storage.download(filename)
-        if not zipfile.is_zipfile(local_fname):
-            self.logger.error('Invalid zip file: %s', local_fname)
-            raise ValueError('{} is not a zipfile'.format(local_fname))
-
         with tempfile.TemporaryDirectory() as tempdir:
+            local_fname = self.storage.download(filename, tempdir)
+            if not zipfile.is_zipfile(local_fname):
+                self.logger.error('Invalid zip file: %s', local_fname)
+                raise ValueError('{} is not a zipfile'.format(local_fname))
+
             image_files = [f for f in self.iter_image_files_from_archive(local_fname, tempdir)]
             images = (self.get_image(f) for f in image_files)
 

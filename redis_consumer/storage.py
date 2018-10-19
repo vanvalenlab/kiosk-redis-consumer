@@ -52,12 +52,14 @@ class Storage(object):
     def _get_public_url(self, filepath):
         return 'https://{url}/{obj}'.format(url=self.bucket_url, obj=filepath)
 
-    def get_download_path(self, filename):
+    def get_download_path(self, filename, download_dir=None):
+        if download_dir is None:
+            download_dir = self.download_dir
         no_upload_dir = os.path.join(*(filename.split(os.path.sep)[1:]))
-        dest = os.path.join(self.download_dir, no_upload_dir)
+        dest = os.path.join(download_dir, no_upload_dir)
         if not os.path.isdir(os.path.dirname(dest)):
             os.makedirs(dest)
-        return os.path.join(self.download_dir, no_upload_dir)
+        return dest
 
     def download(self, filename):
         raise NotImplementedError
@@ -91,9 +93,9 @@ class GoogleStorage(Storage):
                 filepath, err))
             raise err
 
-    def download(self, filename):
+    def download(self, filename, download_dir=None):
         """Download a  file from the cloud storage bucket"""
-        dest = self.get_download_path(filename)
+        dest = self.get_download_path(filename, download_dir)
         self.logger.debug('Downloading %s to %s.', filename, dest)
         try:
             blob = self._client.get_bucket(self.bucket).blob(filename)
@@ -132,13 +134,13 @@ class S3Storage(Storage):
                 filepath, err))
             raise err
     
-    def download(self, filename):
+    def download(self, filename, download_dir=None):
         """Download a  file from the cloud storage bucket"""
         # Bucket keys shouldn't start with "/"
         if filename.startswith('/'):
             filename = filename[1:]
 
-        dest = self.get_download_path(filename)
+        dest = self.get_download_path(filename, download_dir)
         self.logger.debug('Downloading %s to %s.', filename, dest)
         try:
             self._client.download_file(self.bucket, filename, dest)
