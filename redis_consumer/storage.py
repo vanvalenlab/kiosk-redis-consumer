@@ -49,7 +49,7 @@ class Storage(object):
         self.download_dir = settings.DOWNLOAD_DIR
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
-    def _get_public_url(self, filepath):
+    def get_public_url(self, filepath):
         return 'https://{url}/{obj}'.format(url=self.bucket_url, obj=filepath)
 
     def get_download_path(self, filename, download_dir=None):
@@ -74,6 +74,12 @@ class GoogleStorage(Storage):
         super(GoogleStorage, self).__init__(bucket)
         self._client = google_storage.Client()
         self.bucket_url = 'www.googleapis.com/storage/v1/b/{}/o'.format(bucket)
+    
+    def get_public_url(self, filepath):
+        bucket = self._client.get_bucket(self.bucket)
+        blob = bucket.blob(filepath)
+        blob.make_public()
+        return blob.public_url
 
     def upload(self, filepath):
         """Upload a file to the cloud storage bucket"""
@@ -84,10 +90,9 @@ class GoogleStorage(Storage):
             bucket = self._client.get_bucket(self.bucket)
             blob = bucket.blob(dest)
             blob.upload_from_filename(filepath)
-            blob.make_public()
             self.logger.debug('Successfully uploaded {} to bucket {}'.format(
                 filepath, self.bucket))
-            return blob.public_url
+            return dest
         except Exception as err:
             self.logger.error('Error while uploading image {}: {}'.format(
                 filepath, err))
@@ -128,7 +133,7 @@ class S3Storage(Storage):
             self._client.upload_file(filepath, self.bucket, dest)
             self.logger.debug('Successfully uploaded {} to bucket {}'.format(
                 filepath, self.bucket))
-            return self._get_public_url(dest)
+            return dest
         except Exception as err:
             self.logger.error('Error while uploading image {}: {}'.format(
                 filepath, err))

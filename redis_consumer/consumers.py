@@ -346,10 +346,9 @@ class PredictionConsumer(Consumer):
         zip_file = self.save_zip_file(all_output)
 
         # Upload the zip file to cloud storage bucket
-        output_url = self.storage.upload(zip_file)
+        upload_dest = self.storage.upload(zip_file)
 
-        self.logger.debug('Saved output to: "%s"', output_url)
-        return output_url
+        return upload_dest
 
     def _consume(self):
         # process each unprocessed hash
@@ -364,18 +363,42 @@ class PredictionConsumer(Consumer):
             try:
                 start = timeit.default_timer()
                 fname = hash_values.get('file_name')
+
                 if self.is_zip_file(fname):
-                    new_image_path = self.process_zip(
-                        fname,
-                        hash_values.get('model_name'),
-                        hash_values.get('model_version'),
-                        hash_values.get('cuts'))
+                    _func = self.process_zip
                 else:
-                    new_image_path = self.process_image(
-                        fname,
-                        hash_values.get('model_name'),
-                        hash_values.get('model_version'),
-                        hash_values.get('cuts'))
+                    _func = self.process_image
+
+                uploaded_file_path = _func(
+                    fname,
+                    hash_values.get('model_name'),
+                    hash_values.get('model_version'),
+                    hash_values.get('cuts'))
+
+                output_url = self.storage.get_public_url(uploaded_file_path)
+                self.logger.debug('Saved output to: "%s"', output_url)
+
+                self.logger.debug('Processed key %s in %s s',
+                                  redis_hash, timeit.default_timer() - start)
+
+                # Update redis with the results
+                self.redis.hmset(redis_hash, {
+                    'file_path': uploaded_file_path,
+                    'output_url': output_url,
+                    'status': 'processed'
+                })
+
+            except Exception as err:
+                new_image_path = 'failed'
+                self.logger.error('Failed to process redis key %s. Error: %s',
+                                  redis_hash, err)
+
+                # Update redis with failed status
+                self.redis.hmset(redis_hash, {
+                    'reason': err,
+                    'status': 'failed'
+                })
+                else:
 
                 self.logger.debug('Processed key %s in %s s',
                                   redis_hash, timeit.default_timer() - start)
@@ -385,9 +408,4 @@ class PredictionConsumer(Consumer):
                 self.logger.error('Failed to process redis key %s. Error: %s',
                                   redis_hash, err)
 
-            # Update redis with the results
-            self.redis.hmset(redis_hash, {
-                'output_url': new_image_path,
-                'processed': 'yes'
-            })
 
