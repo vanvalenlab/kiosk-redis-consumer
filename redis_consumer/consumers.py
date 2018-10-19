@@ -197,7 +197,7 @@ class PredictionConsumer(Consumer):
             except Exception as err:
                 out_paths = []
                 self.logger.error('Could not save channel %s as image: %s',
-                    channel, err)
+                                  channel, err)
         return out_paths
 
     def pad_image(self, image, field):
@@ -251,7 +251,8 @@ class PredictionConsumer(Consumer):
         def post_many():
             timeout = 300 * len(images)
             clients = len(images)
-            return self.tf_client.tornado_images(images, model_name, model_version,
+            return self.tf_client.tornado_images(
+                images, model_name, model_version,
                 timeout=timeout, max_clients=clients)
 
         predicted = ioloop.IOLoop.current().run_sync(post_many)
@@ -259,7 +260,8 @@ class PredictionConsumer(Consumer):
         for (a, b, c, d), pred in zip(coords, predicted):
             if tf_results is None:
                 tf_results = np.zeros(list(img.shape)[:-1] + [pred.shape[-1]])
-                self.logger.debug('initialized output tensor of shape %s', tf_results.shape)
+                self.logger.debug('initialized output tensor of shape %s',
+                                  tf_results.shape)
 
             if pred.ndim >= 4:
                 tf_results[:, a:b, c:d, :] = pred[:, win_x:-win_x, win_y:-win_y, :]
@@ -325,7 +327,8 @@ class PredictionConsumer(Consumer):
             def post_many():
                 timeout = 300 * len(image_files)
                 clients = len(image_files)
-                return self.tf_client.tornado_images(images, model_name, model_version,
+                return self.tf_client.tornado_images(
+                    images, model_name, model_version,
                     timeout=timeout, max_clients=clients)
 
             tf_results = ioloop.IOLoop.current().run_sync(post_many)
@@ -353,7 +356,7 @@ class PredictionConsumer(Consumer):
         for redis_hash in self.iter_redis_hashes():
             hash_values = self.redis.hgetall(redis_hash)
             self.logger.debug('Found hash to process "%s": %s',
-                redis_hash, json.dumps(hash_values, indent=4))
+                              redis_hash, json.dumps(hash_values, indent=4))
 
             self.redis.hset(redis_hash, 'processed', 'processing')
             self.logger.debug('processing image: %s', redis_hash)
@@ -375,12 +378,12 @@ class PredictionConsumer(Consumer):
                         hash_values.get('cuts'))
 
                 self.logger.debug('Processed key %s in %s s',
-                    redis_hash, timeit.default_timer() - start)
+                                  redis_hash, timeit.default_timer() - start)
 
             except Exception as err:
                 new_image_path = 'failed'
                 self.logger.error('Failed to process redis key %s. Error: %s',
-                    redis_hash, err)
+                                  redis_hash, err)
 
             # Update redis with the results
             self.redis.hmset(redis_hash, {
