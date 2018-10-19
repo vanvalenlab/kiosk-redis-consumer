@@ -35,24 +35,29 @@ import logging
 
 import boto3
 from google.cloud import storage as google_storage
-from PIL import Image
 
 from redis_consumer import settings
 
 
 class Storage(object):
+    """General class to interact with cloud storage buckets.
+    Supported cloud stroage provider will have child class implementations.
+    """
 
     def __init__(self, bucket):
         self._client = None
-        self.bucket_url = None
         self.bucket = bucket
         self.download_dir = settings.DOWNLOAD_DIR
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
-    def get_public_url(self, filepath):
-        return 'https://{url}/{obj}'.format(url=self.bucket_url, obj=filepath)
-
     def get_download_path(self, filename, download_dir=None):
+        """Get local filepath for soon-to-be downloaded file
+        # Arguments:
+            filename: key of file in cloud storage to download
+            download_dir: path to directory to save file
+        # Returns:
+            dest: local path to downloaded file
+        """
         if download_dir is None:
             download_dir = self.download_dir
         no_upload_dir = os.path.join(*(filename.split(os.path.sep)[1:]))
@@ -61,45 +66,75 @@ class Storage(object):
             os.makedirs(dest)
         return dest
 
-    def download(self, filename):
+    def download(self, filename, download_dir):
+        """Download a  file from the cloud storage bucket
+        # Arguments:
+            filename: key of file in cloud storage to download
+            download_dir: path to directory to save file
+        # Returns:
+            dest: local path to downloaded file
+        """
         raise NotImplementedError
 
     def upload(self, filepath):
+        """Upload a file to the cloud storage bucket
+        # Arguments:
+            filepath: local path to file to upload
+        # Returns:
+            dest: key of uploaded file in cloud storage
+        """
         raise NotImplementedError
 
 
 class GoogleStorage(Storage):
+    """Interact with Google Cloud Storage buckets"""
 
     def __init__(self, bucket):
         super(GoogleStorage, self).__init__(bucket)
         self._client = google_storage.Client()
         self.bucket_url = 'www.googleapis.com/storage/v1/b/{}/o'.format(bucket)
-    
+
     def get_public_url(self, filepath):
+        """Get the public URL to download the file
+        # Arguments:
+            filepath: key to file in cloud storage
+        # Returns:
+            url: Public URL to download the file
+        """
         bucket = self._client.get_bucket(self.bucket)
         blob = bucket.blob(filepath)
         blob.make_public()
         return blob.public_url
 
     def upload(self, filepath):
-        """Upload a file to the cloud storage bucket"""
+        """Upload a file to the cloud storage bucket
+        # Arguments:
+            filepath: local path to file to upload
+        # Returns:
+            dest: key of uploaded file in cloud storage
+        """
+        self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         try:
-            self.logger.debug('Uploading %s to bucket %s.',
-                filepath, self.bucket)
             dest = os.path.join('output', os.path.basename(filepath))
             bucket = self._client.get_bucket(self.bucket)
             blob = bucket.blob(dest)
             blob.upload_from_filename(filepath)
-            self.logger.debug('Successfully uploaded {} to bucket {}'.format(
-                filepath, self.bucket))
+            self.logger.debug('Successfully uploaded %s to bucket %s',
+                              filepath, self.bucket)
             return dest
         except Exception as err:
-            self.logger.error('Error while uploading image {}: {}'.format(
-                filepath, err))
+            self.logger.error('Error while uploading image %s: %s',
+                              filepath, err)
             raise err
 
     def download(self, filename, download_dir=None):
-        """Download a  file from the cloud storage bucket"""
+        """Download a  file from the cloud storage bucket
+        # Arguments:
+            filename: key of file in cloud storage to download
+            download_dir: path to directory to save file
+        # Returns:
+            dest: local path to downloaded file
+        """
         dest = self.get_download_path(filename, download_dir)
         self.logger.debug('Downloading %s to %s.', filename, dest)
         try:
@@ -109,12 +144,13 @@ class GoogleStorage(Storage):
             self.logger.debug('Downloaded %s', dest)
             return dest
         except Exception as err:
-            self.logger.error('Error while downloading image {}: {}'.format(
-                filename, err))
+            self.logger.error('Error while downloading image %s: %s',
+                              filename, err)
             raise err
 
 
 class S3Storage(Storage):
+    """Interact with Amazon S3 buckets"""
 
     def __init__(self, bucket):
         super(S3Storage, self).__init__(bucket)
@@ -125,22 +161,42 @@ class S3Storage(Storage):
             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY)
         self.bucket_url = 's3.amazonaws.com/{}'.format(bucket)
 
+    def get_public_url(self, filepath):
+        """Get the public URL to download the file
+        # Arguments:
+            filepath: key to file in cloud storage
+        # Returns:
+            url: Public URL to download the file
+        """
+        return 'https://{url}/{obj}'.format(url=self.bucket_url, obj=filepath)
+
     def upload(self, filepath):
-        """Upload a file to the cloud storage bucket"""
+        """Upload a file to the cloud storage bucket
+        # Arguments:
+            filepath: local path to file to upload
+        # Returns:
+            dest: key of uploaded file in cloud storage
+        """
         dest = os.path.join('output', os.path.basename(filepath))
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         try:
             self._client.upload_file(filepath, self.bucket, dest)
-            self.logger.debug('Successfully uploaded {} to bucket {}'.format(
-                filepath, self.bucket))
+            self.logger.debug('Successfully uploaded %s to bucket %s',
+                              filepath, self.bucket)
             return dest
         except Exception as err:
-            self.logger.error('Error while uploading image {}: {}'.format(
-                filepath, err))
+            self.logger.error('Error while uploading image %s: %s',
+                              filepath, err)
             raise err
-    
+
     def download(self, filename, download_dir=None):
-        """Download a  file from the cloud storage bucket"""
+        """Download a  file from the cloud storage bucket
+        # Arguments:
+            filename: key of file in cloud storage to download
+            download_dir: path to directory to save file
+        # Returns:
+            dest: local path to downloaded file
+        """
         # Bucket keys shouldn't start with "/"
         if filename.startswith('/'):
             filename = filename[1:]
@@ -152,6 +208,6 @@ class S3Storage(Storage):
             self.logger.debug('Downloaded %s', dest)
             return dest
         except Exception as err:
-            self.logger.error('Error while downloading image {}: {}'.format(
-                filename, err))
+            self.logger.error('Error while downloading image %s: %s',
+                              filename, err)
             raise err

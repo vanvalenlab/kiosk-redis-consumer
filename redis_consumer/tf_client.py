@@ -32,7 +32,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import json
 import logging
 
@@ -40,11 +39,12 @@ import numpy as np
 import requests
 
 from tornado import httpclient
-from tornado.gen import multi
 from tornado import escape
+from tornado.gen import multi
 
 
 class TensorFlowServingError(Exception):
+    """Custom error for TensorFlowServing"""
     pass
 
 
@@ -58,6 +58,11 @@ class TensorFlowServingClient(object):
 
     def get_url(self, model_name, version):
         """Get API URL for TensorFlow Serving, based on model name and version
+        # Arguments:
+            model_name: hosted model to send image data
+            version: model version to query
+        # Returns:
+            formatted URL for HTTP request
         """
         return 'http://{}:{}/v1/models/{}/versions/{}:predict'.format(
             self.host, self.port, model_name, version)
@@ -65,6 +70,10 @@ class TensorFlowServingClient(object):
     def fix_json(self, response_text):
         """Sometimes TF Serving has strange scientific notation e.g. '1e5.0,'
         so convert the float-exponent to an integer for JSON parsing.
+        # Arguments:
+            response_text: HTTP response as string
+        # Returns:
+            fixed_json: HTTP response as JSON object
         """
         self.logger.debug('tf-serving response is not well-formed JSON. '
                           'Attempting to fix the response.')
@@ -77,30 +86,46 @@ class TensorFlowServingClient(object):
             self.logger.error('Cannot fix tf-serving response JSON: %s', err)
             raise err
 
-    async def tornado_images(self, images, model_name, model_version, timeout=300, max_clients=10):
-        httpclient.AsyncHTTPClient.configure(None,
+    async def tornado_images(self,
+                             images,
+                             model_name,
+                             model_version,
+                             timeout=300,
+                             max_clients=10):
+        """Use tornado to send ansynchronous requests for every image in images
+        # Arguments:
+            images: array of images to pass to model
+            model_name: hosted model to send image data
+            model_version: model version to query
+            timeout: total timeout for all requests
+            max_clients: number of requests to send at once
+        # Returns:
+            all_tf_results: array of predictions for every image in images
+        """
+        httpclient.AsyncHTTPClient.configure(
+            None,
             max_body_size=1073741824,  # 1GB
             max_clients=max_clients)
 
         http_client = httpclient.AsyncHTTPClient()
         api_url = self.get_url(model_name, model_version)
 
-        json_payload = ({ 'instances': [{ 'image': i.tolist() }] } for i in images)
+        json_payload = ({'instances': [{'image': i.tolist()}]} for i in images)
         payloads = (escape.json_encode(jp) for jp in json_payload)
 
         def iter_kwargs(payload):
-            for p in payload:
+            for pyld in payload:
                 yield {
-                    'body': p,
+                    'body': pyld,
                     'method': 'POST',
                     'request_timeout': timeout,
                     'connect_timeout': timeout
                 }
 
         all_tf_results = []
-        for kw in iter_kwargs(payloads):
+        for kwargs in iter_kwargs(payloads):
             try:
-                response = await http_client.fetch(api_url, **kw)
+                response = await http_client.fetch(api_url, **kwargs)
                 text = response.body
                 try:
                     prediction_json = json.loads(text)
@@ -136,10 +161,11 @@ class TensorFlowServingClient(object):
             image: numpy array of image data passed to model
             model_name: hosted model to send image data
             version: model version to query
-        # Returns: tf-serving results as numpy array
+        # Returns:
+            tf-serving results as numpy array
         """
         # Define payload to send to API URL
-        payload = { 'instances': [{ 'image': image.tolist() }] }
+        payload = {'instances': [{'image': image.tolist()}]}
 
         # Post to API URL
         prediction = requests.post(
@@ -162,6 +188,6 @@ class TensorFlowServingClient(object):
         # Convert prediction to numpy array
         final_prediction = np.array(list(prediction_json['predictions'][0]))
         self.logger.debug('Got tf-serving results of shape: %s',
-            final_prediction.shape)
+                          final_prediction.shape)
 
         return final_prediction
