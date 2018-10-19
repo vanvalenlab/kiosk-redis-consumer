@@ -48,10 +48,11 @@ from .settings import DOWNLOAD_DIR, OUTPUT_DIR
 
 class Consumer(object):
 
-    def __init__(self, redis_client, storage_client):
+    def __init__(self, redis_client, storage_client, watch_status=None):
         self.output_dir = OUTPUT_DIR
         self.redis = redis_client
         self.storage = storage_client
+        self.watch_status = watch_status
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
     def iter_redis_hashes(self):
@@ -65,7 +66,12 @@ class Consumer(object):
         for key in keys:
             # Check if the key is a hash
             if self.redis.type(key) == 'hash':
-                yield key
+                # if watch_status is given, only yield hashes with that status
+                if self.watch_status is not None:
+                    if self.redis.hget(h, 'status') == self.watch_status:
+                        yield key
+                else:
+                    yield key
 
     def is_zip_file(self, filename):
         """Returns boolean if cloud file is a zip file
@@ -150,16 +156,14 @@ class Consumer(object):
 
 class PredictionConsumer(Consumer):
 
-    def __init__(self, redis_client, storage_client, tf_client):
+    def __init__(self,
+                 redis_client,
+                 storage_client,
+                 tf_client,
+                 watch_status='preprocessed'):
         self.tf_client = tf_client
-        super(PredictionConsumer, self).__init__(redis_client, storage_client)
-
-    def iter_redis_hashes(self):
-        """Iterate over all hashes, yield unprocessed tf-serving events"""
-        for h in super(PredictionConsumer, self).iter_redis_hashes():
-            # Check if the hash has been claimed by a tf-serving instance
-            if self.redis.hget(h, 'processed') == 'no':
-                yield h
+        super(PredictionConsumer, self).__init__(
+            redis_client, storage_client, watch_status=watch_status)
 
     def save_tf_serving_results(self, tf_results, name='', subdir=''):
         """Split complete prediction into components and save each as a tiff
