@@ -43,20 +43,29 @@ from skimage.external import tifffile as tiff
 from keras_preprocessing.image import img_to_array
 from tornado import ioloop
 
-from .settings import DOWNLOAD_DIR, OUTPUT_DIR
+from .settings import OUTPUT_DIR
 
 
 class Consumer(object):
+    """Base class for all redis event consumer classes"""
 
-    def __init__(self, redis_client, storage_client, watch_status=None):
+    def __init__(self,
+                 redis_client,
+                 storage_client,
+                 watch_status=None,
+                 final_status='done'):
         self.output_dir = OUTPUT_DIR
         self.redis = redis_client
         self.storage = storage_client
         self.watch_status = watch_status
+        self.final_status = final_status
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
     def iter_redis_hashes(self):
-        """Iterate over all unprocessed keys in redis"""
+        """Iterate over hash values in redis,
+        yielding each with a status equal to watch_status
+        # Returns: Iterator of all hashes with a valid status
+        """
         try:
             keys = self.redis.keys()
             self.logger.debug('Found %s redis keys', len(keys))
@@ -68,7 +77,7 @@ class Consumer(object):
             if self.redis.type(key) == 'hash':
                 # if watch_status is given, only yield hashes with that status
                 if self.watch_status is not None:
-                    if self.redis.hget(h, 'status') == self.watch_status:
+                    if self.redis.hget(key, 'status') == self.watch_status:
                         yield key
                 else:
                     yield key
@@ -76,6 +85,10 @@ class Consumer(object):
     def is_zip_file(self, filename):
         """Returns boolean if cloud file is a zip file
         If using on local file, use ZipFile.is_zipfile instead
+        # Arguments:
+            filename: key of file in cloud storage
+        # Returns:
+            True if file is a zip archive otherwise False
         """
         return os.path.splitext(filename)[-1].lower() == '.zip'
 
@@ -126,6 +139,13 @@ class Consumer(object):
             raise err
 
     def iter_image_files_from_archive(self, zip_path, destination):
+        """Extract all files in archie and yield the paths of all images
+        # Arguments:
+            zip_path: path to zip archive
+            destination: path to extract all images
+        # Returns:
+            Iterator of all image paths in extracted archive
+        """
         archive = zipfile.ZipFile(zip_path, 'r')
         is_valid = lambda x: os.path.splitext(x)[1] and '__MACOSX' not in x
         for info in archive.infolist():
@@ -141,6 +161,12 @@ class Consumer(object):
         raise NotImplementedError
 
     def consume(self, interval):
+        """Consume all redis events every `interval` seconds
+        # Arguments:
+            interval: waits this many seconds between consume calls
+        # Returns:
+            nothing: this is the consumer main process
+        """
         if not str(interval).isdigit():
             raise ValueError('Expected `interval` to be a number. '
                              'Got {}'.format(type(interval)))
@@ -155,18 +181,26 @@ class Consumer(object):
 
 
 class PredictionConsumer(Consumer):
+    """Consumer to send image data to tf-serving and upload the results"""
 
     def __init__(self,
                  redis_client,
                  storage_client,
                  tf_client,
-                 watch_status='preprocessed'):
+                 watch_status='preprocessed',
+                 final_status='processed'):
         self.tf_client = tf_client
         super(PredictionConsumer, self).__init__(
-            redis_client, storage_client, watch_status=watch_status)
+            redis_client, storage_client, watch_status, final_status)
 
     def save_tf_serving_results(self, tf_results, name='', subdir=''):
         """Split complete prediction into components and save each as a tiff
+        # Arguments:
+            tf_results: numpy array of results from tf-serving
+            name: name of original input image file
+            subdir: optional subdirectory to save the result.
+        # Returns:
+            out_paths: list of all saved image paths
         """
         if subdir.startswith(os.path.sep):
             subdir = subdir[1:]
@@ -231,6 +265,17 @@ class PredictionConsumer(Consumer):
                 yield a, b, c, d
 
     def process_big_image(self, cuts, img, field, model_name, model_version):
+        """Slice big image into smaller images for prediction,
+        then stitches all the smaller images back together
+        # Arguments:
+            cuts: number of cuts in x and y to slice smaller images
+            img: image data as numpy array
+            field: receptive field size of model, changes padding sizes
+            model_name: hosted model to send image data
+            model_version: model version to query
+        # Returns:
+            tf_results: single numpy array of predictions on big input image
+        """
         cuts = int(cuts)
         win_x, win_y = (field - 1) // 2, (field - 1) // 2
 
@@ -385,7 +430,7 @@ class PredictionConsumer(Consumer):
                 self.redis.hmset(redis_hash, {
                     'file_path': uploaded_file_path,
                     'output_url': output_url,
-                    'status': 'processed'
+                    'status': self.final_status
                 })
 
             except Exception as err:
@@ -398,7 +443,6 @@ class PredictionConsumer(Consumer):
                                   redis_hash, err)
 
             except Exception as err:
-                new_image_path = 'failed'
                 self.logger.error('Failed to process redis key %s. Error: %s',
                                   redis_hash, err)
 
