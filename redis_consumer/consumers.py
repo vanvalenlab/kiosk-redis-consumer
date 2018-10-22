@@ -428,8 +428,7 @@ class PredictionConsumer(Consumer):
 
                 # Update redis with the results
                 self.redis.hmset(redis_hash, {
-                    'file_path': uploaded_file_path,
-                    'output_url': output_url,
+                    'file_name': uploaded_file_path,
                     'status': self.final_status
                 })
 
