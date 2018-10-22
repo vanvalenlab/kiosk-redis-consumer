@@ -48,6 +48,9 @@ for d in (DOWNLOAD_DIR, OUTPUT_DIR, LOG_DIR):
 # Parse environment variables
 DEBUG = config('DEBUG', default=True, cast=bool)
 
+# type of consumer to deploy
+CONSUMER_TYPE = config('CONSUMER_TYPE', default='predict')
+
 # tensorflow-serving client connection
 TF_HOST = config('TF_HOST', default='tf-serving-service')
 TF_PORT = config('TF_PORT', default=1337, cast=int)

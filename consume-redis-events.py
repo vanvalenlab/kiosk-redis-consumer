@@ -42,13 +42,15 @@ from redis_consumer import storage
 from redis_consumer.tf_client import TensorFlowServingClient
 
 
-def consume_predictions():
+def consume_events(event_type):
     redis = StrictRedis(
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
         decode_responses=True,
         charset='utf-8')
-    
+
+    tf_client = TensorFlowServingClient(settings.TF_HOST, settings.TF_PORT)
+
     if settings.CLOUD_PROVIDER == 'aws':
         storage_client = storage.S3Storage(settings.AWS_S3_BUCKET)
     elif settings.CLOUD_PROVIDER == 'gke':
@@ -57,10 +59,30 @@ def consume_predictions():
         print('Bad value for CLOUD_PROVIDER:', settings.CLOUD_PROVIDER)
         storage_client = None
 
-    consumer = consumers.PredictionConsumer(
-        redis_client=redis,
-        storage_client=storage_client,
-        tf_client=TensorFlowServingClient(settings.TF_HOST, settings.TF_PORT))
+    if event_type == 'pre':
+        consumer = consumers.PreProcessingConsumer(
+            redis_client=redis,
+            storage_client=storage_client,
+            watch_status='new',
+            final_status='preprocessed')
+
+    elif event_type == 'predict':
+        consumer = consumers.PredictionConsumer(
+            redis_client=redis,
+            storage_client=storage_client,
+            tf_client=tf_client,
+            watch_status='preprocessed',
+            final_status='processed')
+
+    elif event_type == 'post':
+        consumer = consumers.PostProcessingConsumer(
+            redis_client=redis,
+            storage_client=storage_client,
+            watch_status='processed',
+            final_status='done')
+
+    else:
+        raise ValueError('Unexpected CONSUMER_TYPE: `{}`'.format(event_type))
 
     consumer.consume(interval=10)
 
@@ -85,7 +107,7 @@ if __name__ == '__main__':
     initialize_logger(settings.DEBUG)
 
     try:
-        consume_predictions()
+        consume_events(settings.CONSUMER_TYPE)
     except Exception as err:
         print(err)
         sys.exit(1)
