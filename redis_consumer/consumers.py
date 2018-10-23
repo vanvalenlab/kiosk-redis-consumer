@@ -39,11 +39,14 @@ from time import sleep, time
 
 import numpy as np
 from PIL import Image
+from scipy import ndimage
 from skimage.external import tifffile as tiff
+from skimage.feature import peak_local_max
+from skimage.morphology import watershed, opening, closing
 from keras_preprocessing.image import img_to_array
 from tornado import ioloop
 
-from .settings import OUTPUT_DIR
+from redis_consumer.settings import OUTPUT_DIR
 
 
 class Consumer(object):
@@ -99,7 +102,7 @@ class Consumer(object):
         # Returns:
             img: numpy array of image data
         """
-        self.logger.debug('Loading the image into numpy array')
+        self.logger.debug('Loading %s into numpy array', filepath)
         if os.path.splitext(filepath)[-1].lower() in {'.tif', '.tiff'}:
             img = np.float32(tiff.TiffFile(filepath).asarray())
             # check for channel axis
@@ -112,33 +115,35 @@ class Consumer(object):
                           'shape %s', img.shape)
         return img
 
-    def save_zip_file(self, files):
+    def save_zip_file(self, files, dest=None):
         """Save files in zip archive and return the path
         # Arguments:
             files: all filepaths that will be saved in the zip
+            dest: saves zip file to this directory, OUTPUT_DIR by default
         # Returns:
             zip_filename: filepath to new zip archive
         """
         try:
+            output_dir = self.output_dir if dest is None else dest
             filename = 'prediction_{}'.format(time()).encode('utf-8')
             hashed_filename = '{}.zip'.format(md5(filename).hexdigest())
-
-            zip_filename = os.path.join(self.output_dir, hashed_filename)
-
+            zip_filename = os.path.join(output_dir, hashed_filename)
+            self.logger.warning(zip_filename)
             # Create ZipFile and Write each file to it
             with zipfile.ZipFile(zip_filename, 'w') as zip_file:
                 for f in files:  # writing each file one by one
-                    name = f.replace(self.output_dir, '')
+                    self.logger.warning(f)
+                    name = f.replace(output_dir, '')
                     if name.startswith(os.path.sep):
                         name = name[1:]
-
+                    self.logger.warning(name)
                     zip_file.write(f, arcname=name)
             return zip_filename
         except Exception as err:
             self.logger.error('Failed to write zipfile: %s', err)
             raise err
 
-    def iter_image_files_from_archive(self, zip_path, destination):
+    def iter_image_archive(self, zip_path, destination):
         """Extract all files in archie and yield the paths of all images
         # Arguments:
             zip_path: path to zip archive
@@ -156,6 +161,45 @@ class Consumer(object):
                         yield extracted
             except:
                 self.logger.warning('Could not extract %s', info.filename)
+
+    def save_numpy_array(self, arr, name='', subdir='', output_dir=None):
+        """Split tensor into channels and save each as a tiff
+        # Arguments:
+            arr: numpy array of image data
+            name: name of original input image file
+            subdir: optional subdirectory to save the result.
+            output_dir: base directory for features
+        # Returns:
+            out_paths: list of all saved image paths
+        """
+        output_dir = self.output_dir if output_dir is None else output_dir
+        if subdir.startswith(os.path.sep):
+            subdir = subdir[1:]
+
+        out_paths = []
+        for channel in range(arr.shape[-1]):
+            try:
+                self.logger.debug('saving channel %s', channel)
+                img = arr[..., channel].astype('float32')
+
+                _name = 'feature_{}.tif'.format(channel)
+                if name:
+                    _name = '{}_{}'.format(name, _name)
+
+                path = os.path.join(output_dir, subdir, _name)
+
+                # Create subdirs if they do not exist
+                if not os.path.isdir(os.path.dirname(path)):
+                    os.makedirs(os.path.dirname(path))
+
+                tiff.imsave(path, img)
+                self.logger.debug('saved channel %s to %s', channel, path)
+                out_paths.append(path)
+            except Exception as err:
+                out_paths = []
+                self.logger.error('Could not save channel %s as image: %s',
+                                  channel, err)
+        return out_paths
 
     def _consume(self):
         raise NotImplementedError
@@ -192,47 +236,6 @@ class PredictionConsumer(Consumer):
         self.tf_client = tf_client
         super(PredictionConsumer, self).__init__(
             redis_client, storage_client, watch_status, final_status)
-
-    def save_tf_serving_results(self, tf_results, name='', subdir=''):
-        """Split complete prediction into components and save each as a tiff
-        # Arguments:
-            tf_results: numpy array of results from tf-serving
-            name: name of original input image file
-            subdir: optional subdirectory to save the result.
-        # Returns:
-            out_paths: list of all saved image paths
-        """
-        if subdir.startswith(os.path.sep):
-            subdir = subdir[1:]
-
-        self.logger.debug('Saving results from tf-serving')
-        out_paths = []
-        for channel in range(tf_results.shape[-1]):
-            try:
-                self.logger.debug('saving channel %s', channel)
-                if tf_results.ndim >= 4:
-                    img = tf_results[:, :, :, channel].astype('float32')
-                else:
-                    img = tf_results[:, :, channel].astype('float32')
-
-                _name = 'feature_{}.tif'.format(channel)
-                if name:
-                    _name = '{}_{}'.format(name, _name)
-
-                path = os.path.join(self.output_dir, subdir, _name)
-
-                # Create subdirs if they do not exist
-                if not os.path.isdir(os.path.dirname(path)):
-                    os.makedirs(os.path.dirname(path))
-
-                tiff.imsave(path, img)
-                self.logger.debug('saved channel %s to %s', channel, path)
-                out_paths.append(path)
-            except Exception as err:
-                out_paths = []
-                self.logger.error('Could not save channel %s as image: %s',
-                                  channel, err)
-        return out_paths
 
     def pad_image(self, image, field):
         """Pad each the input image for proper dimensions when stitiching
@@ -327,24 +330,28 @@ class PredictionConsumer(Consumer):
         # Returns:
             output_url: URL of results zip file
         """
-        local_fname = self.storage.download(filename)
-        img = self.get_image(local_fname)
+        with tempfile.TemporaryDirectory() as tempdir:
+            local_fname = self.storage.download(filename, tempdir)
+            img = self.get_image(local_fname)
 
-        if int(cuts) > 1:
-            tf_results = self.process_big_image(cuts, img, field, model_name, model_version)
-        else:
-            # Get tf-serving predictions of image
-            tf_results = self.tf_client.post_image(img, model_name, model_version)
+            if int(cuts) > 1:
+                tf_results = self.process_big_image(
+                    cuts, img, field, model_name, model_version)
+            else:
+                # Get tf-serving predictions of image
+                tf_results = self.tf_client.post_image(
+                    img, model_name, model_version)
 
-        # Save each tf-serving prediction channel as image file
-        out_paths = self.save_tf_serving_results(tf_results)
+            # Save each tf-serving prediction channel as image file
+            out_paths = self.save_numpy_array(
+                tf_results, name=local_fname, output_dir=tempdir)
 
-        # Save each prediction image as zip file
-        zip_file = self.save_zip_file(out_paths)
+            # Save each prediction image as zip file
+            zip_file = self.save_zip_file(out_paths, tempdir)
 
-        # Upload the zip file to cloud storage bucket
-        output_url = self.storage.upload(zip_file)
-        self.logger.debug('Saved output to: "%s"', output_url)
+            # Upload the zip file to cloud storage bucket
+            output_url = self.storage.upload(zip_file)
+            self.logger.debug('Saved output to: "%s"', output_url)
 
         return output_url
 
@@ -366,7 +373,7 @@ class PredictionConsumer(Consumer):
                 self.logger.error('Invalid zip file: %s', local_fname)
                 raise ValueError('{} is not a zipfile'.format(local_fname))
 
-            image_files = [f for f in self.iter_image_files_from_archive(local_fname, tempdir)]
+            image_files = [f for f in self.iter_image_archive(local_fname, tempdir)]
             images = (self.get_image(f) for f in image_files)
 
             def post_many():
@@ -384,14 +391,16 @@ class PredictionConsumer(Consumer):
                 subdir = os.path.dirname(imfile.replace(tempdir, ''))
                 name = os.path.splitext(os.path.basename(imfile))[0]
 
-                _out_paths = self.save_tf_serving_results(results, name=name, subdir=subdir)
+                _out_paths = self.save_numpy_array(
+                    results, name=name, subdir=subdir, output_dir=tempdir)
+
                 all_output.extend(_out_paths)
 
-        # Save each prediction image as zip file
-        zip_file = self.save_zip_file(all_output)
+            # Save each prediction image as zip file
+            zip_file = self.save_zip_file(all_output, tempdir)
 
-        # Upload the zip file to cloud storage bucket
-        upload_dest = self.storage.upload(zip_file)
+            # Upload the zip file to cloud storage bucket
+            upload_dest = self.storage.upload(zip_file)
 
         return upload_dest
 
@@ -420,8 +429,8 @@ class PredictionConsumer(Consumer):
                     hash_values.get('model_version'),
                     hash_values.get('cuts'))
 
-                output_url = self.storage.get_public_url(uploaded_file_path)
-                self.logger.debug('Saved output to: "%s"', output_url)
+                # output_url = self.storage.get_public_url(uploaded_file_path)
+                # self.logger.debug('Saved output to: "%s"', output_url)
 
                 self.logger.debug('Processed key %s in %s s',
                                   redis_hash, timeit.default_timer() - start)
@@ -441,6 +450,175 @@ class PredictionConsumer(Consumer):
                 self.logger.error('Failed to process redis key %s. Error: %s',
                                   redis_hash, err)
 
+
+class ProcessingConsumer(Consumer):
+    """Base class for pre- and post-processing Consumers"""
+
+    def __init__(self,
+                 redis_client,
+                 storage_client,
+                 watch_status='new',
+                 final_status='done'):
+        self._processing_dict = {}
+        super(ProcessingConsumer, self).__init__(
+            redis_client, storage_client, watch_status, final_status)
+
+    def _process_data(self, data, fnkey):
+        """Get the post-process function based on the `function_key` input
+        and apply it to the image if it is not None.
+        # Arguments:
+            data: numpy data to process
+            fnkey: string key to lookup the transformation function
+        # Returns:
+            processed_data: numpy data processed by the transformation function
+        """
+        processing_function = self._processing_dict.get(fnkey)
+        if processing_function is not None:
+            processed_data = processing_function(data)
+        else:
+            processed_data = data
+        return processed_data
+
+    def process_image(self, filename, fnkey=None):
+        """Processes a single image file and re-uploads the processed image as
+        `${original_name}_${fnkey}.tif`
+        # Arguments:
+            filename: key of file in cloud storage
+            fnkey: processing function key
+        # Returns:
+            processed_filename: new filepath for processed image
+        """
+        # If no processing function is given, do nothing
+        if fnkey is None:
+            return filename
+        
+        processed_filename = '{}_{}.tif'.format(
+            os.path.splitext(filename)[0], fnkey)
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            local_fname = self.storage.download(filename, download_dir=tempdir)
+            processed_filename = os.path.join(tempdir, processed_filename)
+
+            img = self.get_image(local_fname)
+            processed_img = self._process_data(img, fnkey)
+
+            # Save preprocessed data as image file
+            tiff.imsave(processed_filename, processed_img)
+
+            # Upload the zip file to cloud storage bucket
+            uploaded_dest = self.storage.upload(processed_filename)
+
+        return uploaded_dest
+
+    def process_zip(self, filename, fnkey):
+        """Processed all image files in the archive and re-uploads the
+        processed archive as `${original_name}_${fnkey}.zip`
+        # Arguments:
+            filename: key of file in cloud storage
+            fnkey: processing function key
+        # Returns:
+            processed_filename: new filepath for processed zip archive
+        """
+        # If no preprocessing function is given, do nothing
+        if fnkey is None:
+            return filename
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            local_fname = self.storage.download(filename, download_dir=tempdir)
+
+            if not zipfile.is_zipfile(local_fname):
+                self.logger.error('Invalid zip file: %s', local_fname)
+                raise ValueError('{} is not a zipfile'.format(local_fname))
+
+            all_output = []            
+            for imfile in self.iter_image_archive(local_fname, tempdir):
+                image = self.get_image(imfile)
+                processed_image = self._process_data(image, fnkey)
+
+                # Save each tf-serving prediction channel as image file
+                subdir = os.path.dirname(imfile.replace(tempdir, ''))
+                name = os.path.splitext(os.path.basename(imfile))[0]
+                _out_paths = self.save_numpy_array(
+                    processed_image, name=name, subdir=subdir,
+                    output_dir=tempdir)
+
+                all_output.extend(_out_paths)
+
+            # Save each prediction image as zip file
+            zip_file = self.save_zip_file(all_output, tempdir)
+
+            # Upload the zip file to cloud storage bucket
+            upload_dest = self.storage.upload(zip_file)
+
+        return upload_dest
+
+    def process(self, filename, fnkey):
+        """Determine if image or zip and call the appropriate function
+        # Arguments:
+            filename: key of file in cloud storage
+            fnkey: preprocessing function key
+        # Returns:
+            processed_filename: new filepath for pre-processed file
+        """
+        # If no postprocessing function is given, do nothing
+        if fnkey is None:
+            uploaded_file_path = filename
+        elif self.is_zip_file(filename):
+            uploaded_file_path = self.process_zip(filename, fnkey)
+        else:
+            uploaded_file_path = self.process_image(filename, fnkey)
+        return uploaded_file_path
+
+
+class PreProcessingConsumer(ProcessingConsumer):
+    """Preprocess each image in redis before Prediction"""
+
+    def __init__(self,
+                 redis_client,
+                 storage_client,
+                 watch_status='new',
+                 final_status='preprocessed'):
+        super(PreProcessingConsumer, self).__init__(
+            redis_client, storage_client, watch_status, final_status)
+        # TODO: Add more preprocessing functions here
+        self._processing_dict = {
+            'normalize': self.normalize_image
+        }
+
+    def normalize_image(self, image):
+        """Normalize image data by dividing by the maximum pixel value
+        # Arguments:
+            image: numpy array of image data
+        # Returns:
+            normal_image: normalized image data
+        """
+        normal_image = image * 255.0 / image.max()
+        return normal_image
+
+    def _consume(self):
+        # preprocess each unprocessed hash
+        for redis_hash in self.iter_redis_hashes():
+            hash_values = self.redis.hgetall(redis_hash)
+            self.logger.debug('Found hash to preprocess "%s": %s',
+                              redis_hash, json.dumps(hash_values, indent=4))
+
+            self.redis.hset(redis_hash, 'status', 'preprocessing')
+            self.logger.debug('Pre-processing image: %s', redis_hash)
+
+            try:
+                start = timeit.default_timer()
+                uploaded_file_path = self.process(
+                    hash_values.get('file_name'),
+                    hash_values.get('preprocess_function'))
+
+                self.redis.hmset(redis_hash, {
+                    'status': self.final_status,
+                    'file_name': uploaded_file_path
+                })
+
+                self.logger.debug('Pre-processed key %s in %s s',
+                                  redis_hash, timeit.default_timer() - start)
+
             except Exception as err:
                 self.logger.error('Failed to process redis key %s. Error: %s',
                                   redis_hash, err)
@@ -450,12 +628,151 @@ class PredictionConsumer(Consumer):
                     'reason': err,
                     'status': 'failed'
                 })
-                else:
 
-                self.logger.debug('Processed key %s in %s s',
+
+class PostProcessingConsumer(ProcessingConsumer):
+    """Post Process each prediction"""
+
+    def __init__(self,
+                 redis_client,
+                 storage_client,
+                 watch_status='processed',
+                 final_status='done'):
+        super(PostProcessingConsumer, self).__init__(
+            redis_client, storage_client, watch_status, final_status)
+        # TODO: Add more postprocessing functions here
+        self._processing_dict = {
+            'watershed': self.watershed,
+            'threshold': self.threshold_image
+        }
+
+    def watershed(self, image, min_distance=10, threshold_abs=0.05):
+        self.logger.debug('performing watershed segmentation postprocessing '
+                          'on image with shape %s', image.shape)
+
+        distance = np.argmax(image, axis=-1)
+        labels = (distance > 0).astype('int')
+
+        local_maxi = peak_local_max(
+            image[..., -1],
+            min_distance=min_distance,
+            threshold_abs=threshold_abs,
+            indices=False,
+            labels=labels,
+            exclude_border=False)
+
+        markers = ndimage.label(local_maxi)[0]
+        segments = watershed(-distance, markers, mask=labels)
+        results = np.expand_dims(segments, axis=-1)
+        return results
+
+    def threshold_image(self, img):
+        pass
+
+    def process_image(self, filename, fnkey=None):
+        """All predictions are zip images, so remove this function"""
+        raise NotImplementedError('PostProcessors only process '
+                                  'zip archives from tf-serving')
+
+    def process_zip(self, filename, fnkey):
+        """Processed all image files in the archive and re-uploads the
+        processed archive as `${original_name}_${fnkey}.zip`
+        
+        # Arguments:
+            filename: key of file in cloud storage
+            fnkey: processing function key
+        # Returns:
+            processed_filename: new filepath for processed zip archive
+        """
+        # If no preprocessing function is given, do nothing
+        if fnkey is None:
+            return filename
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            local_fname = self.storage.download(filename, download_dir=tempdir)
+
+            if not zipfile.is_zipfile(local_fname):
+                self.logger.error('Invalid zip file: %s', local_fname)
+                raise ValueError('{} is not a zipfile'.format(local_fname))
+
+            all_images = {}
+            for imfile in self.iter_image_archive(local_fname, tempdir):
+                # load all features of each image as a single numpy array
+                base_imfile = 'feature_'.join(imfile.split('feature_')[:-1])
+                if base_imfile.endswith('_'):
+                    base_imfile = base_imfile[:-1]
+                base_imfile = '{}_{}'.format(base_imfile, fnkey)
+
+                if base_imfile not in all_images:
+                    all_images[base_imfile] = []
+                all_images[base_imfile].append(imfile)
+
+            all_output = []
+            for base, feature_files in all_images.items():
+                num_channels = len(feature_files)
+                image = None  # set as numpy array after loading first image
+                for i, f in enumerate(sorted(feature_files)):
+                    feat = self.get_image(f)
+                    if image is None:
+                        shape = tuple(list(feat.shape)[:-1] + [num_channels])
+                        image = np.zeros(shape)
+
+                    image[..., i] = feat[..., 0]
+
+                processed_image = self._process_data(image, fnkey)
+
+                # Save each tf-serving prediction channel as image file
+                subdir = os.path.dirname(base.replace(tempdir, ''))
+                name = os.path.splitext(os.path.basename(base))[0]
+                _out_paths = self.save_numpy_array(
+                    processed_image, name=name, subdir=subdir,
+                    output_dir=tempdir)
+
+                all_output.extend(_out_paths)
+
+            # Save each prediction image as zip file
+            zip_file = self.save_zip_file(all_output, tempdir)
+
+            # Upload the zip file to cloud storage bucket
+            upload_dest = self.storage.upload(zip_file)
+
+        return upload_dest
+
+    def _consume(self):
+        # postprocess each processed hash
+        for redis_hash in self.iter_redis_hashes():
+            hash_values = self.redis.hgetall(redis_hash)
+            self.logger.debug('Found hash to preprocess "%s": %s',
+                              redis_hash, json.dumps(hash_values, indent=4))
+
+            self.redis.hset(redis_hash, 'status', 'postprocessing')
+            self.logger.debug('Post-processing image: %s', redis_hash)
+
+            try:
+                start = timeit.default_timer()
+
+                uploaded_file_path = self.process(
+                    hash_values.get('file_name'),
+                    hash_values.get('postprocess_function'))
+
+                self.logger.debug('Post-processed key %s in %s s',
                                   redis_hash, timeit.default_timer() - start)
+
+                output_url = self.storage.get_public_url(uploaded_file_path)
+                self.logger.debug('Saved output to: "%s"', output_url)
+
+                # Update redis with the results
+                self.redis.hmset(redis_hash, {
+                    'output_url': output_url,
+                    'status': self.final_status
+                })
 
             except Exception as err:
                 self.logger.error('Failed to process redis key %s. Error: %s',
                                   redis_hash, err)
 
+                # Update redis with failed status
+                self.redis.hmset(redis_hash, {
+                    'reason': err,
+                    'status': 'failed'
+                })
