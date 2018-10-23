@@ -643,10 +643,21 @@ class PostProcessingConsumer(ProcessingConsumer):
         # TODO: Add more postprocessing functions here
         self._processing_dict = {
             'watershed': self.watershed,
-            'threshold': self.threshold_image
+            'deepcell': self.deepcell
         }
 
     def watershed(self, image, min_distance=10, threshold_abs=0.05):
+        """Use the watershed method to identify unique cells based
+        on their distance transform.
+        # TODO: labels should be the fgbg output, NOT the union of distances
+        # TODO: as is, there are small patches of pixels that are garbage
+        # Arguments:
+            image: distance transform of image (model output)
+            min_distance: minimum number of pixels separating peaks
+            threshold_abs: minimum intensity of peaks
+        # Returns:
+            image mask where each cell is annotated uniquely
+        """
         self.logger.debug('performing watershed segmentation postprocessing '
                           'on image with shape %s', image.shape)
 
@@ -666,7 +677,9 @@ class PostProcessingConsumer(ProcessingConsumer):
         results = np.expand_dims(segments, axis=-1)
         return results
 
-    def threshold_image(self, img):
+    def deepcell(self, image, threshold=.8):
+        threshold
+        image[..., 0] + image[..., 1]
         pass
 
     def process_image(self, filename, fnkey=None):
