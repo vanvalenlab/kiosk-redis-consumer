@@ -42,7 +42,23 @@ from redis_consumer import storage
 from redis_consumer.tf_client import TensorFlowServingClient
 
 
-def consume_events(event_type):
+def initialize_logger(debug_mode=False):
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter('[%(levelname)s]:[%(name)s]: %(message)s')
+    console = logging.StreamHandler(stream=sys.stdout)
+    console.setFormatter(formatter)
+
+    if debug_mode:
+        console.setLevel(logging.DEBUG)
+    else:
+        console.setLevel(logging.INFO)
+
+    logger.addHandler(console)
+
+
+def get_redis_consumer(event_type):
     redis = StrictRedis(
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
@@ -84,30 +100,15 @@ def consume_events(event_type):
     else:
         raise ValueError('Unexpected CONSUMER_TYPE: `{}`'.format(event_type))
 
-    consumer.consume(interval=10)
-
-
-def initialize_logger(debug_mode=False):
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-
-    formatter = logging.Formatter('[%(levelname)s]:[%(name)s]: %(message)s')
-    console = logging.StreamHandler(stream=sys.stdout)
-    console.setFormatter(formatter)
-
-    if debug_mode:
-        console.setLevel(logging.DEBUG)
-    else:
-        console.setLevel(logging.INFO)
-
-    logger.addHandler(console)
+    return consumer
 
 
 if __name__ == '__main__':
     initialize_logger(settings.DEBUG)
 
     try:
-        consume_events(settings.CONSUMER_TYPE)
+        consumer = get_redis_consumer(settings.CONSUMER_TYPE)
+        consumer.consume(interval=settings.CONSUMER_INTERVAL)
     except Exception as err:
         print(err)
         sys.exit(1)
