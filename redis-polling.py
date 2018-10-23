@@ -35,7 +35,7 @@ import boto3
 from decouple import config
 from redis import StrictRedis
 from skimage.external import tifffile as tiff
-from tensorflow.python.keras.preprocessing.image import  img_to_array
+from keras_preprocessing.image import  img_to_array
 from PIL import Image
 import requests
 import numpy as np
