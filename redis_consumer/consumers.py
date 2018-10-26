@@ -701,7 +701,6 @@ class PostProcessingConsumer(ProcessingConsumer):
                 # if still within the mask range AND one cell not eating another, dilate
                 copy = np.where((mask !=0 ) & (dilated != copy) & (copy == 0), dilated, copy)
             return copy
-
         def dilate_nomask(array, num_dilations):
             copy = np.copy(array)
             for _ in range(0, num_dilations):
@@ -715,14 +714,21 @@ class PostProcessingConsumer(ProcessingConsumer):
             for _ in range(0, num_erosions):
                 eroded = erosion(np.copy(original))
                 original[original != eroded] = 0
-
             return original
 
-        edge = np.zeros(predictions.shape[:-1])
-        edge[predictions[..., 0] > edge_thresh] = 1  # cell-background edge
-        edge[predictions[..., 1] > edge_thresh] = 1  # cell-cell edge
+        edge = np.copy(predictions[..., 0])
+        edge[edge < edge_thresh] = 0
+        edge[edge >= edge_thresh] = 1
 
-        interior = (predictions[..., 2] > interior_thresh).astype('int')
+        # cell_edge = np.copy(predictions[..., 1])
+        # cell_edge[cell_edge < edge_thresh] = 0
+        # cell_edge[cell_edge >= edge_thresh] = 1
+
+        # edge = np.logical_or(cell_edge == 1, bg_edge == 1).astype('int')
+
+        interior = np.copy(predictions[..., 1])
+        interior[interior >= interior_thresh] = 1
+        interior[interior < interior_thresh] = 0
 
         # define foreground as the interior bounded by edge
         fg_thresh = np.logical_and(interior == 1, edge == 0)
@@ -741,12 +747,12 @@ class PostProcessingConsumer(ProcessingConsumer):
         
         watershed_segmentation = dilate(watershed_segmentation, interior, 2)
 
-        watershed_segmentation = dilate_nomask(watershed_segmentation, 1)
-        watershed_segmentation = erode(watershed_segmentation, 2)
-        watershed_segmentation = dilate_nomask(watershed_segmentation, 2)
-        watershed_segmentation = erode(watershed_segmentation, 1)
-        watershed_segmentation = watershed_segmentation.astype('uint16')
-        return watershed_segmentation
+        for _ in range(2):
+            watershed_segmentation = dilate_nomask(watershed_segmentation, 1)
+            watershed_segmentation = erode(watershed_segmentation, 2)
+
+        watershed_segmentation = np.expand_dims(watershed_segmentation, axis=-1)
+        return watershed_segmentation.astype('uint16')
 
     def process_image(self, filename, fnkey=None):
         """All predictions are zip images, so remove this function"""
