@@ -42,7 +42,9 @@ from PIL import Image
 from scipy import ndimage
 from skimage.external import tifffile as tiff
 from skimage.feature import peak_local_max
+from skimage.measure import label
 from skimage.morphology import watershed, opening, closing
+from skimage.morphology import remove_small_objects, dilation, erosion
 from keras_preprocessing.image import img_to_array
 from tornado import ioloop
 
@@ -643,7 +645,8 @@ class PostProcessingConsumer(ProcessingConsumer):
         # TODO: Add more postprocessing functions here
         self._processing_dict = {
             'watershed': self.watershed,
-            'deepcell': self.deepcell
+            'deepcell': self.deepcell,
+            'mibi': self.mibi
         }
 
     def watershed(self, image, min_distance=10, threshold_abs=0.05):
@@ -675,12 +678,75 @@ class PostProcessingConsumer(ProcessingConsumer):
         markers = ndimage.label(local_maxi)[0]
         segments = watershed(-distance, markers, mask=labels)
         results = np.expand_dims(segments, axis=-1)
+        results = remove_small_objects(
+            results, min_size=50, connectivity=1)
         return results
 
     def deepcell(self, image, threshold=.8):
-        threshold
-        image[..., 0] + image[..., 1]
-        pass
+        interior = image[..., 2] > threshold
+        data = np.expand_dims(interior, axis=-1)
+        labeled = ndimage.label(data)[0]
+        labeled = remove_small_objects(
+            labeled, min_size=50, connectivity=1)
+        return labeled
+
+    def mibi(self, predictions, threshold=.25):
+        edge_thresh = threshold
+        interior_thresh = threshold
+
+        def dilate(array, mask, num_dilations):
+            copy = np.copy(array)
+            for _ in range(0, num_dilations):
+                dilated = dilation(copy)
+                # if still within the mask range AND one cell not eating another, dilate
+                copy = np.where((mask !=0 ) & (dilated != copy) & (copy == 0), dilated, copy)
+            return copy
+
+        def dilate_nomask(array, num_dilations):
+            copy = np.copy(array)
+            for _ in range(0, num_dilations):
+                dilated = dilation(copy)
+                # if one cell not eating another, dilate
+                copy = np.where((dilated != copy) & (copy == 0), dilated, copy)
+            return copy
+
+        def erode(array, num_erosions):
+            original = np.copy(array)
+            for _ in range(0, num_erosions):
+                eroded = erosion(np.copy(original))
+                original[original != eroded] = 0
+
+            return original
+
+        edge = np.zeros(predictions.shape[:-1])
+        edge[predictions[..., 0] > edge_thresh] = 1  # cell-background edge
+        edge[predictions[..., 1] > edge_thresh] = 1  # cell-cell edge
+
+        interior = (predictions[..., 2] > interior_thresh).astype('int')
+
+        # define foreground as the interior bounded by edge
+        fg_thresh = np.logical_and(interior == 1, edge == 0)
+
+        # remove small objects from the foreground segmentation
+        fg_thresh = remove_small_objects(
+            fg_thresh, min_size=50, connectivity=1)
+
+        fg_thresh = np.expand_dims(fg_thresh, axis=-1)
+
+        watershed_segmentation = label(np.squeeze(fg_thresh), connectivity=2)
+
+        for _ in range(8):
+            watershed_segmentation = dilate(watershed_segmentation, interior, 2)
+            watershed_segmentation = erode(watershed_segmentation, 1)
+        
+        watershed_segmentation = dilate(watershed_segmentation, interior, 2)
+
+        watershed_segmentation = dilate_nomask(watershed_segmentation, 1)
+        watershed_segmentation = erode(watershed_segmentation, 2)
+        watershed_segmentation = dilate_nomask(watershed_segmentation, 2)
+        watershed_segmentation = erode(watershed_segmentation, 1)
+        watershed_segmentation = watershed_segmentation.astype('uint16')
+        return watershed_segmentation
 
     def process_image(self, filename, fnkey=None):
         """All predictions are zip images, so remove this function"""
