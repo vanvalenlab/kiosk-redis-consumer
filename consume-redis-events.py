@@ -87,7 +87,6 @@ if __name__ == '__main__':
 
     # sleep for 7 minutes on startup, in order to allow tf-serving time to startup
     time.sleep(420)
-
     try:
         consume_predictions()
     except Exception as err:

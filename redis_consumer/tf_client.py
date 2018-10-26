@@ -44,6 +44,7 @@ from tornado import httpclient
 from tornado.gen import multi
 from tornado import escape
 
+
 class TensorFlowServingError(Exception):
     pass
 
