@@ -55,7 +55,7 @@ AWS_REGION = config('AWS_REGION', default='us-east-1')
 AWS_S3_BUCKET = config('AWS_S3_BUCKET', default='default-bucket')
 AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='specify_me')
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default="specify_me")
-GOOGLE_BUCKET = config('GCLOUD_STORAGE_BUCKET', default='default-bucket')
+GOOGLE_BUCKET = config('GKE_BUCKET', default='default-bucket')
 
 # Application Directories
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))

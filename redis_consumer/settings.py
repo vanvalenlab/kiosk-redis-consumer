@@ -66,4 +66,4 @@ AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='specify_me')
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='specify_me')
 
 # Google Credentials
-GCLOUD_STORAGE_BUCKET = config('GCLOUD_STORAGE_BUCKET', default='default-bucket')
+GCLOUD_STORAGE_BUCKET = config('GKE_BUCKET', default='default-bucket')
