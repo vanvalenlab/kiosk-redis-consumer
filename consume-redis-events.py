@@ -33,6 +33,7 @@ from __future__ import print_function
 
 import sys
 import logging
+import time
 
 from redis import StrictRedis
 
@@ -83,6 +84,9 @@ def initialize_logger(debug_mode=False):
 
 if __name__ == '__main__':
     initialize_logger(settings.DEBUG)
+
+    # sleep for 7 minutes on startup, in order to allow tf-serving time to startup
+    time.sleep(420)
 
     try:
         consume_predictions()
