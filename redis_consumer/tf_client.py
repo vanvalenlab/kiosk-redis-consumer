@@ -35,6 +35,7 @@ from __future__ import print_function
 import os
 import json
 import logging
+import time
 
 import numpy as np
 import requests
@@ -57,16 +58,22 @@ class TensorFlowServingClient(object):
         self.port = port
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
-    def verify_endpoint_liveness():
+    def verify_endpoint_liveness(self):
         # sleep as long as needed to allow tf-serving time to startup
-        liveness_url = '{}:{}'.format(self.host, self.port)
+        liveness_url = 'http://{}:{}'.format(self.host, self.port)
         liveness_timeout = 10
         tries = 0
         response = 0
-        while response!=200 and tries < 60:
-            prediciton = requests.get(liveness_url, timeout = liveness_timeout)
-            response = prediction.status_code
+        while response!=404 and tries < 60:
+            time.sleep(10)
             tries = tries + 1
+            print("tries: " + str(tries))
+            try:
+                prediction = requests.get(liveness_url, timeout = liveness_timeout)
+                response = prediction.status_code
+                print("response: " + str(response.status_code))
+            except:
+                pass
         if tries < 60:
             self.logger.debug("Connection to tf-serving established. Number of tries: {}".format(tries))
         else:

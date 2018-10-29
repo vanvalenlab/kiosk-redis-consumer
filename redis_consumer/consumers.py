@@ -336,6 +336,8 @@ class PredictionConsumer(Consumer):
         return output_url
 
     def _consume(self):
+        # verify that tf-serving is ready to accept images
+        self.tf_client.verify_endpoint_liveness()
         # process each unprocessed hash
         for redis_hash in self.iter_redis_hashes():
             hash_values = self.redis.hgetall(redis_hash)

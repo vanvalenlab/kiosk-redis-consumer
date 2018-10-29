@@ -33,7 +33,6 @@ from __future__ import print_function
 
 import sys
 import logging
-import time
 
 from redis import StrictRedis
 
@@ -64,7 +63,6 @@ def consume_predictions():
         storage_client=storage_client,
         tf_client=TensorFlowServingClient(settings.TF_HOST, settings.TF_PORT))
 
-    consumer.tf_client.
     consumer.consume(interval=10)
 
 
