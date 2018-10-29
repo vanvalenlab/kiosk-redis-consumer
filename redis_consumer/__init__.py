@@ -7,7 +7,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.github.com/vanvalenlab/kiosk-consumer/LICENSE
+#     http://www.github.com/vanvalenlab/kiosk-redis-consumer/LICENSE
 #
 # The Work provided may be used for non-commercial academic purposes only.
 # For any other use of the Work, including commercial use, please contact:
@@ -23,14 +23,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-FROM python:3.6
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-WORKDIR /kiosk/consumer
+from redis_consumer import consumers
+from redis_consumer import settings
+from redis_consumer import storage
 
-COPY requirements.txt .
-
-RUN pip install -r requirements.txt
-
-COPY . .
-
-CMD ["/bin/sh", "-c", "python consume-redis-events.py"]
+del absolute_import
+del division
+del print_function
