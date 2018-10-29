@@ -41,7 +41,6 @@ from redis_consumer import settings
 from redis_consumer import storage
 from redis_consumer.tf_client import TensorFlowServingClient
 
-import requests
 
 def consume_predictions():
     redis = StrictRedis(
