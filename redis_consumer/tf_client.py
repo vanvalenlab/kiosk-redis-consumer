@@ -57,6 +57,21 @@ class TensorFlowServingClient(object):
         self.port = port
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
+    def verify_endpoint_liveness():
+        # sleep as long as needed to allow tf-serving time to startup
+        liveness_url = '{}:{}'.format(self.host, self.port)
+        liveness_timeout = 10
+        tries = 0
+        response = 0
+        while response!=200 and tries < 60:
+            prediciton = requests.get(liveness_url, timeout = liveness_timeout)
+            response = prediction.status_code
+            tries = tries + 1
+        if tries < 60:
+            self.logger.debug("Connection to tf-serving established. Number of tries: {}".format(tries))
+        else:
+            self.logger.debug("Connection to tf-serving not established after 60 tries.")
+
     def get_url(self, model_name, version):
         """Get API URL for TensorFlow Serving, based on model name and version
         """

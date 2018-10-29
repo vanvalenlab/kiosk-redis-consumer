@@ -42,6 +42,7 @@ from redis_consumer import settings
 from redis_consumer import storage
 from redis_consumer.tf_client import TensorFlowServingClient
 
+import requests
 
 def consume_predictions():
     redis = StrictRedis(
@@ -63,6 +64,7 @@ def consume_predictions():
         storage_client=storage_client,
         tf_client=TensorFlowServingClient(settings.TF_HOST, settings.TF_PORT))
 
+    consumer.tf_client.
     consumer.consume(interval=10)
 
 
@@ -85,8 +87,6 @@ def initialize_logger(debug_mode=False):
 if __name__ == '__main__':
     initialize_logger(settings.DEBUG)
 
-    # sleep for 8 minutes on startup, in order to allow tf-serving time to startup
-    time.sleep(480)
     try:
         consume_predictions()
     except Exception as err:
