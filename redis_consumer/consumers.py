@@ -861,3 +861,36 @@ class PostProcessingConsumer(ProcessingConsumer):
                     'reason': err,
                     'status': 'failed'
                 })
+
+
+class TrainingConsumer(Consumer):
+
+    def __init__(self,
+                 redis_client,
+                 storage_client,
+                 watch_status='new_training',
+                 final_status='done'):
+        super(TrainingConsumer, self).__init__(
+            redis_client, storage_client, watch_status, final_status)
+    
+    def _consume(self):
+        # postprocess each processed hash
+        for redis_hash in self.iter_redis_hashes():
+            hash_values = self.redis.hgetall(redis_hash)
+            self.logger.debug('Found hash to preprocess "%s": %s',
+                              redis_hash, json.dumps(hash_values, indent=4))
+            
+            self.redis.hset(redis_hash, 'status', 'training')
+            self.logger.debug('Training image: %s', redis_hash)
+
+            # check data for validity
+
+            # download data
+
+            # generate notebook
+
+            # Training Server runs jupyter next to the notebook
+
+            # TensorBoard
+
+

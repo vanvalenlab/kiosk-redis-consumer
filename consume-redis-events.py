@@ -97,6 +97,13 @@ def get_redis_consumer(event_type):
             watch_status='processed',
             final_status='done')
 
+    elif event_type == 'train':
+        consumer = consumers.TrainingConsumer(
+            redis_client=redis,
+            storage_client=storage_client,
+            watch_status='new_training',
+            final_status='done')
+
     else:
         raise ValueError('Unexpected CONSUMER_TYPE: `{}`'.format(event_type))
 
