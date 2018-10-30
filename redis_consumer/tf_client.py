@@ -34,9 +34,11 @@ from __future__ import print_function
 
 import json
 import logging
+import time
 
 import numpy as np
 import requests
+import datetime
 
 from tornado import httpclient
 from tornado import escape
@@ -56,16 +58,54 @@ class TensorFlowServingClient(object):
         self.port = port
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
-    def get_url(self, model_name, version):
+    def verify_endpoint_liveness(self,
+                                 num_retries=60,
+                                 timeout=10,
+                                 retry_interval=10):
+        """Ping TensorFlow Serving to check if the service is up.
+        # Arguments:
+            num_retries: number of attempts to ping tf serving
+            timeout: timeout in seconds for each ping attempt
+            retry_interval: time to wait between retries
+        # Returns:
+            True if tf serving service is live otherwise False
+        """
+        liveness_url = 'http://{}:{}'.format(self.host, self.port)
+
+        for i in range(num_retries):
+            try:
+                response = requests.get(liveness_url, timeout=timeout)
+                if response.status_code == 404:
+                    self.logger.debug('Connection to tf-serving established '
+                                      ' after %s attempts.', i + 1)
+                    return True
+                else:
+                    self.logger.error('Expected a 404 response but got %s. '
+                                      'Entered `unreachable` code block.',
+                                      response.status_code)
+
+            except Exception as err:
+                self.logger.warning('Encountered error while checking tf-serving'
+                                    ' liveness.  %s', err)
+
+            # sleep as long as needed to allow tf-serving time to startup
+            time.sleep(retry_interval)
+
+        else:  # for/else loop.  only enters block after all retries
+            self.logger.error('Connection to tf-serving not established '
+                              'after %s attempts.', num_retries)
+            return False
+
+    def get_url(self, model_name, model_version):
         """Get API URL for TensorFlow Serving, based on model name and version
         # Arguments:
-            model_name: hosted model to send image data
-            version: model version to query
+            model_name: name of model hosted by tf-serving
+            model_version: integer version of `model_name`
         # Returns:
             formatted URL for HTTP request
         """
-        return 'http://{}:{}/v1/models/{}/versions/{}:predict'.format(
-            self.host, self.port, model_name, version)
+        return 'http://{}:{}/v1/models/{}/versions/{}:{}'.format(
+            self.host, self.port, model_name, model_version, 'predict')
 
     def fix_json(self, response_text):
         """Sometimes TF Serving has strange scientific notation e.g. '1e5.0,'
@@ -92,15 +132,15 @@ class TensorFlowServingClient(object):
                              model_version,
                              timeout=300,
                              max_clients=10):
-        """Use tornado to send ansynchronous requests for every image in images
+        """POSTs many images to tf-serving at once using tornado.
         # Arguments:
-            images: array of images to pass to model
+            images: list of image data to pass to tf-serving
             model_name: hosted model to send image data
             model_version: model version to query
             timeout: total timeout for all requests
-            max_clients: number of requests to send at once
+            max_clients: max number of simultaneous http clients
         # Returns:
-            all_tf_results: array of predictions for every image in images
+            all_tf_results: list of results from tf-serving
         """
         httpclient.AsyncHTTPClient.configure(
             None,
@@ -155,12 +195,17 @@ class TensorFlowServingClient(object):
         #     all_tf_results.append(final_prediction)
         return all_tf_results
 
-    def post_image(self, image, model_name, version, timeout=300):
+    def post_image(self,
+                   image,
+                   model_name,
+                   model_version,
+                   timeout=300,
+                   num_retries=3):
         """Sends image to tensorflow serving and returns response
         # Arguments:
             image: numpy array of image data passed to model
             model_name: hosted model to send image data
-            version: model version to query
+            model_version: model version to query
         # Returns:
             tf-serving results as numpy array
         """
@@ -168,22 +213,34 @@ class TensorFlowServingClient(object):
         payload = {'instances': [{'image': image.tolist()}]}
 
         # Post to API URL
-        prediction = requests.post(
-            self.get_url(model_name, version),
-            json=payload,
-            timeout=timeout)
+        for i in range(num_retries):
+            self.logger.debug('Sending request to tf-serving: %s',
+                datetime.datetime.now())
 
-        try:
-            prediction_json = prediction.json()
-        except:
-            prediction_json = self.fix_json(prediction.text)
+            prediction = requests.post(
+                self.get_url(model_name, model_version),
+                json=payload,
+                timeout=timeout)
 
-        # Check for tf-serving errors
-        if not prediction.status_code == 200:
-            prediction_error = prediction.json()['error']
+            self.logger.debug('Got response from tf-serving: %s',
+                datetime.datetime.now())
 
-            raise TensorFlowServingError('{}: {}'.format(
-                prediction_error, prediction.status_code))
+            try:
+                prediction_json = prediction.json()
+            except:
+                prediction_json = self.fix_json(prediction)
+
+            # Check for tf-serving errors
+            if prediction.status_code == 200:
+                break  # prediction is found, exit the loop
+            else:  # tf-serving error.  Retry or raise it.
+                if i < num_retries - 1:
+                    self.logger.warning('TensorFlow Serving request %s failed'
+                                        ' due to error %s. Retrying...',
+                                        prediction_json['error'], i)
+                else:
+                    raise TensorFlowServingError('{}: {}'.format(
+                        prediction_json['error'], prediction.status_code))
 
         # Convert prediction to numpy array
         final_prediction = np.array(list(prediction_json['predictions'][0]))
