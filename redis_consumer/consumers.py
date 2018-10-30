@@ -495,7 +495,7 @@ class ProcessingConsumer(Consumer):
         # If no processing function is given, do nothing
         if fnkey is None:
             return filename
-        
+
         processed_filename = '{}_{}.tif'.format(
             os.path.splitext(filename)[0], fnkey)
 
@@ -534,7 +534,7 @@ class ProcessingConsumer(Consumer):
                 self.logger.error('Invalid zip file: %s', local_fname)
                 raise ValueError('{} is not a zipfile'.format(local_fname))
 
-            all_output = []            
+            all_output = []
             for imfile in self.iter_image_archive(local_fname, tempdir):
                 image = self.get_image(imfile)
                 processed_image = self._process_data(image, fnkey)
@@ -746,7 +746,7 @@ class PostProcessingConsumer(ProcessingConsumer):
         for _ in range(8):
             watershed_segmentation = dilate(watershed_segmentation, interior, 2)
             watershed_segmentation = erode(watershed_segmentation, 1)
-        
+
         watershed_segmentation = dilate(watershed_segmentation, interior, 2)
 
         for _ in range(2):
@@ -764,7 +764,7 @@ class PostProcessingConsumer(ProcessingConsumer):
     def process_zip(self, filename, fnkey):
         """Processed all image files in the archive and re-uploads the
         processed archive as `${original_name}_${fnkey}.zip`
-        
+
         # Arguments:
             filename: key of file in cloud storage
             fnkey: processing function key
