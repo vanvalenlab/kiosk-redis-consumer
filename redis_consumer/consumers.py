@@ -722,12 +722,6 @@ class PostProcessingConsumer(ProcessingConsumer):
         edge[edge < edge_thresh] = 0
         edge[edge >= edge_thresh] = 1
 
-        # cell_edge = np.copy(predictions[..., 1])
-        # cell_edge[cell_edge < edge_thresh] = 0
-        # cell_edge[cell_edge >= edge_thresh] = 1
-
-        # edge = np.logical_or(cell_edge == 1, bg_edge == 1).astype('int')
-
         interior = np.copy(predictions[..., 1])
         interior[interior >= interior_thresh] = 1
         interior[interior < interior_thresh] = 0
@@ -764,7 +758,6 @@ class PostProcessingConsumer(ProcessingConsumer):
     def process_zip(self, filename, fnkey):
         """Processed all image files in the archive and re-uploads the
         processed archive as `${original_name}_${fnkey}.zip`
-
         # Arguments:
             filename: key of file in cloud storage
             fnkey: processing function key
