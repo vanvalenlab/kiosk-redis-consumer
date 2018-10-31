@@ -37,6 +37,7 @@ import zipfile
 from hashlib import md5
 from time import sleep, time
 
+import requests
 import numpy as np
 from PIL import Image
 from scipy import ndimage
@@ -861,23 +862,36 @@ class TrainingConsumer(Consumer):
             redis_client, storage_client, watch_status, final_status)
 
     def _consume(self):
+        # verify that training endpoint is ready
+        # self.training_client.verify_endpoint_liveness()
         # postprocess each processed hash
         for redis_hash in self.iter_redis_hashes():
             hash_values = self.redis.hgetall(redis_hash)
             self.logger.debug('Found hash to preprocess "%s": %s',
                               redis_hash, json.dumps(hash_values, indent=4))
-            
-            self.redis.hset(redis_hash, 'status', 'training')
+
+            self.redis.hset(redis_hash, 'status', 'train_start')
             self.logger.debug('Training image: %s', redis_hash)
 
-            # check data for validity
+            try:
+                # Download the data
+                local_fname = self.storage.download(hash_values['file_name'])
 
-            # download data
+                # Send request to training server
+                payload = {}
+                payload.update(hash_values)
+                payload['data'] = local_fname
+                api_url = '{}/train'.format(self.training_url)
+                response = requests.post(api_url, json=payload)
 
-            # generate notebook
+                response_json = response.json()
+                self.logger.debug(json.dumps(response_json, indent=4))
 
-            # Training Server runs jupyter next to the notebook
+                # Update redis with tensorboard URL to track training
+                self.redis.hmset(redis_hash, {
+                    'output_url': response_json.get('tensorboard', '?'),
+                    'status': self.final_status
+                })
 
-            # TensorBoard
-
-
+            except Exception as err:
+                self._handle_error(err, redis_hash)
