@@ -86,6 +86,16 @@ class Consumer(object):
                         yield key
                 else:
                     yield key
+    
+    def _handle_error(self, err, redis_hash):
+        # Update redis with failed status
+        self.redis.hmset(redis_hash, {
+            'reason': err,
+            'status': 'failed'
+        })
+        self.logger.error('Failed to process redis key %s. Error: %s',
+                            redis_hash, err)
+        
 
     def is_zip_file(self, filename):
         """Returns boolean if cloud file is a zip file
@@ -446,13 +456,7 @@ class PredictionConsumer(Consumer):
                 })
 
             except Exception as err:
-                # Update redis with failed status
-                self.redis.hmset(redis_hash, {
-                    'reason': err,
-                    'status': 'failed'
-                })
-                self.logger.error('Failed to process redis key %s. Error: %s',
-                                  redis_hash, err)
+                self._handle_error(err, redis_hash)
 
 
 class ProcessingConsumer(Consumer):
@@ -624,14 +628,7 @@ class PreProcessingConsumer(ProcessingConsumer):
                                   redis_hash, timeit.default_timer() - start)
 
             except Exception as err:
-                self.logger.error('Failed to process redis key %s. Error: %s',
-                                  redis_hash, err)
-
-                # Update redis with failed status
-                self.redis.hmset(redis_hash, {
-                    'reason': err,
-                    'status': 'failed'
-                })
+                self._handle_error(err, redis_hash)
 
 
 class PostProcessingConsumer(ProcessingConsumer):
@@ -848,14 +845,7 @@ class PostProcessingConsumer(ProcessingConsumer):
                 })
 
             except Exception as err:
-                self.logger.error('Failed to process redis key %s. Error: %s',
-                                  redis_hash, err)
-
-                # Update redis with failed status
-                self.redis.hmset(redis_hash, {
-                    'reason': err,
-                    'status': 'failed'
-                })
+                self._handle_error(err, redis_hash)
 
 
 class TrainingConsumer(Consumer):
