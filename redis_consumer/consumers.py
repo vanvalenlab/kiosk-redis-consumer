@@ -43,7 +43,7 @@ from scipy import ndimage
 from skimage.external import tifffile as tiff
 from skimage.feature import peak_local_max
 from skimage.measure import label
-from skimage.morphology import watershed, opening, closing
+from skimage.morphology import watershed, opening
 from skimage.morphology import remove_small_objects, dilation, erosion
 from keras_preprocessing.image import img_to_array
 from tornado import ioloop
@@ -86,7 +86,7 @@ class Consumer(object):
                         yield key
                 else:
                     yield key
-    
+
     def _handle_error(self, err, redis_hash):
         # Update redis with failed status
         self.redis.hmset(redis_hash, {
@@ -94,8 +94,8 @@ class Consumer(object):
             'status': 'failed'
         })
         self.logger.error('Failed to process redis key %s. Error: %s',
-                            redis_hash, err)
-        
+                          redis_hash, err)
+
 
     def is_zip_file(self, filename):
         """Returns boolean if cloud file is a zip file
@@ -698,7 +698,7 @@ class PostProcessingConsumer(ProcessingConsumer):
             for _ in range(0, num_dilations):
                 dilated = dilation(copy)
                 # if still within the mask range AND one cell not eating another, dilate
-                copy = np.where((mask !=0 ) & (dilated != copy) & (copy == 0), dilated, copy)
+                copy = np.where((mask != 0 ) & (dilated != copy) & (copy == 0), dilated, copy)
             return copy
         def dilate_nomask(array, num_dilations):
             copy = np.copy(array)
@@ -859,7 +859,7 @@ class TrainingConsumer(Consumer):
         self.training_url = training_url
         super(TrainingConsumer, self).__init__(
             redis_client, storage_client, watch_status, final_status)
-    
+
     def _consume(self):
         # postprocess each processed hash
         for redis_hash in self.iter_redis_hashes():
