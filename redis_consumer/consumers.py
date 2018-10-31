@@ -851,10 +851,12 @@ class PostProcessingConsumer(ProcessingConsumer):
 class TrainingConsumer(Consumer):
 
     def __init__(self,
+                 training_url,
                  redis_client,
                  storage_client,
                  watch_status='new_training',
                  final_status='done'):
+        self.training_url = training_url
         super(TrainingConsumer, self).__init__(
             redis_client, storage_client, watch_status, final_status)
     

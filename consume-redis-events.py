@@ -98,7 +98,11 @@ def get_redis_consumer(event_type):
             final_status='done')
 
     elif event_type == 'train':
+        training_url = 'http://{}:{}'.format(
+            settings.TRAINING_HOST, settings.TRAINING_PORT)
+
         consumer = consumers.TrainingConsumer(
+            training_url=training_url,
             redis_client=redis,
             storage_client=storage_client,
             watch_status='new_training',
