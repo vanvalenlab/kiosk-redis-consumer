@@ -699,7 +699,7 @@ class PostProcessingConsumer(ProcessingConsumer):
             for _ in range(0, num_dilations):
                 dilated = dilation(copy)
                 # if still within the mask range AND one cell not eating another, dilate
-                copy = np.where((mask != 0 ) & (dilated != copy) & (copy == 0), dilated, copy)
+                copy = np.where((mask != 0) & (dilated != copy) & (copy == 0), dilated, copy)
             return copy
         def dilate_nomask(array, num_dilations):
             copy = np.copy(array)
@@ -883,11 +883,15 @@ class TrainingConsumer(Consumer):
                 payload['data'] = local_fname
                 api_url = '{}/train'.format(self.training_url)
                 response = requests.post(api_url, json=payload)
-
                 response_json = response.json()
                 self.logger.debug(json.dumps(response_json, indent=4))
+                if response.status_code != 200:
+                    self.logger.error('Error from training server: %s',
+                                      response_json['error'])
+                    
 
                 # Update redis with tensorboard URL to track training
+                # TODO: how to get tensorboard URL?
                 self.redis.hmset(redis_hash, {
                     'output_url': response_json.get('tensorboard', '?'),
                     'status': self.final_status
