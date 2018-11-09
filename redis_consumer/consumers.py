@@ -58,6 +58,7 @@ class Consumer(object):
     def __init__(self,
                  redis_client,
                  storage_client,
+                 hash_prefix=None,
                  watch_status=None,
                  final_status='done'):
         self.output_dir = OUTPUT_DIR
@@ -65,6 +66,7 @@ class Consumer(object):
         self.storage = storage_client
         self.watch_status = watch_status
         self.final_status = final_status
+        self.hash_prefix = hash_prefix
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
     def iter_redis_hashes(self):
@@ -81,6 +83,10 @@ class Consumer(object):
         for key in keys:
             # Check if the key is a hash
             if self.redis.type(key) == 'hash':
+                if self.hash_prefix is not None:
+                    if not key.startswith(self.hash_prefix.lower()):
+                        continue
+
                 # if watch_status is given, only yield hashes with that status
                 if self.watch_status is not None:
                     if self.redis.hget(key, 'status') == self.watch_status:
@@ -244,11 +250,13 @@ class PredictionConsumer(Consumer):
                  redis_client,
                  storage_client,
                  tf_client,
+                 hash_prefix='predict',
                  watch_status='preprocessed',
                  final_status='processed'):
         self.tf_client = tf_client
         super(PredictionConsumer, self).__init__(
-            redis_client, storage_client, watch_status, final_status)
+            redis_client, storage_client,
+            hash_prefix, watch_status, final_status)
 
     def pad_image(self, image, field):
         """Pad each the input image for proper dimensions when stitiching
@@ -466,11 +474,13 @@ class ProcessingConsumer(Consumer):
     def __init__(self,
                  redis_client,
                  storage_client,
+                 hash_prefix='predict',
                  watch_status='new',
                  final_status='done'):
         self._processing_dict = {}
         super(ProcessingConsumer, self).__init__(
-            redis_client, storage_client, watch_status, final_status)
+            redis_client, storage_client,
+            hash_prefix, watch_status, final_status)
 
     def _process_data(self, data, fnkey):
         """Get the post-process function based on the `function_key` input
@@ -585,10 +595,12 @@ class PreProcessingConsumer(ProcessingConsumer):
     def __init__(self,
                  redis_client,
                  storage_client,
+                 hash_prefix='predict',
                  watch_status='new',
                  final_status='preprocessed'):
         super(PreProcessingConsumer, self).__init__(
-            redis_client, storage_client, watch_status, final_status)
+            redis_client, storage_client,
+            hash_prefix, watch_status, final_status)
         # TODO: Add more preprocessing functions here
         self._processing_dict = {
             'normalize': self.normalize_image
@@ -638,10 +650,12 @@ class PostProcessingConsumer(ProcessingConsumer):
     def __init__(self,
                  redis_client,
                  storage_client,
+                 hash_prefix='predict',
                  watch_status='processed',
                  final_status='done'):
         super(PostProcessingConsumer, self).__init__(
-            redis_client, storage_client, watch_status, final_status)
+            redis_client, storage_client,
+            hash_prefix, watch_status, final_status)
         # TODO: Add more postprocessing functions here
         self._processing_dict = {
             'watershed': self.watershed,
@@ -855,11 +869,13 @@ class TrainingConsumer(Consumer):
                  training_url,
                  redis_client,
                  storage_client,
-                 watch_status='new_training',
+                 hash_prefix='train',
+                 watch_status='new',
                  final_status='done'):
         self.training_url = training_url
         super(TrainingConsumer, self).__init__(
-            redis_client, storage_client, watch_status, final_status)
+            redis_client, storage_client,
+            hash_prefix, watch_status, final_status)
 
     def _consume(self):
         # verify that training endpoint is ready

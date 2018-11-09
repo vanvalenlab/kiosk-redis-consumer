@@ -79,6 +79,7 @@ def get_redis_consumer(event_type):
         consumer = consumers.PreProcessingConsumer(
             redis_client=redis,
             storage_client=storage_client,
+            hash_prefix='predict',
             watch_status='new',
             final_status='preprocessed')
 
@@ -87,6 +88,7 @@ def get_redis_consumer(event_type):
             redis_client=redis,
             storage_client=storage_client,
             tf_client=tf_client,
+            hash_prefix='predict',
             watch_status='preprocessed',
             final_status='processed')
 
@@ -94,6 +96,7 @@ def get_redis_consumer(event_type):
         consumer = consumers.PostProcessingConsumer(
             redis_client=redis,
             storage_client=storage_client,
+            hash_prefix='predict',
             watch_status='processed',
             final_status='done')
 
@@ -105,7 +108,8 @@ def get_redis_consumer(event_type):
             training_url=training_url,
             redis_client=redis,
             storage_client=storage_client,
-            watch_status='new_training',
+            hash_prefix='train',
+            watch_status='new',
             final_status='done')
 
     else:
