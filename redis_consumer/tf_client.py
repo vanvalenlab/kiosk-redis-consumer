@@ -142,7 +142,8 @@ class TensorFlowServingClient(object):
         # Returns:
             all_tf_results: list of results from tf-serving
         """
-        httpclient.AsyncHTTPClient.configure(None,
+        httpclient.AsyncHTTPClient.configure(
+            None,
             max_body_size=1073741824,  # 1GB
             max_clients=max_clients)
 

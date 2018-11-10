@@ -30,6 +30,7 @@ from __future__ import print_function
 from redis_consumer import consumers
 from redis_consumer import settings
 from redis_consumer import storage
+from redis_consumer import tf_client
 
 del absolute_import
 del division
