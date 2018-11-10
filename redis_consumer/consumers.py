@@ -37,13 +37,14 @@ import zipfile
 from hashlib import md5
 from time import sleep, time
 
+import requests
 import numpy as np
 from PIL import Image
 from scipy import ndimage
 from skimage.external import tifffile as tiff
 from skimage.feature import peak_local_max
 from skimage.measure import label
-from skimage.morphology import watershed, opening, closing
+from skimage.morphology import watershed, opening
 from skimage.morphology import remove_small_objects, dilation, erosion
 from keras_preprocessing.image import img_to_array
 from tornado import ioloop
@@ -57,6 +58,7 @@ class Consumer(object):
     def __init__(self,
                  redis_client,
                  storage_client,
+                 hash_prefix=None,
                  watch_status=None,
                  final_status='done'):
         self.output_dir = OUTPUT_DIR
@@ -64,6 +66,7 @@ class Consumer(object):
         self.storage = storage_client
         self.watch_status = watch_status
         self.final_status = final_status
+        self.hash_prefix = hash_prefix
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
     def iter_redis_hashes(self):
@@ -80,12 +83,26 @@ class Consumer(object):
         for key in keys:
             # Check if the key is a hash
             if self.redis.type(key) == 'hash':
+                if self.hash_prefix is not None:
+                    if not key.startswith(self.hash_prefix.lower()):
+                        continue
+
                 # if watch_status is given, only yield hashes with that status
                 if self.watch_status is not None:
                     if self.redis.hget(key, 'status') == self.watch_status:
                         yield key
                 else:
                     yield key
+
+    def _handle_error(self, err, redis_hash):
+        # Update redis with failed status
+        self.redis.hmset(redis_hash, {
+            'reason': err,
+            'status': 'failed'
+        })
+        self.logger.error('Failed to process redis key %s. Error: %s',
+                          redis_hash, err)
+
 
     def is_zip_file(self, filename):
         """Returns boolean if cloud file is a zip file
@@ -233,11 +250,13 @@ class PredictionConsumer(Consumer):
                  redis_client,
                  storage_client,
                  tf_client,
+                 hash_prefix='predict',
                  watch_status='preprocessed',
                  final_status='processed'):
         self.tf_client = tf_client
         super(PredictionConsumer, self).__init__(
-            redis_client, storage_client, watch_status, final_status)
+            redis_client, storage_client,
+            hash_prefix, watch_status, final_status)
 
     def pad_image(self, image, field):
         """Pad each the input image for proper dimensions when stitiching
@@ -446,13 +465,7 @@ class PredictionConsumer(Consumer):
                 })
 
             except Exception as err:
-                # Update redis with failed status
-                self.redis.hmset(redis_hash, {
-                    'reason': err,
-                    'status': 'failed'
-                })
-                self.logger.error('Failed to process redis key %s. Error: %s',
-                                  redis_hash, err)
+                self._handle_error(err, redis_hash)
 
 
 class ProcessingConsumer(Consumer):
@@ -461,11 +474,13 @@ class ProcessingConsumer(Consumer):
     def __init__(self,
                  redis_client,
                  storage_client,
+                 hash_prefix='predict',
                  watch_status='new',
                  final_status='done'):
         self._processing_dict = {}
         super(ProcessingConsumer, self).__init__(
-            redis_client, storage_client, watch_status, final_status)
+            redis_client, storage_client,
+            hash_prefix, watch_status, final_status)
 
     def _process_data(self, data, fnkey):
         """Get the post-process function based on the `function_key` input
@@ -580,10 +595,12 @@ class PreProcessingConsumer(ProcessingConsumer):
     def __init__(self,
                  redis_client,
                  storage_client,
+                 hash_prefix='predict',
                  watch_status='new',
                  final_status='preprocessed'):
         super(PreProcessingConsumer, self).__init__(
-            redis_client, storage_client, watch_status, final_status)
+            redis_client, storage_client,
+            hash_prefix, watch_status, final_status)
         # TODO: Add more preprocessing functions here
         self._processing_dict = {
             'normalize': self.normalize_image
@@ -624,14 +641,7 @@ class PreProcessingConsumer(ProcessingConsumer):
                                   redis_hash, timeit.default_timer() - start)
 
             except Exception as err:
-                self.logger.error('Failed to process redis key %s. Error: %s',
-                                  redis_hash, err)
-
-                # Update redis with failed status
-                self.redis.hmset(redis_hash, {
-                    'reason': err,
-                    'status': 'failed'
-                })
+                self._handle_error(err, redis_hash)
 
 
 class PostProcessingConsumer(ProcessingConsumer):
@@ -640,10 +650,12 @@ class PostProcessingConsumer(ProcessingConsumer):
     def __init__(self,
                  redis_client,
                  storage_client,
+                 hash_prefix='predict',
                  watch_status='processed',
                  final_status='done'):
         super(PostProcessingConsumer, self).__init__(
-            redis_client, storage_client, watch_status, final_status)
+            redis_client, storage_client,
+            hash_prefix, watch_status, final_status)
         # TODO: Add more postprocessing functions here
         self._processing_dict = {
             'watershed': self.watershed,
@@ -701,7 +713,7 @@ class PostProcessingConsumer(ProcessingConsumer):
             for _ in range(0, num_dilations):
                 dilated = dilation(copy)
                 # if still within the mask range AND one cell not eating another, dilate
-                copy = np.where((mask !=0 ) & (dilated != copy) & (copy == 0), dilated, copy)
+                copy = np.where((mask != 0) & (dilated != copy) & (copy == 0), dilated, copy)
             return copy
         def dilate_nomask(array, num_dilations):
             copy = np.copy(array)
@@ -848,11 +860,4 @@ class PostProcessingConsumer(ProcessingConsumer):
                 })
 
             except Exception as err:
-                self.logger.error('Failed to process redis key %s. Error: %s',
-                                  redis_hash, err)
-
-                # Update redis with failed status
-                self.redis.hmset(redis_hash, {
-                    'reason': err,
-                    'status': 'failed'
-                })
+                self._handle_error(err, redis_hash)
