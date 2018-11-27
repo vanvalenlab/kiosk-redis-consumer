@@ -236,8 +236,8 @@ class TensorFlowServingClient(object):
             else:  # tf-serving error.  Retry or raise it.
                 if i < num_retries - 1:
                     self.logger.warning('TensorFlow Serving request %s failed'
-                                        ' due to error %s. Retrying...',
-                                        prediction_json['error'], i)
+                                        ' due to error: "%s". Retrying...',
+                                        i, prediction_json['error'])
                 else:
                     raise TensorFlowServingError('{}: {}'.format(
                         prediction_json['error'], prediction.status_code))
