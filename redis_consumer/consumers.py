@@ -124,9 +124,8 @@ class Consumer(object):
         self.logger.debug('Loading %s into numpy array', filepath)
         if os.path.splitext(filepath)[-1].lower() in {'.tif', '.tiff'}:
             img = np.float32(tiff.TiffFile(filepath).asarray())
-            # check for channel axis
-            if img.ndim == 2:
-                img = np.expand_dims(img, axis=-1)
+            # tiff files should not have a channel dim
+            img = np.expand_dims(img, axis=-1)
         else:
             img = img_to_array(Image.open(filepath))
 
