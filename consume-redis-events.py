@@ -67,13 +67,7 @@ def get_redis_consumer(event_type):
 
     tf_client = TensorFlowServingClient(settings.TF_HOST, settings.TF_PORT)
 
-    if settings.CLOUD_PROVIDER == 'aws':
-        storage_client = storage.S3Storage(settings.AWS_S3_BUCKET)
-    elif settings.CLOUD_PROVIDER == 'gke':
-        storage_client = storage.GoogleStorage(settings.GCLOUD_STORAGE_BUCKET)
-    else:
-        print('Bad value for CLOUD_PROVIDER:', settings.CLOUD_PROVIDER)
-        storage_client = None
+    storage_client = storage.get_client(settings.CLOUD_PROVIDER)
 
     if event_type == 'pre':
         consumer = consumers.PreProcessingConsumer(
