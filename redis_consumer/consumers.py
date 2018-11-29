@@ -220,7 +220,7 @@ class Consumer(object):
                                   channel, err)
         return out_paths
 
-    def _consume(self):
+    def _consume(self, redis_hash):
         raise NotImplementedError
 
     def consume(self, interval):
@@ -236,7 +236,9 @@ class Consumer(object):
 
         while True:
             try:
-                self._consume()
+                # process each unprocessed hash
+                for redis_hash in self.iter_redis_hashes():
+                    self._consume(redis_hash)
             except Exception as err:
                 self.logger.error(err)
 
@@ -425,47 +427,48 @@ class PredictionConsumer(Consumer):
 
         return upload_dest
 
-    def _consume(self):
+    def _consume(self, redis_hash):
+        hash_values = self.redis.hgetall(redis_hash)
+        self.logger.debug('Found hash to process "%s": %s',
+                            redis_hash, json.dumps(hash_values, indent=4))
+
+        self.redis.hset(redis_hash, 'status', 'processing')
+        self.logger.debug('processing image: %s', redis_hash)
+
+        try:
+            start = timeit.default_timer()
+            fname = hash_values.get('file_name')
+
+            if self.is_zip_file(fname):
+                _func = self.process_zip
+            else:
+                _func = self.process_image
+
+            uploaded_file_path = _func(
+                fname,
+                hash_values.get('model_name'),
+                hash_values.get('model_version'),
+                hash_values.get('cuts'))
+
+            # output_url = self.storage.get_public_url(uploaded_file_path)
+            # self.logger.debug('Saved output to: "%s"', output_url)
+
+            self.logger.debug('Processed key %s in %s s',
+                                redis_hash, timeit.default_timer() - start)
+
+            # Update redis with the results
+            self.redis.hmset(redis_hash, {
+                'file_name': uploaded_file_path,
+                'status': self.final_status
+            })
+
+        except Exception as err:
+            self._handle_error(err, redis_hash)
+
+    def consume(self, interval):
         # verify that tf-serving is ready to accept images
         self.tf_client.verify_endpoint_liveness()
-        # process each unprocessed hash
-        for redis_hash in self.iter_redis_hashes():
-            hash_values = self.redis.hgetall(redis_hash)
-            self.logger.debug('Found hash to process "%s": %s',
-                              redis_hash, json.dumps(hash_values, indent=4))
-
-            self.redis.hset(redis_hash, 'status', 'processing')
-            self.logger.debug('processing image: %s', redis_hash)
-
-            try:
-                start = timeit.default_timer()
-                fname = hash_values.get('file_name')
-
-                if self.is_zip_file(fname):
-                    _func = self.process_zip
-                else:
-                    _func = self.process_image
-
-                uploaded_file_path = _func(
-                    fname,
-                    hash_values.get('model_name'),
-                    hash_values.get('model_version'),
-                    hash_values.get('cuts'))
-
-                # output_url = self.storage.get_public_url(uploaded_file_path)
-                # self.logger.debug('Saved output to: "%s"', output_url)
-
-                self.logger.debug('Processed key %s in %s s',
-                                  redis_hash, timeit.default_timer() - start)
-
-                # Update redis with the results
-                self.redis.hmset(redis_hash, {
-                    'file_name': uploaded_file_path,
-                    'status': self.final_status
-                })
-
-            except Exception as err:
-                self._handle_error(err, redis_hash)
+        super(PredictionConsumer, self).consume(interval)
 
 
 class ProcessingConsumer(Consumer):
@@ -616,32 +619,30 @@ class PreProcessingConsumer(ProcessingConsumer):
         normal_image = image * 255.0 / image.max()
         return normal_image
 
-    def _consume(self):
-        # preprocess each unprocessed hash
-        for redis_hash in self.iter_redis_hashes():
-            hash_values = self.redis.hgetall(redis_hash)
-            self.logger.debug('Found hash to preprocess "%s": %s',
-                              redis_hash, json.dumps(hash_values, indent=4))
+    def _consume(self, redis_hash):
+        hash_values = self.redis.hgetall(redis_hash)
+        self.logger.debug('Found hash to preprocess "%s": %s',
+                            redis_hash, json.dumps(hash_values, indent=4))
 
-            self.redis.hset(redis_hash, 'status', 'preprocessing')
-            self.logger.debug('Pre-processing image: %s', redis_hash)
+        self.redis.hset(redis_hash, 'status', 'preprocessing')
+        self.logger.debug('Pre-processing image: %s', redis_hash)
 
-            try:
-                start = timeit.default_timer()
-                uploaded_file_path = self.process(
-                    hash_values.get('file_name'),
-                    hash_values.get('preprocess_function'))
+        try:
+            start = timeit.default_timer()
+            uploaded_file_path = self.process(
+                hash_values.get('file_name'),
+                hash_values.get('preprocess_function'))
 
-                self.redis.hmset(redis_hash, {
-                    'status': self.final_status,
-                    'file_name': uploaded_file_path
-                })
+            self.redis.hmset(redis_hash, {
+                'status': self.final_status,
+                'file_name': uploaded_file_path
+            })
 
-                self.logger.debug('Pre-processed key %s in %s s',
-                                  redis_hash, timeit.default_timer() - start)
+            self.logger.debug('Pre-processed key %s in %s s',
+                                redis_hash, timeit.default_timer() - start)
 
-            except Exception as err:
-                self._handle_error(err, redis_hash)
+        except Exception as err:
+            self._handle_error(err, redis_hash)
 
 
 class PostProcessingConsumer(ProcessingConsumer):
@@ -830,34 +831,32 @@ class PostProcessingConsumer(ProcessingConsumer):
 
         return upload_dest
 
-    def _consume(self):
-        # postprocess each processed hash
-        for redis_hash in self.iter_redis_hashes():
-            hash_values = self.redis.hgetall(redis_hash)
-            self.logger.debug('Found hash to preprocess "%s": %s',
-                              redis_hash, json.dumps(hash_values, indent=4))
+    def _consume(self, redis_hash):
+        hash_values = self.redis.hgetall(redis_hash)
+        self.logger.debug('Found hash to preprocess "%s": %s',
+                          redis_hash, json.dumps(hash_values, indent=4))
 
-            self.redis.hset(redis_hash, 'status', 'postprocessing')
-            self.logger.debug('Post-processing image: %s', redis_hash)
+        self.redis.hset(redis_hash, 'status', 'postprocessing')
+        self.logger.debug('Post-processing image: %s', redis_hash)
 
-            try:
-                start = timeit.default_timer()
+        try:
+            start = timeit.default_timer()
 
-                uploaded_file_path = self.process(
-                    hash_values.get('file_name'),
-                    hash_values.get('postprocess_function'))
+            uploaded_file_path = self.process(
+                hash_values.get('file_name'),
+                hash_values.get('postprocess_function'))
 
-                self.logger.debug('Post-processed key %s in %s s',
-                                  redis_hash, timeit.default_timer() - start)
+            self.logger.debug('Post-processed key %s in %s s',
+                                redis_hash, timeit.default_timer() - start)
 
-                output_url = self.storage.get_public_url(uploaded_file_path)
-                self.logger.debug('Saved output to: "%s"', output_url)
+            output_url = self.storage.get_public_url(uploaded_file_path)
+            self.logger.debug('Saved output to: "%s"', output_url)
 
-                # Update redis with the results
-                self.redis.hmset(redis_hash, {
-                    'output_url': output_url,
-                    'status': self.final_status
-                })
+            # Update redis with the results
+            self.redis.hmset(redis_hash, {
+                'output_url': output_url,
+                'status': self.final_status
+            })
 
-            except Exception as err:
-                self._handle_error(err, redis_hash)
+        except Exception as err:
+            self._handle_error(err, redis_hash)
