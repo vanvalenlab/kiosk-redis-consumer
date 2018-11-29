@@ -78,23 +78,24 @@ class TensorFlowServingClient(object):
                 if response.status_code == 404:
                     self.logger.debug('Connection to tf-serving established '
                                       ' after %s attempts.', i + 1)
-                    return True
-                else:
-                    self.logger.error('Expected a 404 response but got %s. '
-                                      'Entered `unreachable` code block.',
-                                      response.status_code)
+                    break
+
+                self.logger.error('Expected a 404 response but got %s. '
+                                  'Entered `unreachable` code block.',
+                                  response.status_code)
 
             except Exception as err:
-                self.logger.warning('Encountered error while checking tf-serving'
-                                    ' liveness.  %s', err)
+                self.logger.warning('Encountered %s while checking tf-serving '
+                                    ' liveness:  %s', type(err).__name__, err)
 
             # sleep as long as needed to allow tf-serving time to startup
             time.sleep(retry_interval)
 
         else:  # for/else loop.  only enters block after all retries
-            self.logger.error('Connection to tf-serving not established '
-                              'after %s attempts.', num_retries)
+            self.logger.error('Connection to tf-serving not established. '
+                              'Exhausted all %s retries.', num_retries)
             return False
+        return True
 
     def get_url(self, model_name, model_version):
         """Get API URL for TensorFlow Serving, based on model name and version
