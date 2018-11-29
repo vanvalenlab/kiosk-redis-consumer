@@ -105,7 +105,7 @@ if __name__ == '__main__':
 
     try:
         consumer = get_redis_consumer(settings.CONSUMER_TYPE)
-        consumer.consume(interval=settings.CONSUMER_INTERVAL)
+        consumer.consume(interval=settings.INTERVAL)
     except Exception as err:
         print(err)
         sys.exit(1)
