@@ -79,7 +79,7 @@ if __name__ == '__main__':
         storage_client=storage_client,
         tf_client=tf_client,
         dp_client=dp_client,
-        final_status='processed')
+        final_status='done')
 
     try:
         consumer.consume(
