@@ -314,33 +314,36 @@ class PredictionConsumer(Consumer):
 
         return tf_results
 
-    def segment_images(self, images, size, model_name, model_version):
+    def segment_images(self, images, count, model_name, model_version):
         """Use the TensorFlowServingClient to segment each image
         # Arguments:
             images: iterator of image data to segment
-            size: total count of images
+            count: total count of images
             model_name: name of model in tf-serving
             model_version: integer version number of model in tf-serving
         # Returns:
             results: list of numpy array of transformed data.
         """
-        self.logger.info('Segmenting %s images with model %s:%s',
-                         size, model_name, model_version)
+        self.logger.info('Segmenting %s image%s with model %sv%s',
+                         count, 's' if count > 1 else '',
+                         model_name, model_version)
         try:
             start = default_timer()
             url = self.tf_client.get_url(model_name, model_version)
 
             def post_many():
                 return self.tf_client.tornado_images(
-                    images, url, timeout=300 * size, max_clients=size)
+                    images, url, timeout=300 * count, max_clients=count)
 
             results = ioloop.IOLoop.current().run_sync(post_many)
-            self.logger.debug('Segmented %s images from tf-serving in %s s',
-                              size, default_timer() - start)
+            self.logger.debug('Segmented %s image%s with model %sv%s in %s s',
+                              count, 's' if count > 1 else '', model_name,
+                              model_version, default_timer() - start)
             return results
         except Exception as err:
-            self.logger.error('Encountered %s during image segmentation: %s',
-                              type(err).__name__, err)
+            self.logger.error('Encountered %s during tf-serving request to '
+                              'model %sv%s: %s', type(err).__name__,
+                              model_name, model_version, err)
             raise err
 
     def process_images(self, images, count, keys, process_type):
