@@ -32,6 +32,7 @@ from __future__ import print_function
 
 import os
 import logging
+from timeit import default_timer
 
 import boto3
 from google.cloud import storage as google_storage
@@ -132,14 +133,15 @@ class GoogleStorage(Storage):
         # Returns:
             dest: key of uploaded file in cloud storage
         """
+        start = default_timer()
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         try:
             dest = os.path.join('output', os.path.basename(filepath))
             bucket = self._client.get_bucket(self.bucket)
             blob = bucket.blob(dest)
             blob.upload_from_filename(filepath)
-            self.logger.debug('Successfully uploaded %s to bucket %s',
-                              filepath, self.bucket)
+            self.logger.debug('Successfully uploaded %s to bucket %s in %s s',
+                              filepath, self.bucket, default_timer() - start)
             return dest
         except Exception as err:
             self.logger.error('Error while uploading image %s: %s',
@@ -154,13 +156,15 @@ class GoogleStorage(Storage):
         # Returns:
             dest: local path to downloaded file
         """
+        start = default_timer()
         dest = self.get_download_path(filename, download_dir)
         self.logger.debug('Downloading %s to %s.', filename, dest)
         try:
             blob = self._client.get_bucket(self.bucket).blob(filename)
             with open(dest, 'wb') as new_file:
                 blob.download_to_file(new_file)
-            self.logger.debug('Downloaded %s', dest)
+            self.logger.debug('Downloaded %s in %s s',
+                              dest, default_timer() - start)
             return dest
         except Exception as err:
             self.logger.error('Error while downloading image %s: %s',
@@ -196,12 +200,13 @@ class S3Storage(Storage):
         # Returns:
             dest: key of uploaded file in cloud storage
         """
+        start = default_timer()
         dest = os.path.join('output', os.path.basename(filepath))
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         try:
             self._client.upload_file(filepath, self.bucket, dest)
-            self.logger.debug('Successfully uploaded %s to bucket %s',
-                              filepath, self.bucket)
+            self.logger.debug('Successfully uploaded %s to bucket %s in %s s',
+                              filepath, self.bucket, default_timer() - start)
             return dest
         except Exception as err:
             self.logger.error('Error while uploading image %s: %s',
@@ -216,6 +221,7 @@ class S3Storage(Storage):
         # Returns:
             dest: local path to downloaded file
         """
+        start = default_timer()
         # Bucket keys shouldn't start with "/"
         if filename.startswith('/'):
             filename = filename[1:]
@@ -224,7 +230,8 @@ class S3Storage(Storage):
         self.logger.debug('Downloading %s to %s.', filename, dest)
         try:
             self._client.download_file(self.bucket, filename, dest)
-            self.logger.debug('Downloaded %s', dest)
+            self.logger.debug('Downloaded %s in %s s',
+                              dest, default_timer() - start)
             return dest
         except Exception as err:
             self.logger.error('Error while downloading image %s: %s',
