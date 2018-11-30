@@ -35,14 +35,11 @@ import time
 
 import numpy as np
 import requests
-import datetime
 
 from tornado import httpclient
 from tornado import escape
 from tornado.gen import multi
 
-
-# Custom Exceptions
 
 class TensorFlowServingError(Exception):
     """Custom error for TensorFlowServing"""
@@ -53,8 +50,6 @@ class DataProcessingError(Exception):
     """Custom error for DataProcessing API"""
     pass
 
-
-# Client classes
 
 class Client(object):
     """Abstract Base class for API Clients"""
