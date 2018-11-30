@@ -91,8 +91,8 @@ class Consumer(object):
             'reason': '{}'.format(err),
             'status': 'failed'
         })
-        self.logger.error('Failed to process redis key %s. Error: %s',
-                          redis_hash, err)
+        self.logger.error('Failed to process redis key %s. %s: %s',
+                          redis_hash, type(err).__name__, err)
 
     def get_image(self, filepath):
         """Open image file as numpy array
@@ -110,8 +110,8 @@ class Consumer(object):
         else:
             img = img_to_array(Image.open(filepath))
 
-        self.logger.debug('Loaded image into numpy array with '
-                          'shape %s', img.shape)
+        self.logger.debug('Loaded %s into numpy array with '
+                          'shape %s', filepath, img.shape)
         return img
 
     def save_zip_file(self, files, dest=None):
@@ -123,6 +123,7 @@ class Consumer(object):
             zip_filename: filepath to new zip archive
         """
         try:
+            self.logger.debug('Saving %s files to zip archive', len(files))
             output_dir = self.output_dir if dest is None else dest
             filename = 'prediction_{}'.format(time()).encode('utf-8')
             hashed_filename = '{}.zip'.format(md5(filename).hexdigest())
@@ -134,6 +135,7 @@ class Consumer(object):
                     if name.startswith(os.path.sep):
                         name = name[1:]
                     zip_file.write(f, arcname=name)
+            self.logger.debug('Saved %s files to %s', zip_filename)
             return zip_filename
         except Exception as err:
             self.logger.error('Failed to write zipfile: %s', err)
@@ -361,8 +363,8 @@ class PredictionConsumer(Consumer):
             start = default_timer()
             if not k:
                 continue
-            self.logger.debug('Starting %s %s-preprocessing of %s images',
-                              k, process_type, count)
+            self.logger.debug('Starting %s %s-processing %s image%s',
+                              k, process_type, count, 's' if count > 1 else '')
             try:
                 url = self.dp_client.get_url(process_type, k)
 
@@ -371,8 +373,9 @@ class PredictionConsumer(Consumer):
                         images, url, timeout=300 * count, max_clients=count)
 
                 images = ioloop.IOLoop.current().run_sync(post_many)
-                self.logger.debug('%s-processed %s images with %s in %s s',
-                                  process_type, count, k,
+                self.logger.debug('%s %s-processed %s image%s in %s s',
+                                  process_type.capitalize(), count,
+                                  's' if count > 1 else '', k,
                                   default_timer() - start)
             except Exception as err:
                 self.logger.error('Encountered %s during %s %s-processing: %s',
@@ -386,7 +389,6 @@ class PredictionConsumer(Consumer):
                           redis_hash, json.dumps(hash_values, indent=4))
 
         self.redis.hset(redis_hash, 'status', 'processing')
-        self.logger.debug('processing image: %s', redis_hash)
 
         prekeys = hash_values.get('preprocess_function', '').split(',')
         postkeys = hash_values.get('postprocess_function', '').split(',')

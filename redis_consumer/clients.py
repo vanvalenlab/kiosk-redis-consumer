@@ -90,8 +90,8 @@ class Client(object):
             try:
                 response = requests.get(liveness_url, timeout=timeout)
                 if response.status_code == expected_code:
-                    self.logger.debug('Connection to API established '
-                                      ' after %s attempts.', i + 1)
+                    self.logger.debug('Connection established after '
+                                      '%s attempts.', i + 1)
                     break
 
                 self.logger.error('Expected a %s response but got %s. '
