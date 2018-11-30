@@ -88,7 +88,7 @@ class Consumer(object):
     def _handle_error(self, err, redis_hash):
         # Update redis with failed status
         self.redis.hmset(redis_hash, {
-            'reason': err,
+            'reason': '{}'.format(err),
             'status': 'failed'
         })
         self.logger.error('Failed to process redis key %s. Error: %s',
