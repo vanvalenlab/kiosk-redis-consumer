@@ -37,14 +37,13 @@ import zipfile
 from hashlib import md5
 from time import sleep, time
 
-import requests
 import numpy as np
 from PIL import Image
 from scipy import ndimage
 from skimage.external import tifffile as tiff
 from skimage.feature import peak_local_max
 from skimage.measure import label
-from skimage.morphology import watershed, opening
+from skimage.morphology import watershed
 from skimage.morphology import remove_small_objects, dilation, erosion
 from keras_preprocessing.image import img_to_array
 from tornado import ioloop
