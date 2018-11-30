@@ -57,7 +57,7 @@ class Client(object):
     def __init__(self,
                  host,
                  port,
-                 max_body_size=1073741824,  # 1GB
+                 max_body_size=5242880,  # 5MB
                  health_route=None):
         self.host = host
         self.port = port
@@ -190,6 +190,14 @@ class Client(object):
 class TensorFlowServingClient(Client):
     """Class to interact with TensorFlow Serving"""
 
+    def __init__(self,
+                 host,
+                 port,
+                 max_body_size=1073741824,  # 1GB
+                 health_route=None):
+        super(TensorFlowServingClient, self).__init__(
+            host, port, max_body_size, health_route)
+
     def get_url(self, model_name, model_version):
         """Get API URL for TensorFlow Serving, based on model name and version
         # Arguments:
@@ -235,6 +243,14 @@ class TensorFlowServingClient(Client):
 
 class DataProcessingClient(Client):
     """Class to interact with the DataProcessing API"""
+
+    def __init__(self,
+                 host,
+                 port,
+                 max_body_size=5242880,  # 5MB
+                 health_route='health'):
+        super(DataProcessingClient, self).__init__(
+            host, port, max_body_size, health_route)
 
     def get_url(self, process_type, function):
         """Get API URL for TensorFlow Serving, based on model name and version
