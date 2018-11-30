@@ -177,20 +177,9 @@ class Client(object):
                 raise err
 
         # # Using gen.multi - causes unpredictable 429 errors
-        # requests = (http_client.fetch(api_url, **kw) for kw in iter_kwargs(payloads))
-        # responses = await multi([r for r in requests])
-        # texts = (escape.native_str(r.body) for r in responses)
-        # for text in texts:
-        #     try:
-        #         prediction_json = json.loads(text)
-        #     except:
-        #         prediction_json = self.fix_json(text)
-        #
-        #     # Convert prediction to numpy array
-        #     result = np.array(list(prediction_json['predictions'][0]))
-        #     self.logger.debug('Got tf-serving results of shape: %s',
-        #         result.shape)
-        #     results.append(result)
+        # reqs = (http_client.fetch(url, body=p, **kwargs) for p in payloads)
+        # responses = await multi([r for r in reqs])
+        # results = [self.handle_tornado_response(r) for r in responses]
         return results
 
 
