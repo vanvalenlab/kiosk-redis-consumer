@@ -40,7 +40,6 @@ _strip = lambda x: '/'.join(y for y in x.split('/') if y)
 DEBUG = config('DEBUG', cast=bool, default=False)
 
 # Consumer settings
-CONSUMER_TYPE = config('CONSUMER_TYPE', default='predict')
 INTERVAL = config('INTERVAL', default=10, cast=int)
 
 # Hash Prefix - filter out prediction jobs
@@ -53,6 +52,10 @@ REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
 # tensorflow-serving client connection
 TF_HOST = config('TF_HOST', default='tf-serving-service')
 TF_PORT = config('TF_PORT', default=1337, cast=int)
+
+# tensorflow-serving client connection
+DP_HOST = config('DP_HOST', default='data-processing-service')
+DP_PORT = config('DP_PORT', default=7777, cast=int)
 
 # Status of hashes marked for prediction
 STATUS = config('STATUS', default='new')

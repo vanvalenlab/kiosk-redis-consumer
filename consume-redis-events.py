@@ -59,54 +59,38 @@ def initialize_logger(debug_mode=False):
     logger.addHandler(console)
 
 
-def get_redis_consumer(event_type):
+if __name__ == '__main__':
+    initialize_logger(settings.DEBUG)
+
+    _logger = logging.getLogger(__file__)
+
     redis = StrictRedis(
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
         decode_responses=True,
         charset='utf-8')
 
+    storage_client = storage.get_client(settings.CLOUD_PROVIDER)
+    dp_client = DataProcessingClient(settings.DP_HOST, settings.DP_PORT)
     tf_client = TensorFlowServingClient(settings.TF_HOST, settings.TF_PORT)
 
-    storage_client = storage.get_client(settings.CLOUD_PROVIDER)
-
-    if event_type == 'pre':
-        consumer = consumers.PreProcessingConsumer(
-            redis_client=redis,
-            storage_client=storage_client,
-            hash_prefix='predict',
-            watch_status='new',
-            final_status='preprocessed')
-
-    elif event_type == 'predict':
-        consumer = consumers.PredictionConsumer(
-            redis_client=redis,
-            storage_client=storage_client,
-            tf_client=tf_client,
-            hash_prefix='predict',
-            watch_status='preprocessed',
-            final_status='processed')
-
-    elif event_type == 'post':
-        consumer = consumers.PostProcessingConsumer(
-            redis_client=redis,
-            storage_client=storage_client,
-            hash_prefix='predict',
-            watch_status='processed',
-            final_status='done')
-
-    else:
-        raise ValueError('Unexpected CONSUMER_TYPE: `{}`'.format(event_type))
-
-    return consumer
-
-
-if __name__ == '__main__':
-    initialize_logger(settings.DEBUG)
+    consumer = consumers.PredictionConsumer(
+        redis_client=redis,
+        storage_client=storage_client,
+        tf_client=tf_client,
+        dp_client=dp_client,
+        final_status='processed')
 
     try:
-        consumer = get_redis_consumer(settings.CONSUMER_TYPE)
-        consumer.consume(interval=settings.INTERVAL)
+        consumer.consume(
+            interval=settings.INTERVAL,
+            status=settings.STATUS,
+            prefix=settings.HASH_PREFIX)
+
+        exit_status = 0
     except Exception as err:
-        print(err)
-        sys.exit(1)
+        _logger.critical('Fatal Error: %s: %s', type(err).__name__, err)
+        exit_status = 1
+
+    _logger.debug('Exiting with status: %s', exit_status)
+    sys.exit(exit_status)
