@@ -244,7 +244,7 @@ class DataProcessingClient(Client):
         # Returns:
             formatted URL for HTTP request
         """
-        return 'http://{}:{}/{}/{}'.format(
+        return 'http://{}:{}/process/{}/{}'.format(
             self.host, self.port, process_type, function)
 
     def format_image_payload(self, image):
@@ -254,4 +254,4 @@ class DataProcessingClient(Client):
     def handle_tornado_response(self, response):
         text = response.body
         processed_json = json.loads(text)
-        return np.array(list(processed_json['predictions'][0]))
+        return np.array(list(processed_json['processed'][0]))
