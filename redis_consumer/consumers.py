@@ -127,15 +127,12 @@ class Consumer(object):
             filename = 'prediction_{}'.format(time()).encode('utf-8')
             hashed_filename = '{}.zip'.format(md5(filename).hexdigest())
             zip_filename = os.path.join(output_dir, hashed_filename)
-            self.logger.warning(zip_filename)
             # Create ZipFile and Write each file to it
             with zipfile.ZipFile(zip_filename, 'w') as zip_file:
                 for f in files:  # writing each file one by one
-                    self.logger.warning(f)
                     name = f.replace(output_dir, '')
                     if name.startswith(os.path.sep):
                         name = name[1:]
-                    self.logger.warning(name)
                     zip_file.write(f, arcname=name)
             return zip_filename
         except Exception as err:
@@ -328,6 +325,8 @@ class PredictionConsumer(Consumer):
             results: list of numpy array of transformed data.
         """
         url = self.tf_client.get_url(model_name, model_version)
+        self.logger.info('Segmenting %s images with model %s:%s',
+                         size, model_name, model_version)
 
         def post_many():
             return self.tf_client.tornado_images(
@@ -349,6 +348,8 @@ class PredictionConsumer(Consumer):
         for k in keys:
             if not k:
                 continue
+            self.logger.debug('Starting %s %s-preprocessing of %s images',
+                              k, process_type, count)
 
             url = self.dp_client.get_url(process_type, k)
 
@@ -392,6 +393,7 @@ class PredictionConsumer(Consumer):
                 images = (self.get_image(f) for f in image_files)
                 count = len(image_files)
 
+                # preprocess
                 preprocessed = self.process_images(
                     images, count, prekeys, 'pre')
 
@@ -433,6 +435,7 @@ class PredictionConsumer(Consumer):
                 'file_name': uploaded_file_path,
                 'status': self.final_status
             })
+            self.logger.debug('updated status to %s', self.final_status)
 
         except Exception as err:
             self._handle_error(err, redis_hash)
