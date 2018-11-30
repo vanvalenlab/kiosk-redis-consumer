@@ -90,7 +90,7 @@ class Client(object):
             try:
                 response = requests.get(liveness_url, timeout=timeout)
                 if response.status_code == expected_code:
-                    self.logger.debug('Connection to tf-serving established '
+                    self.logger.debug('Connection to API established '
                                       ' after %s attempts.', i + 1)
                     break
 
@@ -99,7 +99,7 @@ class Client(object):
                                   expected_code, response.status_code)
 
             except Exception as err:
-                self.logger.warning('Encountered %s while checking tf-serving '
+                self.logger.warning('Encountered %s while checking API '
                                     ' liveness:  %s', type(err).__name__, err)
 
             # sleep as long as needed to allow tf-serving time to startup
@@ -231,6 +231,7 @@ class TensorFlowServingClient(Client):
         except:
             prediction_json = self.fix_json(text)
         return np.array(list(prediction_json['predictions'][0]))
+
 
 class DataProcessingClient(Client):
     """Class to interact with the DataProcessing API"""
