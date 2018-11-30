@@ -185,9 +185,10 @@ class Client(object):
         #         prediction_json = self.fix_json(text)
         #
         #     # Convert prediction to numpy array
-        #     final_prediction = np.array(list(prediction_json['predictions'][0]))
-        #     self.logger.debug('Got results of shape: %s', final_prediction.shape)
-        #     results.append(final_prediction)
+        #     result = np.array(list(prediction_json['predictions'][0]))
+        #     self.logger.debug('Got tf-serving results of shape: %s',
+        #         result.shape)
+        #     results.append(result)
         return results
 
 
@@ -234,133 +235,7 @@ class TensorFlowServingClient(Client):
             prediction_json = json.loads(text)
         except:
             prediction_json = self.fix_json(text)
-
-        final_prediction = np.array(list(prediction_json['predictions'][0]))
-        return final_prediction
-
-    async def tornado_images(self,
-                             images,
-                             model_name,
-                             model_version,
-                             timeout=300,
-                             max_clients=10):
-        """POSTs many images to tf-serving at once using tornado.
-        # Arguments:
-            images: list of image data to pass to tf-serving
-            model_name: hosted model to send image data
-            model_version: model version to query
-            timeout: total timeout for all requests
-            max_clients: max number of simultaneous http clients
-        # Returns:
-            all_tf_results: list of results from tf-serving
-        """
-        httpclient.AsyncHTTPClient.configure(
-            None,
-            max_body_size=1073741824,  # 1GB
-            max_clients=max_clients)
-
-        http_client = httpclient.AsyncHTTPClient()
-        api_url = self.get_url(model_name, model_version)
-
-        json_payload = ({'instances': [{'image': i.tolist()}]} for i in images)
-        payloads = (escape.json_encode(jp) for jp in json_payload)
-
-        def iter_kwargs(payload):
-            for pyld in payload:
-                yield {
-                    'body': pyld,
-                    'method': 'POST',
-                    'request_timeout': timeout,
-                    'connect_timeout': timeout
-                }
-
-        all_tf_results = []
-        for kwargs in iter_kwargs(payloads):
-            try:
-                response = await http_client.fetch(api_url, **kwargs)
-                text = response.body
-                try:
-                    prediction_json = json.loads(text)
-                except:
-                    prediction_json = self.fix_json(text)
-
-                final_prediction = np.array(list(prediction_json['predictions'][0]))
-                all_tf_results.append(final_prediction)
-            except httpclient.HTTPError as err:
-                self.logger.error('Error: %s: %s', err, err.response.body)
-                raise err
-
-        # # Using gen.multi - causes unpredictable 429 errors
-        # requests = (http_client.fetch(api_url, **kw) for kw in iter_kwargs(payloads))
-        # responses = await multi([r for r in requests])
-        # texts = (escape.native_str(r.body) for r in responses)
-        # for text in texts:
-        #     try:
-        #         prediction_json = json.loads(text)
-        #     except:
-        #         prediction_json = self.fix_json(text)
-        #
-        #     # Convert prediction to numpy array
-        #     final_prediction = np.array(list(prediction_json['predictions'][0]))
-        #     self.logger.debug('Got tf-serving results of shape: %s',
-        #         final_prediction.shape)
-        #     all_tf_results.append(final_prediction)
-        return all_tf_results
-
-    def post_image(self,
-                   image,
-                   model_name,
-                   model_version,
-                   timeout=300,
-                   num_retries=3):
-        """Sends image to tensorflow serving and returns response
-        # Arguments:
-            image: numpy array of image data passed to model
-            model_name: hosted model to send image data
-            model_version: model version to query
-        # Returns:
-            tf-serving results as numpy array
-        """
-        # Define payload to send to API URL
-        payload = {'instances': [{'image': image.tolist()}]}
-
-        # Post to API URL
-        for i in range(num_retries):
-            self.logger.debug('Sending request to tf-serving: %s',
-                datetime.datetime.now())
-
-            prediction = requests.post(
-                self.get_url(model_name, model_version),
-                json=payload,
-                timeout=timeout)
-
-            self.logger.debug('Got response from tf-serving: %s',
-                datetime.datetime.now())
-
-            try:
-                prediction_json = prediction.json()
-            except:
-                prediction_json = self.fix_json(prediction)
-
-            # Check for tf-serving errors
-            if prediction.status_code == 200:
-                break  # prediction is found, exit the loop
-            else:  # tf-serving error.  Retry or raise it.
-                if i < num_retries - 1:
-                    self.logger.warning('TensorFlow Serving request %s failed'
-                                        ' due to error %s. Retrying...',
-                                        prediction_json['error'], i)
-                else:
-                    raise TensorFlowServingError('{}: {}'.format(
-                        prediction_json['error'], prediction.status_code))
-
-        # Convert prediction to numpy array
-        final_prediction = np.array(list(prediction_json['predictions'][0]))
-        self.logger.debug('Got tf-serving results of shape: %s',
-                          final_prediction.shape)
-
-        return final_prediction
-
+        return np.array(list(prediction_json['predictions'][0]))
 
 class DataProcessingClient(Client):
     """Class to interact with the DataProcessing API"""
@@ -376,32 +251,11 @@ class DataProcessingClient(Client):
         return 'http://{}:{}/{}/{}'.format(
             self.host, self.port, process_type, function)
 
-    def post_image(self):
-        pass
-    
-    async def tornado_images(self,
-                             images,
-                             model_name,
-                             model_version,
-                             timeout=300,
-                             max_clients=10):
-        """POSTs many images to the API at once using tornado.
-        # Arguments:
-            images: list of image data to pass to the API
-            model_name: hosted model to send image data
-            model_version: model version to query
-            timeout: total timeout for all requests
-            max_clients: max number of simultaneous http clients
-        # Returns:
-            all_tf_results: list of results from tf-serving
-        """
-        httpclient.AsyncHTTPClient.configure(
-            None,
-            max_body_size=1073741824,  # 1GB
-            max_clients=max_clients)
+    def format_image_payload(self, image):
+        """Format image as JSON payload for tf-serving"""
+        return {'instances': [{'image': image.tolist()}]}
 
-        http_client = httpclient.AsyncHTTPClient()
-        api_url = self.get_url(model_name, model_version)
-
-        json_payload = ({'instances': [{'image': i.tolist()}]} for i in images)
-        payloads = (escape.json_encode(jp) for jp in json_payload)
+    def handle_tornado_response(self, response):
+        text = response.body
+        processed_json = json.loads(text)
+        return np.array(list(processed_json['predictions'][0]))
