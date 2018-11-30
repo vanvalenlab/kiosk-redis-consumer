@@ -324,15 +324,24 @@ class PredictionConsumer(Consumer):
         # Returns:
             results: list of numpy array of transformed data.
         """
-        url = self.tf_client.get_url(model_name, model_version)
         self.logger.info('Segmenting %s images with model %s:%s',
                          size, model_name, model_version)
+        try:
+            start = default_timer()
+            url = self.tf_client.get_url(model_name, model_version)
 
-        def post_many():
-            return self.tf_client.tornado_images(
-                images, url, timeout=300 * size, max_clients=size)
+            def post_many():
+                return self.tf_client.tornado_images(
+                    images, url, timeout=300 * size, max_clients=size)
 
-        return ioloop.IOLoop.current().run_sync(post_many)
+            results = ioloop.IOLoop.current().run_sync(post_many)
+            self.logger.debug('Segmented %s images from tf-serving in %s s',
+                              size, default_timer() - start)
+            return results
+        except Exception as err:
+            self.logger.error('Encountered %s during image segmentation: %s',
+                              type(err).__name__, err)
+            raise err
 
     def process_images(self, images, count, keys, process_type):
         """Apply each processing function to each image in images
@@ -346,19 +355,26 @@ class PredictionConsumer(Consumer):
         """
         process_type = str(process_type).lower()
         for k in keys:
+            start = default_timer()
             if not k:
                 continue
             self.logger.debug('Starting %s %s-preprocessing of %s images',
                               k, process_type, count)
+            try:
+                url = self.dp_client.get_url(process_type, k)
 
-            url = self.dp_client.get_url(process_type, k)
+                def post_many():
+                    return self.dp_client.tornado_images(
+                        images, url, timeout=300 * count, max_clients=count)
 
-            def post_many():
-                return self.dp_client.tornado_images(
-                    images, url, timeout=300 * count, max_clients=count)
-
-            images = ioloop.IOLoop.current().run_sync(post_many)
-
+                images = ioloop.IOLoop.current().run_sync(post_many)
+                self.logger.debug('%s-processed %s images with %s in %s s',
+                                  process_type, count, k,
+                                  default_timer() - start)
+            except Exception as err:
+                self.logger.error('Encountered %s during %s %s-processing: %s',
+                                  type(err).__name__, k, process_type, err)
+                raise err
         return images
 
     def _consume(self, redis_hash):
@@ -377,7 +393,7 @@ class PredictionConsumer(Consumer):
 
         filename = hash_values.get('file_name')
 
-        cuts = hash_values.get('cuts', 0)
+        cuts = hash_values.get('cuts', '0')
         field_size = hash_values.get('field_size', 61)
 
         try:
@@ -398,15 +414,15 @@ class PredictionConsumer(Consumer):
                     images, count, prekeys, 'pre')
 
                 # predict
-                if not cuts:
-                    predicted = self.segment_images(
-                        preprocessed, count, model_name, model_version)
-                else:
+                if cuts.isdigit() and int(cuts) > 0:
                     predicted = []
                     for p in preprocessed:
                         prediction = self.process_big_image(
                             cuts, p, field_size, model_name, model_version)
                         predicted.append(prediction)
+                else:
+                    predicted = self.segment_images(
+                        preprocessed, count, model_name, model_version)
 
                 # postprocess
                 postprocessed = self.process_images(
