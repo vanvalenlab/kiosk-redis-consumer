@@ -326,7 +326,7 @@ class PredictionConsumer(Consumer):
         # Returns:
             results: list of numpy array of transformed data.
         """
-        self.logger.info('Segmenting %s image%s with model %sv%s',
+        self.logger.info('Segmenting %s image%s with model %s:%s',
                          count, 's' if count > 1 else '',
                          model_name, model_version)
         try:
@@ -338,13 +338,13 @@ class PredictionConsumer(Consumer):
                     images, url, timeout=300 * count, max_clients=count)
 
             results = ioloop.IOLoop.current().run_sync(post_many)
-            self.logger.debug('Segmented %s image%s with model %sv%s in %s s',
+            self.logger.debug('Segmented %s image%s with model %s:%s in %s s',
                               count, 's' if count > 1 else '', model_name,
                               model_version, default_timer() - start)
             return results
         except Exception as err:
             self.logger.error('Encountered %s during tf-serving request to '
-                              'model %sv%s: %s', type(err).__name__,
+                              'model %s:%s: %s', type(err).__name__,
                               model_name, model_version, err)
             raise err
 
