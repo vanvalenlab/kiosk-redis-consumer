@@ -446,9 +446,12 @@ class PredictionConsumer(Consumer):
                 uploaded_file_path = self.storage.upload(zip_file)
                 self.logger.debug('Saved output to: "%s"', uploaded_file_path)
 
+            output_url = self.storage.get_public_url(uploaded_file_path)
+            self.logger.debug('Uploaded output to: "%s"', output_url)
+
             # Update redis with the results
             self.redis.hmset(redis_hash, {
-                'file_name': uploaded_file_path,
+                'output_url': output_url,
                 'status': self.final_status
             })
             self.logger.debug('updated status to %s', self.final_status)
