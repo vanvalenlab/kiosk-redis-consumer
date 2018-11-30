@@ -32,10 +32,10 @@ import json
 import logging
 import os
 import tempfile
-import timeit
 import zipfile
 from hashlib import md5
 from time import sleep, time
+from timeit import default_timer
 
 import numpy as np
 from PIL import Image
@@ -57,40 +57,32 @@ class Consumer(object):
     def __init__(self,
                  redis_client,
                  storage_client,
-                 hash_prefix=None,
-                 watch_status=None,
                  final_status='done'):
         self.output_dir = OUTPUT_DIR
         self.redis = redis_client
         self.storage = storage_client
-        self.watch_status = watch_status
         self.final_status = final_status
-        self.hash_prefix = hash_prefix
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
-    def iter_redis_hashes(self):
-        """Iterate over hash values in redis,
-        yielding each with a status equal to watch_status
+    def iter_redis_hashes(self, status='new', prefix='predict'):
+        """Iterate over hash values in redis
+        and yield each with the given status value.
         # Returns: Iterator of all hashes with a valid status
         """
-        try:
-            keys = self.redis.keys()
-            self.logger.debug('Found %s redis keys', len(keys))
-        except:
-            keys = []
-
-        for key in keys:
+        for key in self.redis.keys():
             # Check if the key is a hash
             if self.redis.type(key) == 'hash':
-                if self.hash_prefix is not None:
-                    if not key.startswith(self.hash_prefix.lower()):
+                # Check if necessary to filter based on prefix
+                if prefix is not None:
+                    # Wrong prefix, skip it.
+                    if not key.startswith(str(prefix).lower()):
                         continue
 
-                # if watch_status is given, only yield hashes with that status
-                if self.watch_status is not None:
-                    if self.redis.hget(key, 'status') == self.watch_status:
+                # if status is given, only yield hashes with that status
+                if status is not None:
+                    if self.redis.hget(key, 'status') == str(status):
                         yield key
-                else:
+                else:  # no need to check the status
                     yield key
 
     def _handle_error(self, err, redis_hash):
@@ -222,7 +214,7 @@ class Consumer(object):
     def _consume(self, redis_hash):
         raise NotImplementedError
 
-    def consume(self, interval):
+    def consume(self, interval, status=None, prefix=None):
         """Consume all redis events every `interval` seconds
         # Arguments:
             interval: waits this many seconds between consume calls
@@ -236,8 +228,11 @@ class Consumer(object):
         while True:
             try:
                 # process each unprocessed hash
-                for redis_hash in self.iter_redis_hashes():
+                for redis_hash in self.iter_redis_hashes(status, prefix):
+                    start = default_timer()
                     self._consume(redis_hash)
+                    self.logger.debug('Consumed key %s in %s s',
+                                      redis_hash, default_timer() - start)
             except Exception as err:
                 self.logger.error(err)
 
@@ -251,13 +246,10 @@ class PredictionConsumer(Consumer):
                  redis_client,
                  storage_client,
                  tf_client,
-                 hash_prefix='predict',
-                 watch_status='preprocessed',
-                 final_status='processed'):
+                 final_status='done'):
         self.tf_client = tf_client
         super(PredictionConsumer, self).__init__(
-            redis_client, storage_client,
-            hash_prefix, watch_status, final_status)
+            redis_client, storage_client, final_status)
 
     def pad_image(self, image, field):
         """Pad each the input image for proper dimensions when stitiching
@@ -464,7 +456,7 @@ class PredictionConsumer(Consumer):
         except Exception as err:
             self._handle_error(err, redis_hash)
 
-    def consume(self, interval):
+    def consume(self, interval, status='new', prefix='predict'):
         # verify that tf-serving is ready to accept images
         self.tf_client.verify_endpoint_liveness()
         super(PredictionConsumer, self).consume(interval)
@@ -859,3 +851,6 @@ class PostProcessingConsumer(ProcessingConsumer):
 
         except Exception as err:
             self._handle_error(err, redis_hash)
+        self.tf_client.verify_endpoint_liveness(expected_code=404)
+        self.dp_client.verify_endpoint_liveness(expected_code=200)
+        super(PredictionConsumer, self).consume(interval, status, prefix)
