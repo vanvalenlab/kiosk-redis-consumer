@@ -94,17 +94,6 @@ class Consumer(object):
         self.logger.error('Failed to process redis key %s. Error: %s',
                           redis_hash, err)
 
-
-    def is_zip_file(self, filename):
-        """Returns boolean if cloud file is a zip file
-        If using on local file, use ZipFile.is_zipfile instead
-        # Arguments:
-            filename: key of file in cloud storage
-        # Returns:
-            True if file is a zip archive otherwise False
-        """
-        return os.path.splitext(filename)[-1].lower() == '.zip'
-
     def get_image(self, filepath):
         """Open image file as numpy array
         # Arguments:
@@ -245,9 +234,11 @@ class PredictionConsumer(Consumer):
     def __init__(self,
                  redis_client,
                  storage_client,
+                 dp_client,
                  tf_client,
                  final_status='done'):
         self.tf_client = tf_client
+        self.dp_client = dp_client
         super(PredictionConsumer, self).__init__(
             redis_client, storage_client, final_status)
 
@@ -310,14 +301,8 @@ class PredictionConsumer(Consumer):
             images.append(data)
             coords.append((a, b, c, d))
 
-        def post_many():
-            timeout = 300 * len(images)
-            clients = len(images)
-            return self.tf_client.tornado_images(
-                images, model_name, model_version,
-                timeout=timeout, max_clients=clients)
-
-        predicted = ioloop.IOLoop.current().run_sync(post_many)
+        predicted = self.segment_images(
+            images, len(images), model_name, model_version)
 
         for (a, b, c, d), pred in zip(coords, predicted):
             if tf_results is None:
@@ -332,120 +317,116 @@ class PredictionConsumer(Consumer):
 
         return tf_results
 
-    def process_image(self, filename, model_name, model_version, cuts=0, field=61):
-        """POSTs image data to tf-serving then saves the result
-        as a zip and uploads into the cloud bucket.
+    def segment_images(self, images, size, model_name, model_version):
+        """Use the TensorFlowServingClient to segment each image
         # Arguments:
-            filename: path to cloud destination of image file
+            images: iterator of image data to segment
+            size: total count of images
             model_name: name of model in tf-serving
             model_version: integer version number of model in tf-serving
-            cuts: if > 1, slices large images and predicts on each slice
-            field: receptive field of model
         # Returns:
-            output_url: URL of results zip file
+            results: list of numpy array of transformed data.
         """
-        with tempfile.TemporaryDirectory() as tempdir:
-            local_fname = self.storage.download(filename, tempdir)
-            img = self.get_image(local_fname)
+        url = self.tf_client.get_url(model_name, model_version)
 
-            if int(cuts) > 1:
-                tf_results = self.process_big_image(
-                    cuts, img, field, model_name, model_version)
-            else:
-                # Get tf-serving predictions of image
-                tf_results = self.tf_client.post_image(
-                    img, model_name, model_version)
+        def post_many():
+            return self.tf_client.tornado_images(
+                images, url, timeout=300 * size, max_clients=size)
 
-            # Save each tf-serving prediction channel as image file
-            out_paths = self.save_numpy_array(
-                tf_results, name=local_fname, output_dir=tempdir)
+        return ioloop.IOLoop.current().run_sync(post_many)
 
-            # Save each prediction image as zip file
-            zip_file = self.save_zip_file(out_paths, tempdir)
-
-            # Upload the zip file to cloud storage bucket
-            output_url = self.storage.upload(zip_file)
-            self.logger.debug('Saved output to: "%s"', output_url)
-
-        return output_url
-
-    def process_zip(self, filename, model_name, model_version, cuts=0, field=61):
-        """Process each image inside a zip archive and save/upload resulting
-        zip archive with mirrored folder structure.
+    def process_images(self, images, count, keys, process_type):
+        """Apply each processing function to each image in images
         # Arguments:
-            filename: path to cloud destination of image file
-            model_name: name of model in tf-serving
-            model_version: integer version number of model in tf-serving
-            cuts: if > 1, slices large images and predicts on each slice
-            field: receptive field of model
+            images: iterable of image data
+            count: total number of images
+            keys: list of function names to apply to images
+            process_type: pre or post processing
         # Returns:
-            output_url: URL of results zip file
+            list of processed image data
         """
-        with tempfile.TemporaryDirectory() as tempdir:
-            local_fname = self.storage.download(filename, tempdir)
-            if not zipfile.is_zipfile(local_fname):
-                self.logger.error('Invalid zip file: %s', local_fname)
-                raise ValueError('{} is not a zipfile'.format(local_fname))
+        process_type = str(process_type).lower()
+        for k in keys:
+            if not k:
+                continue
 
-            image_files = [f for f in self.iter_image_archive(local_fname, tempdir)]
-            images = (self.get_image(f) for f in image_files)
+            url = self.dp_client.get_url(process_type, k)
 
             def post_many():
-                timeout = 300 * len(image_files)
-                clients = len(image_files)
-                return self.tf_client.tornado_images(
-                    images, model_name, model_version,
-                    timeout=timeout, max_clients=clients)
+                return self.dp_client.tornado_images(
+                    images, url, timeout=300 * count, max_clients=count)
 
-            tf_results = ioloop.IOLoop.current().run_sync(post_many)
+            images = ioloop.IOLoop.current().run_sync(post_many)
 
-            all_output = []
-            # Save each tf-serving prediction channel as image file
-            for results, imfile in zip(tf_results, image_files):
-                subdir = os.path.dirname(imfile.replace(tempdir, ''))
-                name = os.path.splitext(os.path.basename(imfile))[0]
-
-                _out_paths = self.save_numpy_array(
-                    results, name=name, subdir=subdir, output_dir=tempdir)
-
-                all_output.extend(_out_paths)
-
-            # Save each prediction image as zip file
-            zip_file = self.save_zip_file(all_output, tempdir)
-
-            # Upload the zip file to cloud storage bucket
-            upload_dest = self.storage.upload(zip_file)
-
-        return upload_dest
+        return images
 
     def _consume(self, redis_hash):
         hash_values = self.redis.hgetall(redis_hash)
         self.logger.debug('Found hash to process "%s": %s',
-                            redis_hash, json.dumps(hash_values, indent=4))
+                          redis_hash, json.dumps(hash_values, indent=4))
 
         self.redis.hset(redis_hash, 'status', 'processing')
         self.logger.debug('processing image: %s', redis_hash)
 
+        prekeys = hash_values.get('preprocess_function', '').split(',')
+        postkeys = hash_values.get('postprocess_function', '').split(',')
+
+        model_name = hash_values.get('model_name')
+        model_version = hash_values.get('model_version')
+
+        filename = hash_values.get('file_name')
+
+        cuts = hash_values.get('cuts', 0)
+        field_size = hash_values.get('field_size', 61)
+
         try:
-            start = timeit.default_timer()
-            fname = hash_values.get('file_name')
+            with tempfile.TemporaryDirectory() as tempdir:
+                local_fname = self.storage.download(filename, tempdir)
 
-            if self.is_zip_file(fname):
-                _func = self.process_zip
-            else:
-                _func = self.process_image
+                if zipfile.is_zipfile(local_fname):
+                    archive = self.iter_image_archive(local_fname, tempdir)
+                    image_files = [f for f in archive]
+                else:
+                    image_files = [local_fname]
 
-            uploaded_file_path = _func(
-                fname,
-                hash_values.get('model_name'),
-                hash_values.get('model_version'),
-                hash_values.get('cuts'))
+                images = (self.get_image(f) for f in image_files)
+                count = len(image_files)
 
-            # output_url = self.storage.get_public_url(uploaded_file_path)
-            # self.logger.debug('Saved output to: "%s"', output_url)
+                preprocessed = self.process_images(
+                    images, count, prekeys, 'pre')
 
-            self.logger.debug('Processed key %s in %s s',
-                                redis_hash, timeit.default_timer() - start)
+                # predict
+                if not cuts:
+                    predicted = self.segment_images(
+                        preprocessed, count, model_name, model_version)
+                else:
+                    predicted = []
+                    for p in preprocessed:
+                        prediction = self.process_big_image(
+                            cuts, p, field_size, model_name, model_version)
+                        predicted.append(prediction)
+
+                # postprocess
+                postprocessed = self.process_images(
+                    predicted, count, postkeys, 'post')
+
+                all_output = []
+                # Save each result channel as an image file
+                for results, imfile in zip(postprocessed, image_files):
+                    subdir = os.path.dirname(imfile.replace(tempdir, ''))
+                    name = os.path.splitext(os.path.basename(imfile))[0]
+
+                    _out_paths = self.save_numpy_array(
+                        results, name=name, subdir=subdir, output_dir=tempdir)
+
+                    all_output.extend(_out_paths)
+
+                # Save each prediction image as zip file
+                zip_file = self.save_zip_file(all_output, tempdir)
+
+                # Upload the zip file to cloud storage bucket
+                uploaded_file_path = self.storage.upload(zip_file)
+                self.logger.debug('Saved output to: "%s"', uploaded_file_path)
 
             # Update redis with the results
             self.redis.hmset(redis_hash, {
