@@ -272,7 +272,7 @@ class PredictionConsumer(Consumer):
 
         return np.pad(image, pad_width, mode='reflect')
 
-    def _iter_cuts(self, img, cuts, field):
+    def _iter_cuts(self, img, cuts):
         crop_x = img.shape[img.ndim - 3] // cuts
         crop_y = img.shape[img.ndim - 2] // cuts
         for i in range(cuts):
@@ -301,7 +301,7 @@ class PredictionConsumer(Consumer):
 
         images, coords = [], []
 
-        for a, b, c, d in self._iter_cuts(img, cuts, field):
+        for a, b, c, d in self._iter_cuts(img, cuts):
             if img.ndim >= 4:
                 data = padded_img[:, a:b + 2 * win_x, c:d + 2 * win_y, :]
             else:
