@@ -130,12 +130,6 @@ class Client(object):
         """
         raise NotImplementedError
 
-    def decode_error(self, err):
-        """Different APIs use different errors.
-        Each client should have a different way to format errors
-        """
-        raise NotImplementedError
-
     async def tornado_images(self, images, url, timeout=300, max_clients=10):
         """POSTs many images to the API at once using tornado.
         # Arguments:
@@ -172,7 +166,7 @@ class Client(object):
                 result = self.handle_tornado_response(response)
                 results.append(result)
             except httpclient.HTTPError as err:
-                err_body = self.decode_error(err)
+                err_body = escape.json_decode(err.response.body)['error']
                 self.logger.error('Error: %s: %s', err, err_body)
                 raise err
 
@@ -224,10 +218,6 @@ class TensorFlowServingClient(Client):
             self.logger.error('Cannot fix tf-serving response JSON: %s', err)
             raise err
 
-    def decode_error(self, err):
-        """tf-serving API uses standard body"""
-        return err.response.body.decode('utf-8')
-
     def format_image_payload(self, image):
         """Format image as JSON payload for tf-serving"""
         return {'instances': [{'image': image.tolist()}]}
@@ -271,7 +261,3 @@ class DataProcessingClient(Client):
         text = response.body
         processed_json = json.loads(text)
         return np.array(list(processed_json['processed'][0]))
-
-    def decode_error(self, err):
-        """DP API uses JSON responses."""
-        return escape.json_decode(err.response.body)['error']
