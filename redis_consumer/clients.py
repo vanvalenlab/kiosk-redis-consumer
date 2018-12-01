@@ -124,6 +124,16 @@ class Client(object):
         """
         raise NotImplementedError
 
+    def parse_error(self, error):
+        """Parse the error message from the object.
+        Override-able for various API response formats
+        # Arguments:
+            error: the error object
+        # Returns:
+            the error message as a string
+        """
+        return escape.json_decode(error.response.body)['error']
+
     async def tornado_images(self, images, url, timeout=300, max_clients=10):
         """POSTs many images to the API at once using tornado.
         # Arguments:
@@ -160,7 +170,7 @@ class Client(object):
                 result = self.handle_tornado_response(response)
                 results.append(result)
             except httpclient.HTTPError as err:
-                errtxt = escape.json_decode(err.response.body)['error']
+                errtxt = self.parse_error(err)
                 self.logger.error('%s %s: %s', type(err).__name__, err, errtxt)
                 raise err
         # Using gen.multi - too many requests causes tf-serving OOM.
