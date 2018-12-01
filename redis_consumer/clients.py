@@ -106,7 +106,13 @@ class Client(object):
         # Returns:
             Formatted payload for the specific API
         """
-        raise NotImplementedError
+        try:
+            payload = {'instances': [{'image': image.tolist()}]}
+        except Exception as err:
+            self.logger.error('Failed to format payload image with shape %s '
+                              'due to %s: %s', image.shape,
+                              type(err).__name__, image.shape)
+        return payload
 
     def handle_tornado_response(self, response):
         """Handle the API response.
@@ -204,10 +210,6 @@ class TensorFlowServingClient(Client):
             self.logger.error('Cannot fix tf-serving response JSON: %s', err)
             raise err
 
-    def format_image_payload(self, image):
-        """Format image as JSON payload for tf-serving"""
-        return {'instances': [{'image': image.tolist()}]}
-
     def handle_tornado_response(self, response):
         text = response.body
         try:
@@ -230,10 +232,6 @@ class DataProcessingClient(Client):
         """
         return 'http://{}:{}/process/{}/{}'.format(
             self.host, self.port, process_type, function)
-
-    def format_image_payload(self, image):
-        """Format image as JSON payload for tf-serving"""
-        return {'instances': [{'image': image.tolist()}]}
 
     def handle_tornado_response(self, response):
         text = response.body
