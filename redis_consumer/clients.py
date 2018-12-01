@@ -41,16 +41,6 @@ from tornado import escape
 from tornado.gen import multi
 
 
-class TensorFlowServingError(Exception):
-    """Custom error for TensorFlowServing"""
-    pass
-
-
-class DataProcessingError(Exception):
-    """Custom error for DataProcessing API"""
-    pass
-
-
 class Client(object):
     """Abstract Base class for API Clients"""
 
