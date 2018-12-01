@@ -167,11 +167,17 @@ class Client(object):
                 errtxt = escape.json_decode(err.response.body)['error']
                 self.logger.error('%s %s: %s', type(err).__name__, err, errtxt)
                 raise err
+        # Using gen.multi - too many requests causes tf-serving OOM.
+        # try:
+        #     reqs = (http_client.fetch(url, body=p, **kwargs) for p in payloads)
+        #     responses = await multi([r for r in reqs])
+        #     results = [self.handle_tornado_response(r) for r in responses]
+        # except httpclient.HTTPError as err:
+        #     err_body = escape.json_decode(err.response.body)['error']
+        #     # err_body = self.decode_error(err)
+        #     self.logger.error('Error: %s: %s', err, err_body)
+        #     raise err
 
-        # # Using gen.multi - causes unpredictable 429 errors
-        # reqs = (http_client.fetch(url, body=p, **kwargs) for p in payloads)
-        # responses = await multi([r for r in reqs])
-        # results = [self.handle_tornado_response(r) for r in responses]
         return results
 
 
