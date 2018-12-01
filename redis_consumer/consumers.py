@@ -466,6 +466,6 @@ class PredictionConsumer(Consumer):
 
     def consume(self, interval, status='new', prefix='predict'):
         # verify that tf-serving is ready to accept images
-        self.tf_client.verify_endpoint_liveness(expected_code=404)
-        self.dp_client.verify_endpoint_liveness(expected_code=200)
+        self.tf_client.verify_endpoint_liveness(code=404, endpoint='')
+        self.dp_client.verify_endpoint_liveness(code=200, endpoint='health')
         super(PredictionConsumer, self).consume(interval, status, prefix)

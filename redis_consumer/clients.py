@@ -54,14 +54,9 @@ class DataProcessingError(Exception):
 class Client(object):
     """Abstract Base class for API Clients"""
 
-    def __init__(self,
-                 host,
-                 port,
-                 max_body_size=5242880,  # 5MB
-                 health_route=None):
+    def __init__(self, host, port, max_body_size=1073741824):
         self.host = host
         self.port = port
-        self.health_route = health_route
         self.max_body_size = max_body_size
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
@@ -73,30 +68,33 @@ class Client(object):
                                  num_retries=60,
                                  timeout=10,
                                  retry_interval=10,
-                                 expected_code=200):
+                                 code=200,
+                                 endpoint=None):
         """Ping API to check if the service is up.
         # Arguments:
             num_retries: number of attempts to ping
             timeout: timeout in seconds for each ping attempt
             retry_interval: time to wait between retries
+            code: expected healthy HTTP response code
+            endpoint: the health-check endpoint of the host
         # Returns:
             True if service is live otherwise False
         """
         liveness_url = 'http://{}:{}'.format(self.host, self.port)
-        if self.health_route is not None:
-            liveness_url = '{}/{}'.format(liveness_url, self.health_route)
+        if endpoint is not None:
+            liveness_url = '{}/{}'.format(liveness_url, endpoint)
 
         for i in range(num_retries):
             try:
                 response = requests.get(liveness_url, timeout=timeout)
-                if response.status_code == expected_code:
+                if response.status_code == code:
                     self.logger.debug('Connection established after '
                                       '%s attempts.', i + 1)
                     break
 
                 self.logger.error('Expected a %s response but got %s. '
                                   'Entered `unreachable` code block.',
-                                  expected_code, response.status_code)
+                                  code, response.status_code)
 
             except Exception as err:
                 self.logger.warning('Encountered %s while checking API '
@@ -180,14 +178,6 @@ class Client(object):
 class TensorFlowServingClient(Client):
     """Class to interact with TensorFlow Serving"""
 
-    def __init__(self,
-                 host,
-                 port,
-                 max_body_size=1073741824,  # 1GB
-                 health_route=None):
-        super(TensorFlowServingClient, self).__init__(
-            host, port, max_body_size, health_route)
-
     def get_url(self, model_name, model_version):
         """Get API URL for TensorFlow Serving, based on model name and version
         # Arguments:
@@ -233,14 +223,6 @@ class TensorFlowServingClient(Client):
 
 class DataProcessingClient(Client):
     """Class to interact with the DataProcessing API"""
-
-    def __init__(self,
-                 host,
-                 port,
-                 max_body_size=5242880,  # 5MB
-                 health_route='health'):
-        super(DataProcessingClient, self).__init__(
-            host, port, max_body_size, health_route)
 
     def get_url(self, process_type, function):
         """Get API URL for TensorFlow Serving, based on model name and version
