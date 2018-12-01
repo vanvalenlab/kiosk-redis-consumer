@@ -173,6 +173,10 @@ class Client(object):
                 errtxt = self.parse_error(err)
                 self.logger.error('%s %s: %s', type(err).__name__, err, errtxt)
                 raise err
+            except Exception as err:
+                self.logger.error('%s: %s', type(err).__name__, err)
+                raise err
+
         # Using gen.multi - too many requests causes tf-serving OOM.
         # try:
         #     reqs = (http_client.fetch(url, body=p, **kwargs) for p in payloads)
