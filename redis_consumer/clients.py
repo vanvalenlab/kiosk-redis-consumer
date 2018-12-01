@@ -164,8 +164,8 @@ class Client(object):
                 result = self.handle_tornado_response(response)
                 results.append(result)
             except httpclient.HTTPError as err:
-                err_body = escape.json_decode(err.response.body)['error']
-                self.logger.error('Error: %s: %s', err, err_body)
+                errtxt = escape.json_decode(err.response.body)['error']
+                self.logger.error('%s %s: %s', type(err).__name__, err, errtxt)
                 raise err
 
         # # Using gen.multi - causes unpredictable 429 errors
