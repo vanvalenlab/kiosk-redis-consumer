@@ -38,6 +38,7 @@ import boto3
 from google.cloud import storage as google_storage
 
 from redis_consumer import settings
+from redis_consumer.settings import DOWNLOAD_DIR
 
 
 def get_client(cloud_provider):
@@ -64,10 +65,10 @@ class Storage(object):
     Supported cloud stroage provider will have child class implementations.
     """
 
-    def __init__(self, bucket):
+    def __init__(self, bucket, download_dir=DOWNLOAD_DIR):
         self._client = None
         self.bucket = bucket
-        self.download_dir = settings.DOWNLOAD_DIR
+        self.download_dir = download_dir
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
     def get_download_path(self, filename, download_dir=None):
@@ -109,8 +110,8 @@ class Storage(object):
 class GoogleStorage(Storage):
     """Interact with Google Cloud Storage buckets"""
 
-    def __init__(self, bucket):
-        super(GoogleStorage, self).__init__(bucket)
+    def __init__(self, bucket, download_dir=DOWNLOAD_DIR):
+        super(GoogleStorage, self).__init__(bucket, download_dir)
         self._client = google_storage.Client()
         self.bucket_url = 'www.googleapis.com/storage/v1/b/{}/o'.format(bucket)
 
@@ -175,13 +176,15 @@ class GoogleStorage(Storage):
 class S3Storage(Storage):
     """Interact with Amazon S3 buckets"""
 
-    def __init__(self, bucket):
-        super(S3Storage, self).__init__(bucket)
         self._client = boto3.client(
             's3',
             region_name=settings.AWS_REGION,
             aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY)
+    def __init__(self,
+                 bucket,
+                 download_dir=DOWNLOAD_DIR):
+        super(S3Storage, self).__init__(bucket, download_dir)
         self.bucket_url = 's3.amazonaws.com/{}'.format(bucket)
 
     def get_public_url(self, filepath):
