@@ -156,6 +156,21 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             except:
                 self.logger.warning('Could not extract %s', info.filename)
 
+    def get_image_files_from_dir(self, fname, destination=None):
+        """Based on the file, returns a list of all images in that file.
+        # Arguments:
+            fname: file (image or zip file)
+            destination: folder to save image files from archive, if applicable
+        # Returns:
+            list of image file paths
+        """
+        if zipfile.is_zipfile(fname):
+            archive = self.iter_image_archive(fname, destination)
+            image_files = [f for f in archive]
+        else:
+            image_files = [fname]
+        return image_files
+
     def save_numpy_array(self, arr, name='', subdir='', output_dir=None):
         """Split tensor into channels and save each as a tiff
         # Arguments:
@@ -399,14 +414,8 @@ class PredictionConsumer(Consumer):
 
         try:
             with tempfile.TemporaryDirectory() as tempdir:
-                local_fname = self.storage.download(filename, tempdir)
-
-                if zipfile.is_zipfile(local_fname):
-                    archive = self.iter_image_archive(local_fname, tempdir)
-                    image_files = [f for f in archive]
-                else:
-                    image_files = [local_fname]
-
+                fname = self.storage.download(hvals.get('file_name'), tempdir)
+                image_files = self.get_image_files_from_dir(fname, tempdir)
                 images = (self.get_image(f) for f in image_files)
                 count = len(image_files)
 
