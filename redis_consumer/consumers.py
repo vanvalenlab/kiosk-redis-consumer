@@ -131,7 +131,7 @@ class Consumer(object):
                     if name.startswith(os.path.sep):
                         name = name[1:]
                     zip_file.write(f, arcname=name)
-            self.logger.debug('Saved %s files to %s', zip_filename)
+            self.logger.debug('Saved %s files to %s', len(files), zip_filename)
             return zip_filename
         except Exception as err:
             self.logger.error('Failed to write zipfile: %s', err)
