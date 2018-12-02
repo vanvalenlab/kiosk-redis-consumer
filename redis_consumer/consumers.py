@@ -39,8 +39,9 @@ import tempfile
 import zipfile
 
 import numpy as np
+from PIL import Image
 from skimage.external import tifffile as tiff
-from keras_preprocessing.image import img_to_array, load_img
+from keras_preprocessing.image import img_to_array
 from tornado import ioloop
 
 from redis_consumer.settings import OUTPUT_DIR
@@ -103,7 +104,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             if img.ndim == 2:
                 img = np.expand_dims(img, axis=-1)
         else:
-            img = img_to_array(load_img(filepath))
+            img = img_to_array(Image.open(filepath))
 
         self.logger.debug('Loaded %s into numpy array with '
                           'shape %s', filepath, img.shape)
@@ -388,8 +389,8 @@ class PredictionConsumer(Consumer):
 
                 images = ioloop.IOLoop.current().run_sync(post_many)
                 self.logger.debug('%s %s-processed %s image%s in %s s',
-                                  process_type.capitalize(), count,
-                                  's' if count > 1 else '', k,
+                                  k.capitalize(), process_type, count,
+                                  's' if count > 1 else '',
                                   default_timer() - start)
             except Exception as err:
                 self.logger.error('Encountered %s during %s %s-processing: %s',
