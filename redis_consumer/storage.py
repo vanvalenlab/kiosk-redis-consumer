@@ -23,19 +23,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Storage Interface to upload / download files
-from a variety of cloud platforms.
-"""
+"""Storage Interface to upload / download files from / to the cloud"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import logging
 from timeit import default_timer
 
-import boto3
+import os
+import logging
+
+from decouple import config
 from google.cloud import storage as google_storage
+import boto3
 
 from redis_consumer import settings
 from redis_consumer.settings import DOWNLOAD_DIR
