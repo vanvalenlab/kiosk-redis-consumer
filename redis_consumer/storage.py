@@ -33,10 +33,6 @@ from timeit import default_timer
 import os
 import logging
 
-from decouple import config
-from google.cloud import storage as google_storage
-import boto3
-
 from redis_consumer import settings
 from redis_consumer.settings import DOWNLOAD_DIR
 
@@ -112,6 +108,8 @@ class GoogleStorage(Storage):
 
     def __init__(self, bucket, download_dir=DOWNLOAD_DIR):
         super(GoogleStorage, self).__init__(bucket, download_dir)
+
+        from google.cloud import storage as google_storage
         self._client = google_storage.Client()
         self.bucket_url = 'www.googleapis.com/storage/v1/b/{}/o'.format(bucket)
 
@@ -180,6 +178,8 @@ class S3Storage(Storage):
                  bucket,
                  download_dir=DOWNLOAD_DIR):
         super(S3Storage, self).__init__(bucket, download_dir)
+
+        import boto3
         self._client = boto3.client(
             's3',
             region_name=settings.AWS_REGION,
