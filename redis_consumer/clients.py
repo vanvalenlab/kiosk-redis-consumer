@@ -172,7 +172,7 @@ class Client(object):
             except httpclient.HTTPError as err:
                 errtxt = self.parse_error(err)
                 self.logger.error('%s %s: %s', type(err).__name__, err, errtxt)
-                raise err
+                raise httpclient.HTTPError(err.code, '{}'.format(errtxt))
             except Exception as err:
                 self.logger.error('%s: %s', type(err).__name__, err)
                 raise err
