@@ -28,23 +28,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from hashlib import md5
+from time import sleep, time
+from timeit import default_timer
+
 import json
 import logging
 import os
 import tempfile
 import zipfile
-from hashlib import md5
-from time import sleep, time
-from timeit import default_timer
 
 import numpy as np
 from PIL import Image
-from scipy import ndimage
 from skimage.external import tifffile as tiff
-from skimage.feature import peak_local_max
-from skimage.measure import label
-from skimage.morphology import watershed
-from skimage.morphology import remove_small_objects, dilation, erosion
 from keras_preprocessing.image import img_to_array
 from tornado import ioloop
 
