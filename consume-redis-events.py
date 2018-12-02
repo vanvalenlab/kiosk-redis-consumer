@@ -88,7 +88,7 @@ if __name__ == '__main__':
             prefix=settings.HASH_PREFIX)
 
         exit_status = 0
-    except Exception as err:
+    except Exception as err:  # pylint: disable=broad-except
         _logger.critical('Fatal Error: %s: %s', type(err).__name__, err)
         exit_status = 1
 
