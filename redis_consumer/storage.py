@@ -176,15 +176,15 @@ class GoogleStorage(Storage):
 class S3Storage(Storage):
     """Interact with Amazon S3 buckets"""
 
+    def __init__(self,
+                 bucket,
+                 download_dir=DOWNLOAD_DIR):
+        super(S3Storage, self).__init__(bucket, download_dir)
         self._client = boto3.client(
             's3',
             region_name=settings.AWS_REGION,
             aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY)
-    def __init__(self,
-                 bucket,
-                 download_dir=DOWNLOAD_DIR):
-        super(S3Storage, self).__init__(bucket, download_dir)
         self.bucket_url = 's3.amazonaws.com/{}'.format(bucket)
 
     def get_public_url(self, filepath):
