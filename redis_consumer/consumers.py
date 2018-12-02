@@ -188,7 +188,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         out_paths = []
         for channel in range(arr.shape[-1]):
             try:
-                self.logger.debug('saving channel %s', channel)
+                self.logger.debug('Saving channel %s', channel)
                 img = arr[..., channel].astype('float32')
 
                 _name = 'feature_{}.tif'.format(channel)
@@ -202,7 +202,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                     os.makedirs(os.path.dirname(path))
 
                 tiff.imsave(path, img)
-                self.logger.debug('saved channel %s to %s', channel, path)
+                self.logger.debug('Saved channel %s to %s', channel, path)
                 out_paths.append(path)
             except Exception as err:
                 out_paths = []
@@ -317,7 +317,7 @@ class PredictionConsumer(Consumer):
         for (a, b, c, d), pred in zip(coords, predicted):
             if tf_results is None:
                 tf_results = np.zeros(list(img.shape)[:-1] + [pred.shape[-1]])
-                self.logger.debug('initialized output tensor of shape %s',
+                self.logger.debug('Initialized output tensor of shape %s',
                                   tf_results.shape)
 
             if pred.ndim >= 4:
@@ -482,7 +482,7 @@ class PredictionConsumer(Consumer):
                 'output_url': output_url,
                 'status': self.final_status
             })
-            self.logger.debug('updated status to %s', self.final_status)
+            self.logger.debug('Updated status to %s', self.final_status)
 
         except Exception as err:  # pylint: disable=broad-except
             self._handle_error(err, redis_hash)
