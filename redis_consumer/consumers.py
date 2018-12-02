@@ -421,22 +421,15 @@ class PredictionConsumer(Consumer):
         return self._process_images(images, count, keys, 'post')
 
     def _consume(self, redis_hash):
-        hash_values = self.redis.hgetall(redis_hash)
+        hvals = self.redis.hgetall(redis_hash)
         self.logger.debug('Found hash to process "%s": %s',
-                          redis_hash, json.dumps(hash_values, indent=4))
+                          redis_hash, json.dumps(hvals, indent=4))
 
         self.redis.hset(redis_hash, 'status', 'processing')
 
-        prekeys = hash_values.get('preprocess_function', '').split(',')
-        postkeys = hash_values.get('postprocess_function', '').split(',')
-
-        model_name = hash_values.get('model_name')
-        model_version = hash_values.get('model_version')
-
-        filename = hash_values.get('file_name')
-
-        cuts = hash_values.get('cuts', '0')
-        field_size = hash_values.get('field_size', 61)
+        model_name = hvals.get('model_name')
+        model_version = hvals.get('model_version')
+        cuts = hvals.get('cuts', '0')
 
         try:
             with tempfile.TemporaryDirectory() as tempdir:
@@ -453,7 +446,9 @@ class PredictionConsumer(Consumer):
                     predicted = []
                     for p in preprocessed:
                         prediction = self.process_big_image(
-                            cuts, p, field_size, model_name, model_version)
+                            cuts, p,
+                            hvals.get('field_size', 61),
+                            model_name, model_version)
                         predicted.append(prediction)
                 else:
                     predicted = self.segment_images(
