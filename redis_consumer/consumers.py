@@ -39,9 +39,8 @@ import tempfile
 import zipfile
 
 import numpy as np
-from PIL import Image
 from skimage.external import tifffile as tiff
-from keras_preprocessing.image import img_to_array
+from keras_preprocessing.image import img_to_array, load_img
 from tornado import ioloop
 
 from redis_consumer.settings import OUTPUT_DIR
@@ -104,7 +103,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             if img.ndim == 2:
                 img = np.expand_dims(img, axis=-1)
         else:
-            img = img_to_array(Image.open(filepath))
+            img = img_to_array(load_img(filepath))
 
         self.logger.debug('Loaded %s into numpy array with '
                           'shape %s', filepath, img.shape)
