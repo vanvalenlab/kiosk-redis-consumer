@@ -38,10 +38,10 @@ import requests
 
 from tornado import httpclient
 from tornado import escape
-from tornado.gen import multi
+from tornado.gen import multi  # pylint: disable=unused-import
 
 
-class Client(object):
+class Client(object):  # pylint: disable=useless-object-inheritance
     """Abstract Base class for API Clients"""
 
     def __init__(self, host, port, max_body_size=1073741824):
@@ -86,10 +86,13 @@ class Client(object):
                                   'Entered `unreachable` code block.',
                                   code, response.status_code)
 
-            except Exception as err:
+            except requests.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s while checking API '
                                     ' liveness:  %s', type(err).__name__, err)
-
+            except Exception as err:
+                self.logger.warning('Encountered unexpected %s while checking '
+                                    'API liveness: %s', type(err).__name__, err)
+                raise err
             # sleep as long as needed to allow tf-serving time to startup
             time.sleep(retry_interval)
         else:  # for/else loop.  only enters block after all retries
@@ -108,7 +111,7 @@ class Client(object):
         """
         try:
             payload = {'instances': [{'image': image.tolist()}]}
-        except Exception as err:
+        except Exception as err:  # pylint: disable=broad-except
             self.logger.error('Failed to format payload image with shape %s '
                               'due to %s: %s', image.shape,
                               type(err).__name__, image.shape)
@@ -206,8 +209,8 @@ class TensorFlowServingClient(Client):
             self.host, self.port, model_name, model_version, 'predict')
 
     def fix_json(self, response_text):
-        """Sometimes TF Serving has strange scientific notation e.g. '1e5.0,'
-        so convert the float-exponent to an integer for JSON parsing.
+        """Some TensorFlow Serving versions have strange scientific notation bug
+        (e.g. '1e5.0,'). Convert the float exponent to an int for JSON parsing.
         # Arguments:
             response_text: HTTP response as string
         # Returns:
@@ -228,7 +231,7 @@ class TensorFlowServingClient(Client):
         text = response.body
         try:
             prediction_json = json.loads(text)
-        except:
+        except:  # pylint: disable=bare-except
             prediction_json = self.fix_json(text)
         return np.array(list(prediction_json['predictions'][0]))
 
