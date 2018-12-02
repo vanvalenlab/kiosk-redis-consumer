@@ -47,7 +47,7 @@ from tornado import ioloop
 from redis_consumer.settings import OUTPUT_DIR
 
 
-class Consumer(object):
+class Consumer(object):  # pylint: disable=useless-object-inheritance
     """Base class for all redis event consumer classes"""
 
     def __init__(self,
@@ -217,7 +217,7 @@ class Consumer(object):
                     self._consume(redis_hash)
                     self.logger.debug('Consumed key %s in %s s',
                                       redis_hash, default_timer() - start)
-            except Exception as err:
+            except Exception as err:  # pylint: disable=broad-except
                 self.logger.error(err)
 
             sleep(interval)
@@ -456,7 +456,7 @@ class PredictionConsumer(Consumer):
             })
             self.logger.debug('updated status to %s', self.final_status)
 
-        except Exception as err:
+        except Exception as err:  # pylint: disable=broad-except
             self._handle_error(err, redis_hash)
 
     def consume(self, interval, status='new', prefix='predict'):
