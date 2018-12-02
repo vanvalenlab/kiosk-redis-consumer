@@ -455,7 +455,7 @@ class PredictionConsumer(Consumer):
                         preprocessed, count, model_name, model_version)
 
                 postprocessed = self.postprocess_images(
-                    predicted, count, hvals.get('postprocess_function',))
+                    predicted, count, hvals.get('postprocess_function'))
 
                 all_output = []
                 # Save each result channel as an image file
