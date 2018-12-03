@@ -434,7 +434,8 @@ class PredictionConsumer(Consumer):
             with tempfile.TemporaryDirectory() as tempdir:
                 fname = self.storage.download(hvals.get('file_name'), tempdir)
                 image_files = self.get_image_files_from_dir(fname, tempdir)
-                images = (self.get_image(f) for f in image_files)
+                # TODO: was generator - was causing StreamClosedError
+                images = [self.get_image(f) for f in image_files]
                 count = len(image_files)
 
                 preprocessed = self.preprocess_images(
