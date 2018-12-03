@@ -388,14 +388,13 @@ class PredictionConsumer(Consumer):
                         images, url, timeout=300 * count, max_clients=count)
 
                 images = ioloop.IOLoop.current().run_sync(post_many)
-                self.logger.debug('%s %s-processed %s image%s in %s s',
-                                  k.capitalize(), process_type, count,
-                                  's' if count > 1 else '',
-                                  default_timer() - start)
             except Exception as err:
                 self.logger.error('Encountered %s during %s %s-processing: %s',
                                   type(err).__name__, k, process_type, err)
                 raise err
+            self.logger.debug('Finished %s %s-processing %s image%s in %s s',
+                              k, process_type, count, 's' if count > 1 else '',
+                              default_timer() - start)
         return images
 
     def preprocess_images(self, images, count, keys):

@@ -110,11 +110,15 @@ class Client(object):  # pylint: disable=useless-object-inheritance
             Formatted payload for the specific API
         """
         try:
+            self.logger.debug('Formatting image payload with shape %s as JSON',
+                              image.shape)
             payload = {'instances': [{'image': image.tolist()}]}
         except Exception as err:  # pylint: disable=broad-except
             self.logger.error('Failed to format payload image with shape %s '
                               'due to %s: %s', image.shape,
                               type(err).__name__, image.shape)
+        self.logger.debug('Successfully formatted image payload with shape %s'
+                          ' as JSON', image.shape)
         return payload
 
     def handle_tornado_response(self, response):
@@ -233,7 +237,10 @@ class TensorFlowServingClient(Client):
             prediction_json = json.loads(text)
         except:  # pylint: disable=bare-except
             prediction_json = self.fix_json(text)
-        return np.array(list(prediction_json['predictions'][0]))
+        result = np.array(list(prediction_json['predictions'][0]))
+        self.logger.debug('Loaded response into np.array of shape %s and sum %s',
+                          result.shape, result.sum())
+        return result
 
 
 class DataProcessingClient(Client):
@@ -253,4 +260,7 @@ class DataProcessingClient(Client):
     def handle_tornado_response(self, response):
         text = response.body
         processed_json = json.loads(text)
-        return np.array(list(processed_json['processed'][0]))
+        result = np.array(list(processed_json['processed'][0]))
+        self.logger.debug('Loaded response into np.array of shape %s with sum %s',
+                          result.shape, result.sum())
+        return result
