@@ -182,13 +182,8 @@ class PredictionConsumer(Consumer):
         padded_img = utils.pad_image(img, field)
 
         images, coords = [], []
-
         for a, b, c, d in self._iter_cuts(img, cuts):
-            if img.ndim >= 4:
-                data = padded_img[:, a:b + 2 * win_x, c:d + 2 * win_y, :]
-            else:
-                data = padded_img[a:b + 2 * win_x, c:d + 2 * win_y, :]
-
+            data = padded_img[..., a:b + 2 * win_x, c:d + 2 * win_y, :]
             images.append(data)
             coords.append((a, b, c, d))
 
@@ -201,10 +196,7 @@ class PredictionConsumer(Consumer):
                 self.logger.debug('Initialized output tensor of shape %s',
                                   tf_results.shape)
 
-            if pred.ndim >= 4:
-                tf_results[:, a:b, c:d, :] = pred[:, win_x:-win_x, win_y:-win_y, :]
-            else:
-                tf_results[a:b, c:d, :] = pred[win_x:-win_x, win_y:-win_y, :]
+            tf_results[..., a:b, c:d, :] = pred[..., win_x:-win_x, win_y:-win_y, :]
 
         return tf_results
 
