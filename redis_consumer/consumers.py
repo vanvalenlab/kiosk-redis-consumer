@@ -136,7 +136,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 start = default_timer()
                 self._consume(redis_hash)
                 self.logger.debug('Consumed key %s in %s s',
-                                    redis_hash, default_timer() - start)
+                                  redis_hash, default_timer() - start)
         except Exception as err:  # pylint: disable=broad-except
             self.logger.error(err)
 
