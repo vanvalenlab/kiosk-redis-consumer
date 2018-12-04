@@ -36,8 +36,8 @@ import time
 import numpy as np
 import requests
 
+import tornado
 from tornado import httpclient
-from tornado import escape
 from tornado.gen import multi  # pylint: disable=unused-import
 
 
@@ -139,7 +139,7 @@ class Client(object):  # pylint: disable=useless-object-inheritance
         # Returns:
             the error message as a string
         """
-        return escape.json_decode(error.response.body)['error']
+        return tornado.escape.json_decode(error.response.body)['error']
 
     async def tornado_images(self, images, url, timeout=300, max_clients=10):
         """POSTs many images to the API at once using tornado.
@@ -161,7 +161,7 @@ class Client(object):  # pylint: disable=useless-object-inheritance
 
         # Construct the JSON Payload for each image
         json_payload = (self.format_image_payload(i) for i in images)
-        payloads = (escape.json_encode(jp) for jp in json_payload)
+        payloads = (tornado.escape.json_encode(jp) for jp in json_payload)
 
         kwargs = {
             'method': 'POST',
@@ -190,9 +190,11 @@ class Client(object):  # pylint: disable=useless-object-inheritance
         #     responses = await multi([r for r in reqs])
         #     results = [self.handle_tornado_response(r) for r in responses]
         # except httpclient.HTTPError as err:
-        #     err_body = escape.json_decode(err.response.body)['error']
-        #     # err_body = self.decode_error(err)
-        #     self.logger.error('Error: %s: %s', err, err_body)
+        #     errtxt = self.parse_error(err)
+        #     self.logger.error('%s %s: %s', type(err).__name__, err, errtxt)
+        #     raise httpclient.HTTPError(err.code, '{}'.format(errtxt))
+        # except Exception as err:
+        #     self.logger.error('%s: %s', type(err).__name__, err)
         #     raise err
 
         return results
