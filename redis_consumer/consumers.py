@@ -311,8 +311,7 @@ class PredictionConsumer(Consumer):
             images.append(data)
             coords.append((a, b, c, d))
 
-        predicted = self.segment_images(
-            images, len(images), model_name, model_version)
+        predicted = self.segment_images(images, model_name, model_version)
 
         for (a, b, c, d), pred in zip(coords, predicted):
             if tf_results is None:
