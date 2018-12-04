@@ -327,16 +327,16 @@ class PredictionConsumer(Consumer):
 
         return tf_results
 
-    def segment_images(self, images, count, model_name, model_version):
+    def segment_images(self, images, model_name, model_version):
         """Use the TensorFlowServingClient to segment each image
         # Arguments:
             images: iterator of image data to segment
-            count: total count of images
             model_name: name of model in tf-serving
             model_version: integer version number of model in tf-serving
         # Returns:
             results: list of numpy array of transformed data.
         """
+        count = len(images)
         self.logger.info('Segmenting %s image%s with model %s:%s',
                          count, 's' if count > 1 else '',
                          model_name, model_version)
@@ -359,16 +359,16 @@ class PredictionConsumer(Consumer):
                               model_name, model_version, err)
             raise err
 
-    def _process_images(self, images, count, keys, process_type):
+    def _process_images(self, images, keys, process_type):
         """Apply each processing function to each image in images
         # Arguments:
             images: iterable of image data
-            count: total number of images
             keys: list of function names to apply to images
             process_type: pre or post processing
         # Returns:
             list of processed image data
         """
+        count = len(images)
         process_type = str(process_type).lower()
         if not isinstance(keys, tuple) and not isinstance(keys, list):
             keys = '' if keys is None else keys
@@ -397,27 +397,25 @@ class PredictionConsumer(Consumer):
                               default_timer() - start)
         return images
 
-    def preprocess_images(self, images, count, keys):
+    def preprocess_images(self, images, keys):
         """Wrapper for _process_images but can only call with type="pre"
         # Arguments:
             images: iterable of image data
-            count: total number of images
             keys: list of function names to apply to images
         # Returns:
             list of pre-processed image data
         """
-        return self._process_images(images, count, keys, 'pre')
+        return self._process_images(images, keys, 'pre')
 
-    def postprocess_images(self, images, count, keys):
+    def postprocess_images(self, images, keys):
         """Wrapper for _process_images but can only call with type="post"
         # Arguments:
             images: iterable of image data
-            count: total number of images
             keys: list of function names to apply to images
         # Returns:
             list of post-processed image data
         """
-        return self._process_images(images, count, keys, 'post')
+        return self._process_images(images, keys, 'post')
 
     def _consume(self, redis_hash):
         hvals = self.redis.hgetall(redis_hash)
@@ -436,10 +434,9 @@ class PredictionConsumer(Consumer):
                 image_files = self.get_image_files_from_dir(fname, tempdir)
                 # TODO: was generator - was causing StreamClosedError
                 images = [self.get_image(f) for f in image_files]
-                count = len(image_files)
 
                 preprocessed = self.preprocess_images(
-                    images, count, hvals.get('preprocess_function'))
+                    images, hvals.get('preprocess_function'))
 
                 # predict
                 if cuts.isdigit() and int(cuts) > 0:
@@ -452,10 +449,10 @@ class PredictionConsumer(Consumer):
                         predicted.append(prediction)
                 else:
                     predicted = self.segment_images(
-                        preprocessed, count, model_name, model_version)
+                        preprocessed, model_name, model_version)
 
                 postprocessed = self.postprocess_images(
-                    predicted, count, hvals.get('postprocess_function'))
+                    predicted, hvals.get('postprocess_function'))
 
                 all_output = []
                 # Save each result channel as an image file
