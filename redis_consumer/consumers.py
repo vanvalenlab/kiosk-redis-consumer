@@ -152,7 +152,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 if os.path.isfile(extracted):
                     if is_valid(extracted):
                         yield extracted
-            except:
+            except:  # pylint: disable=bare-except
                 self.logger.warning('Could not extract %s', info.filename)
 
     def get_image_files_from_dir(self, fname, destination=None):
@@ -203,7 +203,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 tiff.imsave(path, img)
                 self.logger.debug('Saved channel %s to %s', channel, path)
                 out_paths.append(path)
-            except Exception as err:
+            except Exception as err:  # pylint: disable=broad-except
                 out_paths = []
                 self.logger.error('Could not save channel %s as image: %s',
                                   channel, err)
