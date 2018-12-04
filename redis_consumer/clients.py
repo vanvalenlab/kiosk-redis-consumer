@@ -238,8 +238,8 @@ class TensorFlowServingClient(Client):
         except:  # pylint: disable=bare-except
             prediction_json = self.fix_json(text)
         result = np.array(list(prediction_json['predictions'][0]))
-        self.logger.debug('Loaded response into np.array of shape %s and sum %s',
-                          result.shape, result.sum())
+        self.logger.debug('Loaded response into np.array of shape %s',
+                          result.shape)
         return result
 
 
@@ -261,6 +261,6 @@ class DataProcessingClient(Client):
         text = response.body
         processed_json = json.loads(text)
         result = np.array(list(processed_json['processed'][0]))
-        self.logger.debug('Loaded response into np.array of shape %s with sum %s',
-                          result.shape, result.sum())
+        self.logger.debug('Loaded response into np.array of shape %s',
+                          result.shape)
         return result
