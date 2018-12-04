@@ -32,6 +32,7 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
+import time
 import logging
 
 from redis import StrictRedis
@@ -81,16 +82,11 @@ if __name__ == '__main__':
         dp_client=dp_client,
         final_status='done')
 
-    try:
-        consumer.consume(
-            interval=settings.INTERVAL,
-            status=settings.STATUS,
-            prefix=settings.HASH_PREFIX)
-
-        exit_status = 0
-    except Exception as err:  # pylint: disable=broad-except
-        _logger.critical('Fatal Error: %s: %s', type(err).__name__, err)
-        exit_status = 1
-
-    _logger.debug('Exiting with status: %s', exit_status)
-    sys.exit(exit_status)
+    while True:
+        try:
+            consumer.consume(settings.STATUS, settings.HASH_PREFIX)
+            consumer.logger.debug('Sleeping for %s s', settings.INTERVAL)
+            time.sleep(settings.INTERVAL)
+        except Exception as err:  # pylint: disable=broad-except
+            _logger.critical('Fatal Error: %s: %s', type(err).__name__, err)
+            sys.exit(1)

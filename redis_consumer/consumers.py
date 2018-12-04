@@ -29,12 +29,12 @@ from __future__ import division
 from __future__ import print_function
 
 from hashlib import md5
-from time import sleep, time
+from time import time
 from timeit import default_timer
 
+import os
 import json
 import logging
-import os
 import tempfile
 import zipfile
 
@@ -212,29 +212,22 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def _consume(self, redis_hash):
         raise NotImplementedError
 
-    def consume(self, interval, status=None, prefix=None):
+    def consume(self, status=None, prefix=None):
         """Consume all redis events every `interval` seconds
         # Arguments:
             interval: waits this many seconds between consume calls
         # Returns:
             nothing: this is the consumer main process
         """
-        if not str(interval).isdigit():
-            raise ValueError('Expected `interval` to be a number. '
-                             'Got {}'.format(type(interval)))
-
-        while True:
-            try:
-                # process each unprocessed hash
-                for redis_hash in self.iter_redis_hashes(status, prefix):
-                    start = default_timer()
-                    self._consume(redis_hash)
-                    self.logger.debug('Consumed key %s in %s s',
-                                      redis_hash, default_timer() - start)
-            except Exception as err:  # pylint: disable=broad-except
-                self.logger.error(err)
-
-            sleep(interval)
+        try:
+            # process each unprocessed hash
+            for redis_hash in self.iter_redis_hashes(status, prefix):
+                start = default_timer()
+                self._consume(redis_hash)
+                self.logger.debug('Consumed key %s in %s s',
+                                    redis_hash, default_timer() - start)
+        except Exception as err:  # pylint: disable=broad-except
+            self.logger.error(err)
 
 
 class PredictionConsumer(Consumer):
