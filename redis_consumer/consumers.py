@@ -299,6 +299,9 @@ class PredictionConsumer(Consumer):
         return self._process_images(images, keys, 'post')
 
     def _consume(self, redis_hash):
+        self.tf_client.verify_endpoint_liveness(code=404, endpoint='')
+        self.dp_client.verify_endpoint_liveness(code=200, endpoint='health')
+
         hvals = self.redis.hgetall(redis_hash)
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
@@ -364,9 +367,3 @@ class PredictionConsumer(Consumer):
 
         except Exception as err:  # pylint: disable=broad-except
             self._handle_error(err, redis_hash)
-
-    def consume(self, interval, status='new', prefix='predict'):
-        # verify that tf-serving is ready to accept images
-        self.tf_client.verify_endpoint_liveness(code=404, endpoint='')
-        self.dp_client.verify_endpoint_liveness(code=200, endpoint='health')
-        super(PredictionConsumer, self).consume(interval, status, prefix)
