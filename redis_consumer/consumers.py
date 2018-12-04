@@ -28,8 +28,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hashlib import md5
-from time import time
 from timeit import default_timer
 
 import os
@@ -39,11 +37,9 @@ import tempfile
 import zipfile
 
 import numpy as np
-from PIL import Image
-from skimage.external import tifffile as tiff
-from keras_preprocessing.image import img_to_array
 from tornado import ioloop
 
+from redis_consumer import utils
 from redis_consumer.settings import OUTPUT_DIR
 
 
@@ -90,52 +86,6 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         self.logger.error('Failed to process redis key %s. %s: %s',
                           redis_hash, type(err).__name__, err)
 
-    def get_image(self, filepath):
-        """Open image file as numpy array
-        # Arguments:
-            filepath: full filepath of image file
-        # Returns:
-            img: numpy array of image data
-        """
-        self.logger.debug('Loading %s into numpy array', filepath)
-        if os.path.splitext(filepath)[-1].lower() in {'.tif', '.tiff'}:
-            img = np.float32(tiff.TiffFile(filepath).asarray())
-            # tiff files should not have a channel dim
-            img = np.expand_dims(img, axis=-1)
-        else:
-            img = img_to_array(Image.open(filepath))
-
-        self.logger.debug('Loaded %s into numpy array with '
-                          'shape %s', filepath, img.shape)
-        return img
-
-    def save_zip_file(self, files, dest=None):
-        """Save files in zip archive and return the path
-        # Arguments:
-            files: all filepaths that will be saved in the zip
-            dest: saves zip file to this directory, OUTPUT_DIR by default
-        # Returns:
-            zip_filename: filepath to new zip archive
-        """
-        try:
-            self.logger.debug('Saving %s files to zip archive', len(files))
-            output_dir = self.output_dir if dest is None else dest
-            filename = 'prediction_{}'.format(time()).encode('utf-8')
-            hashed_filename = '{}.zip'.format(md5(filename).hexdigest())
-            zip_filename = os.path.join(output_dir, hashed_filename)
-            # Create ZipFile and Write each file to it
-            with zipfile.ZipFile(zip_filename, 'w') as zip_file:
-                for f in files:  # writing each file one by one
-                    name = f.replace(output_dir, '')
-                    if name.startswith(os.path.sep):
-                        name = name[1:]
-                    zip_file.write(f, arcname=name)
-            self.logger.debug('Saved %s files to %s', len(files), zip_filename)
-            return zip_filename
-        except Exception as err:
-            self.logger.error('Failed to write zipfile: %s', err)
-            raise err
-
     def iter_image_archive(self, zip_path, destination):
         """Extract all files in archie and yield the paths of all images
         # Arguments:
@@ -169,45 +119,6 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         else:
             image_files = [fname]
         return image_files
-
-    def save_numpy_array(self, arr, name='', subdir='', output_dir=None):
-        """Split tensor into channels and save each as a tiff
-        # Arguments:
-            arr: numpy array of image data
-            name: name of original input image file
-            subdir: optional subdirectory to save the result.
-            output_dir: base directory for features
-        # Returns:
-            out_paths: list of all saved image paths
-        """
-        output_dir = self.output_dir if output_dir is None else output_dir
-        if subdir.startswith(os.path.sep):
-            subdir = subdir[1:]
-
-        out_paths = []
-        for channel in range(arr.shape[-1]):
-            try:
-                self.logger.debug('Saving channel %s', channel)
-                img = arr[..., channel].astype('float32')
-
-                _name = 'feature_{}.tif'.format(channel)
-                if name:
-                    _name = '{}_{}'.format(name, _name)
-
-                path = os.path.join(output_dir, subdir, _name)
-
-                # Create subdirs if they do not exist
-                if not os.path.isdir(os.path.dirname(path)):
-                    os.makedirs(os.path.dirname(path))
-
-                tiff.imsave(path, img)
-                self.logger.debug('Saved channel %s to %s', channel, path)
-                out_paths.append(path)
-            except Exception as err:  # pylint: disable=broad-except
-                out_paths = []
-                self.logger.error('Could not save channel %s as image: %s',
-                                  channel, err)
-        return out_paths
 
     def _consume(self, redis_hash):
         raise NotImplementedError
@@ -244,27 +155,6 @@ class PredictionConsumer(Consumer):
         super(PredictionConsumer, self).__init__(
             redis_client, storage_client, final_status)
 
-    def pad_image(self, image, field):
-        """Pad each the input image for proper dimensions when stitiching
-        # Arguments:
-            image: np.array of image data
-            field: receptive field size of model
-        # Returns:
-            image data padded in the x and y axes
-        """
-        window = (field - 1) // 2
-        # Pad images by the field size in the x and y axes
-        pad_width = []
-        for i in range(len(image.shape)):
-            if i == image.ndim - 3:
-                pad_width.append((window, window))
-            elif i == image.ndim - 2:
-                pad_width.append((window, window))
-            else:
-                pad_width.append((0, 0))
-
-        return np.pad(image, pad_width, mode='reflect')
-
     def _iter_cuts(self, img, cuts):
         crop_x = img.shape[img.ndim - 3] // cuts
         crop_y = img.shape[img.ndim - 2] // cuts
@@ -289,8 +179,7 @@ class PredictionConsumer(Consumer):
         cuts = int(cuts)
         win_x, win_y = (field - 1) // 2, (field - 1) // 2
 
-        tf_results = None  # Channel shape is unknown until first request
-        padded_img = self.pad_image(img, field)
+        padded_img = utils.pad_image(img, field)
 
         images, coords = [], []
 
@@ -305,6 +194,7 @@ class PredictionConsumer(Consumer):
 
         predicted = self.segment_images(images, model_name, model_version)
 
+        tf_results = None  # Channel shape is unknown until first request
         for (a, b, c, d), pred in zip(coords, predicted):
             if tf_results is None:
                 tf_results = np.zeros(list(img.shape)[:-1] + [pred.shape[-1]])
@@ -424,7 +314,7 @@ class PredictionConsumer(Consumer):
                 fname = self.storage.download(hvals.get('file_name'), tempdir)
                 image_files = self.get_image_files_from_dir(fname, tempdir)
                 # TODO: was generator - was causing StreamClosedError
-                images = [self.get_image(f) for f in image_files]
+                images = [utils.get_image(f) for f in image_files]
 
                 preprocessed = self.preprocess_images(
                     images, hvals.get('preprocess_function'))
@@ -451,13 +341,13 @@ class PredictionConsumer(Consumer):
                     subdir = os.path.dirname(imfile.replace(tempdir, ''))
                     name = os.path.splitext(os.path.basename(imfile))[0]
 
-                    _out_paths = self.save_numpy_array(
+                    _out_paths = utils.save_numpy_array(
                         results, name=name, subdir=subdir, output_dir=tempdir)
 
                     all_output.extend(_out_paths)
 
                 # Save each prediction image as zip file
-                zip_file = self.save_zip_file(all_output, tempdir)
+                zip_file = utils.zip_files(all_output, tempdir)
 
                 # Upload the zip file to cloud storage bucket
                 uploaded_file_path = self.storage.upload(zip_file)

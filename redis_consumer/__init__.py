@@ -31,6 +31,7 @@ from redis_consumer import consumers
 from redis_consumer import settings
 from redis_consumer import storage
 from redis_consumer import clients
+from redis_consumer import utils
 
 del absolute_import
 del division
