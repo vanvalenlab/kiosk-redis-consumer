@@ -44,6 +44,7 @@ def get_client(cloud_provider):
     # Returns:
         storage_client: Client for interacting with the cloud.
     """
+    cloud_provider = str(cloud_provider).lower()
     logger = logging.getLogger('storage.get_client')
     if cloud_provider == 'aws':
         storage_client = S3Storage(settings.AWS_S3_BUCKET)
