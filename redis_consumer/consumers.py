@@ -164,7 +164,7 @@ class PredictionConsumer(Consumer):
                 c, d = j * crop_y, (j + 1) * crop_y
                 yield a, b, c, d
 
-    def process_big_image(self, cuts, img, field, model_name, model_version):
+    async def process_big_image(self, cuts, img, field, model_name, model_version):
         """Slice big image into smaller images for prediction,
         then stitches all the smaller images back together
         # Arguments:
@@ -177,27 +177,19 @@ class PredictionConsumer(Consumer):
             tf_results: single numpy array of predictions on big input image
         """
         cuts = int(cuts)
-        win_x, win_y = (field - 1) // 2, (field - 1) // 2
+        winx, winy = (field - 1) // 2, (field - 1) // 2
 
         padded_img = utils.pad_image(img, field)
 
-        images, coords = [], []
-        for a, b, c, d in self._iter_cuts(img, cuts):
-            data = padded_img[..., a:b + 2 * win_x, c:d + 2 * win_y, :]
-            images.append(data)
-            coords.append((a, b, c, d))
-
-        predicted = self.segment_images(images, model_name, model_version)
-
         tf_results = None  # Channel shape is unknown until first request
-        for (a, b, c, d), pred in zip(coords, predicted):
+        for a, b, c, d in self._iter_cuts(img, cuts):
+            data = padded_img[..., a:b + 2 * winx, c:d + 2 * winy, :]
+            pred = await self.segment_image(data, model_name, model_version)
             if tf_results is None:
-                tf_results = np.zeros(list(img.shape)[:-1] + [pred.shape[-1]])
+                tf_results = np.zeros(list(img.shape)[:-1] + [pred.shape[-1]]).astype('float16')
                 self.logger.debug('Initialized output tensor of shape %s',
                                   tf_results.shape)
-
-            tf_results[..., a:b, c:d, :] = pred[..., win_x:-win_x, win_y:-win_y, :]
-
+            tf_results[..., a:b, c:d, :] = pred[..., winx:-winx, winy:-winy, :]
         return tf_results
 
     def segment_images(self, images, model_name, model_version):
