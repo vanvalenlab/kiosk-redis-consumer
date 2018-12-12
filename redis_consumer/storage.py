@@ -140,7 +140,7 @@ class GoogleStorage(Storage):
             bucket = self._client.get_bucket(self.bucket)
             blob = bucket.blob(dest)
             blob.upload_from_filename(filepath)
-            self.logger.debug('Successfully uploaded %s to bucket %s in %s s',
+            self.logger.debug('Successfully uploaded %s to bucket %s in %ss',
                               filepath, self.bucket, default_timer() - start)
             return dest
         except Exception as err:
@@ -163,7 +163,7 @@ class GoogleStorage(Storage):
             blob = self._client.get_bucket(self.bucket).blob(filename)
             with open(dest, 'wb') as new_file:
                 blob.download_to_file(new_file)
-            self.logger.debug('Downloaded %s in %s s',
+            self.logger.debug('Downloaded %s in %ss',
                               dest, default_timer() - start)
             return dest
         except Exception as err:
@@ -209,7 +209,7 @@ class S3Storage(Storage):
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         try:
             self._client.upload_file(filepath, self.bucket, dest)
-            self.logger.debug('Successfully uploaded %s to bucket %s in %s s',
+            self.logger.debug('Successfully uploaded %s to bucket %s in %ss',
                               filepath, self.bucket, default_timer() - start)
             return dest
         except Exception as err:
@@ -234,7 +234,7 @@ class S3Storage(Storage):
         self.logger.debug('Downloading %s to %s.', filename, dest)
         try:
             self._client.download_file(self.bucket, filename, dest)
-            self.logger.debug('Downloaded %s in %s s',
+            self.logger.debug('Downloaded %s in %ss',
                               dest, default_timer() - start)
             return dest
         except Exception as err:
