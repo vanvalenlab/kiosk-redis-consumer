@@ -37,7 +37,6 @@ import tempfile
 import zipfile
 
 import numpy as np
-from tornado import ioloop
 
 from redis_consumer import utils
 from redis_consumer.settings import OUTPUT_DIR
