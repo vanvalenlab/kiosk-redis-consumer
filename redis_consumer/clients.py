@@ -30,15 +30,15 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import asyncio
 import logging
 import time
 
 import numpy as np
 import requests
-
+import aiohttp
 import tornado
 from tornado import httpclient
-from tornado.gen import multi  # pylint: disable=unused-import
 
 
 class Client(object):  # pylint: disable=useless-object-inheritance
@@ -110,6 +110,7 @@ class Client(object):  # pylint: disable=useless-object-inheritance
             Formatted payload for the specific API
         """
         try:
+            # downgrade the float precision to conserve memory
             self.logger.debug('Formatting image payload with shape %s as JSON',
                               image.shape)
             payload = {'instances': [{'image': image.tolist()}]}
@@ -121,11 +122,11 @@ class Client(object):  # pylint: disable=useless-object-inheritance
                           ' as JSON', image.shape)
         return payload
 
-    def handle_tornado_response(self, response):
+    def handle_response(self, response):
         """Handle the API response.
         Each client will have a different implementation
         # Arguments:
-            response: response from the tornado http client
+            response: response from the http server
         # Returns:
             result: data parsed from the API repsonse
         """
@@ -141,8 +142,42 @@ class Client(object):  # pylint: disable=useless-object-inheritance
         """
         return tornado.escape.json_decode(error.response.body)['error']
 
-    async def tornado_images(self, images, url, timeout=300, max_clients=10):
-        """POSTs many images to the API at once using tornado.
+    async def post_image(self,
+                         image,
+                         url,
+                         timeout=30,
+                         max_clients=10,
+                         retries=5):
+        """POSTs many images to the API at once.
+        # Arguments:
+            image: image data to pass to the API
+            url: URL to send the request
+            max_clients: max number of simultaneous http clients
+            retries: max number of attempts to retry the POST request
+        # Returns:
+            results: list of results from API
+        """
+        backoff = np.random.randint(3, 6)
+        payload = self.format_image_payload(image)
+        async with aiohttp.ClientSession() as session:
+            for _ in range(retries):
+                try:
+                    async with session.post(url, json=payload) as resp:
+                        result = self.handle_response(await resp.json())
+                        return result
+                except (aiohttp.ClientPayloadError,
+                        aiohttp.ClientResponseError) as err:
+                    self.logger.error('Encountered %s: %s. Sleeping for %ss '
+                                      'and retrying...', type(err).__name__,
+                                      err, backoff)
+                except Exception as err:
+                    self.logger.error('%s: %s', type(err).__name__, err)
+                    raise err
+                await asyncio.sleep(backoff)
+            raise ValueError('Maximum retries exceeded ({})'.format(retries))
+
+    async def post_images(self, images, url, max_clients=10):
+        """POSTs many images to the API at once.
         # Arguments:
             images: list of image data to pass to the API
             url: URL to send the request
@@ -155,47 +190,54 @@ class Client(object):  # pylint: disable=useless-object-inheritance
         httpclient.AsyncHTTPClient.configure(
             None,
             max_body_size=self.max_body_size,
+            max_buffer_size=self.max_body_size,
             max_clients=max_clients)
 
-        http_client = httpclient.AsyncHTTPClient()
+        kwargs = {
+            'method': 'POST',
+            'request_timeout': 30 * len(images),
+            'connect_timeout': 30 * len(images)
+        }
 
         # Construct the JSON Payload for each image
         json_payload = (self.format_image_payload(i) for i in images)
         payloads = (tornado.escape.json_encode(jp) for jp in json_payload)
-
-        kwargs = {
-            'method': 'POST',
-            'request_timeout': timeout,
-            'connect_timeout': timeout
-        }
+        http_client = httpclient.AsyncHTTPClient()
 
         results = []
-        for payload in payloads:
-            try:
-                kwargs['body'] = payload
-                response = await http_client.fetch(url, **kwargs)
-                result = self.handle_tornado_response(response)
-                results.append(result)
-            except httpclient.HTTPError as err:
-                errtxt = self.parse_error(err)
-                self.logger.error('%s %s: %s', type(err).__name__, err, errtxt)
-                raise httpclient.HTTPError(err.code, '{}'.format(errtxt))
-            except Exception as err:
-                self.logger.error('%s: %s', type(err).__name__, err)
-                raise err
+        # for i, payload in enumerate(payloads):
+        #     try:
+        #         if payload is None:
+        #             raise ZeroDivisionError
+        #         response = await http_client.fetch(url, method='POST', body=payload)
+        #         self.logger.info('Waited for response %s', i)
+        #         result = self.handle_response(response)
+        #         results.append(result)
+        #     except tornado.iostream.StreamClosedError as err:
+        #         self.logger.warning('Stream Closed: %s: %s', type(err).__name__, err)
+        #     except httpclient.HTTPError as err:
+        #         errtxt = self.parse_error(err)
+        #         self.logger.error('%s %s: %s', type(err).__name__, err, errtxt)
+        #         raise httpclient.HTTPError(err.code, '{}'.format(errtxt))
+        #     except Exception as err:
+        #         self.logger.error('%s: %s', type(err).__name__, err)
+        #         raise err
 
-        # Using gen.multi - too many requests causes tf-serving OOM.
-        # try:
-        #     reqs = (http_client.fetch(url, body=p, **kwargs) for p in payloads)
-        #     responses = await multi([r for r in reqs])
-        #     results = [self.handle_tornado_response(r) for r in responses]
-        # except httpclient.HTTPError as err:
-        #     errtxt = self.parse_error(err)
-        #     self.logger.error('%s %s: %s', type(err).__name__, err, errtxt)
-        #     raise httpclient.HTTPError(err.code, '{}'.format(errtxt))
-        # except Exception as err:
-        #     self.logger.error('%s: %s', type(err).__name__, err)
-        #     raise err
+        # Using tornado.gen.multi - too many requests causes tf-serving OOM.
+        try:
+            http_client = httpclient.AsyncHTTPClient()
+            reqs = [http_client.fetch(url, body=p, **kwargs) for p in payloads]
+            responses = await tornado.gen.multi(reqs)
+            results = [self.handle_response(r) for r in responses]
+        except tornado.iostream.StreamClosedError as err:
+            self.logger.warning('Stream Closed: %s: %s', type(err).__name__, err)
+        except httpclient.HTTPError as err:
+            errtxt = self.parse_error(err)
+            self.logger.error('%s %s: %s', type(err).__name__, err, errtxt)
+            raise httpclient.HTTPError(err.code, '{}'.format(errtxt))
+        except Exception as err:
+            self.logger.error('%s: %s', type(err).__name__, err)
+            raise err
 
         return results
 
@@ -233,13 +275,16 @@ class TensorFlowServingClient(Client):
             self.logger.error('Cannot fix tf-serving response JSON: %s', err)
             raise err
 
-    def handle_tornado_response(self, response):
-        text = response.body
-        try:
-            prediction_json = json.loads(text)
-        except:  # pylint: disable=bare-except
-            prediction_json = self.fix_json(text)
-        result = np.array(list(prediction_json['predictions'][0]))
+    def handle_response(self, response):
+        # text = response.body
+        # if text is None:
+        #     self.logger.error('response body is None')
+        # try:
+        #     prediction_json = json.loads(text)
+        # except:  # pylint: disable=bare-except
+        #     prediction_json = self.fix_json(text)
+        prediction_json = response
+        result = np.array(list(prediction_json['predictions'][0]), dtype='float16')
         self.logger.debug('Loaded response into np.array of shape %s',
                           result.shape)
         return result
@@ -259,10 +304,11 @@ class DataProcessingClient(Client):
         return 'http://{}:{}/process/{}/{}'.format(
             self.host, self.port, process_type, function)
 
-    def handle_tornado_response(self, response):
-        text = response.body
-        processed_json = json.loads(text)
-        result = np.array(list(processed_json['processed'][0]))
+    def handle_response(self, response):
+        # text = response.body
+        # processed_json = json.loads(text)
+        processed_json = response
+        result = np.array(list(processed_json['processed'][0]), dtype='float16')
         self.logger.debug('Loaded response into np.array of shape %s',
                           result.shape)
         return result
