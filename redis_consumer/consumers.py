@@ -32,6 +32,7 @@ from timeit import default_timer
 
 import os
 import json
+import asyncio
 import logging
 import tempfile
 import zipfile
@@ -210,12 +211,12 @@ class PredictionConsumer(Consumer):
         """
         try:
             start = default_timer()
-            self.logger.info('Segmenting image of shape %s with model %s:%s',
-                             image.shape, model_name, model_version)
+            self.logger.debug('Segmenting image of shape %s with model %s:%s',
+                              image.shape, model_name, model_version)
 
             url = self.tf_client.get_url(model_name, model_version)
-            results = await self.tf_client.post_image(
-                image, url, max_clients=1)
+            request = self.tf_client.post_image(image, url)
+            results = await asyncio.ensure_future(request)
 
             self.logger.debug('Segmented image with model %s:%s in %ss',
                               model_name, model_version,
@@ -275,6 +276,11 @@ class PredictionConsumer(Consumer):
         return self._process(image, key, 'post')
 
     async def _consume(self, redis_hash):
+        """
+        TODO: process each imfile in parallel.
+        TODO: Killed due to memory when processing ALL at once.
+        TODO: process some number of batches in parallel?
+        """
         self.tf_client.verify_endpoint_liveness(code=404, endpoint='')
 
         hvals = self.redis.hgetall(redis_hash)
@@ -286,31 +292,50 @@ class PredictionConsumer(Consumer):
         model_name = hvals.get('model_name')
         model_version = hvals.get('model_version')
         cuts = hvals.get('cuts', '0')
+        field = hvals.get('field_size', 61)
+        pre_func = hvals.get('preprocess_function')
+        post_func = hvals.get('postprocess_function')
+
+        async def predict(data):
+            if cuts.isdigit() and int(cuts) > 0:
+                fut = self.process_big_image(
+                    cuts, data, field, model_name, model_version)
+            else:
+                fut = self.segment_image(data, model_name, model_version)
+            return await asyncio.ensure_future(fut)
 
         try:
             with tempfile.TemporaryDirectory() as tempdir:
                 fname = self.storage.download(hvals.get('file_name'), tempdir)
                 image_files = self.get_image_files_from_dir(fname, tempdir)
 
+                # sub_dirs, names = [], []
+                # for i in image_files:
+                #     sub_dirs.append(os.path.dirname(i.replace(tempdir, '')))
+                #     names.append(os.path.splitext(os.path.basename(i))[0])
+
+                # images = (utils.get_image(i) for i in image_files)
+                # pre = (self.preprocess(i, pre_func) for i in images)
+                # predictions = await asyncio.gather(*(predict(i) for i in pre))
+                # post = (self.postprocess(i, post_func) for i in predictions)
+
+                # # Save each post processed image as a file
+                # all_output = []
+                # for i, res in enumerate(post):
+                #     name, sub = names[i], sub_dirs[i]
+                #     _out = utils.save_numpy_array(res, name, sub, tempdir)
+                #     all_output.extend(_out)
+
                 all_output = []
-                # TODO: process each imfile in parallel
                 for i, imfile in enumerate(image_files):
+                    start = default_timer()
                     image = utils.get_image(imfile)
 
-                    pre = self.preprocess(
-                        image, hvals.get('preprocess_function'))
+                    pre = self.preprocess(image, pre_func)
 
-                    if cuts.isdigit() and int(cuts) > 0:
-                        prediction = await self.process_big_image(
-                            cuts, pre,
-                            hvals.get('field_size', 61),
-                            model_name, model_version)
-                    else:
-                        prediction = await self.segment_image(
-                            pre, model_name, model_version)
+                    prediction = await predict(pre)
 
-                    post = self.postprocess(
-                        prediction, hvals.get('postprocess_function'))
+                    post = self.postprocess(prediction, post_func)
 
                     # Save each result channel as an image file
                     subdir = os.path.dirname(imfile.replace(tempdir, ''))
@@ -320,7 +345,8 @@ class PredictionConsumer(Consumer):
                         post, name=name, subdir=subdir, output_dir=tempdir)
 
                     all_output.extend(_out_paths)
-                    self.logger.info('Saved data for image %s', i)
+                    self.logger.info('Saved data for image %s in %ss',
+                                     i, default_timer() - start)
 
                 # Save each prediction image as zip file
                 zip_file = utils.zip_files(all_output, tempdir)
