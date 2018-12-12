@@ -34,7 +34,9 @@ from __future__ import print_function
 import sys
 import time
 import logging
+import asyncio
 
+import uvloop
 from redis import StrictRedis
 
 from redis_consumer import consumers
@@ -61,6 +63,8 @@ def initialize_logger(debug_mode=False):
 
 
 if __name__ == '__main__':
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
     initialize_logger(settings.DEBUG)
 
     _logger = logging.getLogger(__file__)
@@ -84,7 +88,10 @@ if __name__ == '__main__':
 
     while True:
         try:
-            consumer.consume(settings.STATUS, settings.HASH_PREFIX)
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(consumer.consume(
+                settings.STATUS, settings.HASH_PREFIX))
+
             time.sleep(settings.INTERVAL)
         except Exception as err:  # pylint: disable=broad-except
             _logger.critical('Fatal Error: %s: %s', type(err).__name__, err)

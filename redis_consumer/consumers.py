@@ -120,10 +120,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             image_files = [fname]
         return image_files
 
-    def _consume(self, redis_hash):
+    async def _consume(self, redis_hash):
         raise NotImplementedError
 
-    def consume(self, status=None, prefix=None):
+    async def consume(self, status=None, prefix=None):
         """Consume all redis events every `interval` seconds
         # Arguments:
             interval: waits this many seconds between consume calls
@@ -134,8 +134,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             # process each unprocessed hash
             for redis_hash in self.iter_redis_hashes(status, prefix):
                 start = default_timer()
-                self._consume(redis_hash)
-                self.logger.debug('Consumed key %s in %s s',
+                await self._consume(redis_hash)
+                self.logger.debug('Consumed key %s in %ss',
                                   redis_hash, default_timer() - start)
         except Exception as err:  # pylint: disable=broad-except
             self.logger.error(err)
