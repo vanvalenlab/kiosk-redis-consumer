@@ -191,31 +191,26 @@ class PredictionConsumer(Consumer):
             tf_results[..., a:b, c:d, :] = pred[..., winx:-winx, winy:-winy, :]
         return tf_results
 
-    def segment_images(self, images, model_name, model_version):
+    async def segment_image(self, image, model_name, model_version):
         """Use the TensorFlowServingClient to segment each image
         # Arguments:
-            images: iterator of image data to segment
+            image: image data to segment
             model_name: name of model in tf-serving
             model_version: integer version number of model in tf-serving
         # Returns:
             results: list of numpy array of transformed data.
         """
-        count = len(images)
-        self.logger.info('Segmenting %s image%s with model %s:%s',
-                         count, 's' if count > 1 else '',
-                         model_name, model_version)
         try:
             start = default_timer()
+            self.logger.info('Segmenting image of shape %s with model %s:%s',
+                             image.shape, model_name, model_version)
+
             url = self.tf_client.get_url(model_name, model_version)
+            results = await self.tf_client.post_image(image, url, max_clients=1)
 
-            def post_many():
-                return self.tf_client.tornado_images(
-                    images, url, timeout=300 * count, max_clients=count)
-
-            results = ioloop.IOLoop.current().run_sync(post_many)
-            self.logger.debug('Segmented %s image%s with model %s:%s in %s s',
-                              count, 's' if count > 1 else '', model_name,
-                              model_version, default_timer() - start)
+            self.logger.debug('Segmented image with model %s:%s in %ss',
+                              model_name, model_version,
+                              default_timer() - start)
             return results
         except Exception as err:
             self.logger.error('Encountered %s during tf-serving request to '
@@ -223,65 +218,56 @@ class PredictionConsumer(Consumer):
                               model_name, model_version, err)
             raise err
 
-    def _process_images(self, images, keys, process_type):
+    async def _process_image(self, image, key, process_type):
         """Apply each processing function to each image in images
         # Arguments:
             images: iterable of image data
-            keys: list of function names to apply to images
+            key: function to apply to images
             process_type: pre or post processing
         # Returns:
             list of processed image data
         """
-        count = len(images)
+        if not key:
+            return image
+
+        start = default_timer()
         process_type = str(process_type).lower()
-        if not isinstance(keys, tuple) and not isinstance(keys, list):
-            keys = '' if keys is None else keys
-            keys = str(keys).split(',')
+        try:
+            self.logger.debug('Starting %s %s-processing image of shape %s',
+                              key, process_type, image.shape)
+            url = self.dp_client.get_url(process_type, key)
+            results = await self.dp_client.post_image(image, url)
+            self.logger.debug('Finished %s %s-processing image in %ss',
+                              key, process_type, default_timer() - start)
+            return results
+        except Exception as err:
+            self.logger.error('Encountered %s during %s %s-processing: %s',
+                              type(err).__name__, key, process_type, err)
+            raise err
 
-        for k in keys:
-            start = default_timer()
-            if not k:
-                continue
-            self.logger.debug('Starting %s %s-processing %s image%s',
-                              k, process_type, count, 's' if count > 1 else '')
-            try:
-                url = self.dp_client.get_url(process_type, k)
-
-                def post_many():
-                    return self.dp_client.tornado_images(
-                        images, url, timeout=300 * count, max_clients=count)
-
-                images = ioloop.IOLoop.current().run_sync(post_many)
-            except Exception as err:
-                self.logger.error('Encountered %s during %s %s-processing: %s',
-                                  type(err).__name__, k, process_type, err)
-                raise err
-            self.logger.debug('Finished %s %s-processing %s image%s in %s s',
-                              k, process_type, count, 's' if count > 1 else '',
-                              default_timer() - start)
-        return images
-
-    def preprocess_images(self, images, keys):
-        """Wrapper for _process_images but can only call with type="pre"
+    async def preprocess_image(self, image, key):
+        """Wrapper for _process_image but can only call with type="pre"
         # Arguments:
-            images: iterable of image data
-            keys: list of function names to apply to images
+            image: numpy array of image data
+            key: function to apply to image
         # Returns:
-            list of pre-processed image data
+            pre-processed image data
         """
-        return self._process_images(images, keys, 'pre')
+        pre = await self._process_image(image, key, 'pre')
+        return pre
 
-    def postprocess_images(self, images, keys):
-        """Wrapper for _process_images but can only call with type="post"
+    async def postprocess_image(self, image, key):
+        """Wrapper for _process_image but can only call with type="post"
         # Arguments:
-            images: iterable of image data
-            keys: list of function names to apply to images
+            image: numpy array of image data
+            key: function to apply to image
         # Returns:
-            list of post-processed image data
+            post-processed image data
         """
-        return self._process_images(images, keys, 'post')
+        post = await self._process_image(image, key, 'post')
+        return post
 
-    def _consume(self, redis_hash):
+    async def _consume(self, redis_hash):
         self.tf_client.verify_endpoint_liveness(code=404, endpoint='')
         self.dp_client.verify_endpoint_liveness(code=200, endpoint='health')
 
@@ -299,38 +285,36 @@ class PredictionConsumer(Consumer):
             with tempfile.TemporaryDirectory() as tempdir:
                 fname = self.storage.download(hvals.get('file_name'), tempdir)
                 image_files = self.get_image_files_from_dir(fname, tempdir)
-                # TODO: was generator - was causing StreamClosedError
-                images = [utils.get_image(f) for f in image_files]
-
-                preprocessed = self.preprocess_images(
-                    images, hvals.get('preprocess_function'))
-
-                # predict
-                if cuts.isdigit() and int(cuts) > 0:
-                    predicted = []
-                    for p in preprocessed:
-                        prediction = self.process_big_image(
-                            cuts, p,
-                            hvals.get('field_size', 61),
-                            model_name, model_version)
-                        predicted.append(prediction)
-                else:
-                    predicted = self.segment_images(
-                        preprocessed, model_name, model_version)
-
-                postprocessed = self.postprocess_images(
-                    predicted, hvals.get('postprocess_function'))
 
                 all_output = []
-                # Save each result channel as an image file
-                for results, imfile in zip(postprocessed, image_files):
+                # TODO: process each imfile in parallel
+                for i, imfile in enumerate(image_files):
+                    image = utils.get_image(imfile)
+
+                    image = await self.preprocess_image(
+                        image, hvals.get('preprocess_function'))
+
+                    if cuts.isdigit() and int(cuts) > 0:
+                        image = await self.process_big_image(
+                            cuts, image,
+                            hvals.get('field_size', 61),
+                            model_name, model_version)
+                    else:
+                        image = await self.segment_image(
+                            image, model_name, model_version)
+
+                    image = await self.postprocess_image(
+                        image, hvals.get('postprocess_function'))
+
+                    # Save each result channel as an image file
                     subdir = os.path.dirname(imfile.replace(tempdir, ''))
                     name = os.path.splitext(os.path.basename(imfile))[0]
 
                     _out_paths = utils.save_numpy_array(
-                        results, name=name, subdir=subdir, output_dir=tempdir)
+                        image, name=name, subdir=subdir, output_dir=tempdir)
 
                     all_output.extend(_out_paths)
+                    self.logger.info('Saved data for image %s', i)
 
                 # Save each prediction image as zip file
                 zip_file = utils.zip_files(all_output, tempdir)

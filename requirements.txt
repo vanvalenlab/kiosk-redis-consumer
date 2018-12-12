@@ -7,3 +7,4 @@ scikit-image>=0.14.0
 keras-preprocessing==1.0.5
 tornado==5.1
 uvloop==0.11.3
+aiohttp==3.4.4
