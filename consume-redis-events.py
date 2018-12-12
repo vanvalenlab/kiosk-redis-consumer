@@ -43,7 +43,6 @@ from redis_consumer import consumers
 from redis_consumer import settings
 from redis_consumer import storage
 from redis_consumer.clients import TensorFlowServingClient
-from redis_consumer.clients import DataProcessingClient
 
 
 def initialize_logger(debug_mode=False):
@@ -76,14 +75,12 @@ if __name__ == '__main__':
         charset='utf-8')
 
     storage_client = storage.get_client(settings.CLOUD_PROVIDER)
-    dp_client = DataProcessingClient(settings.DP_HOST, settings.DP_PORT)
     tf_client = TensorFlowServingClient(settings.TF_HOST, settings.TF_PORT)
 
     consumer = consumers.PredictionConsumer(
         redis_client=redis,
         storage_client=storage_client,
         tf_client=tf_client,
-        dp_client=dp_client,
         final_status='done')
 
     while True:
