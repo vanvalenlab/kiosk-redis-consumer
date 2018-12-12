@@ -161,7 +161,12 @@ class PredictionConsumer(Consumer):
                 c, d = j * crop_y, (j + 1) * crop_y
                 yield a, b, c, d
 
-    async def process_big_image(self, cuts, img, field, model_name, model_version):
+    async def process_big_image(self,
+                                cuts,
+                                img,
+                                field,
+                                model_name,
+                                model_version):
         """Slice big image into smaller images for prediction,
         then stitches all the smaller images back together
         # Arguments:
@@ -183,7 +188,7 @@ class PredictionConsumer(Consumer):
             data = padded_img[..., a:b + 2 * winx, c:d + 2 * winy, :]
             pred = await self.segment_image(data, model_name, model_version)
             if tf_results is None:
-                tf_results = np.zeros(list(img.shape)[:-1] + [pred.shape[-1]]).astype('float16')
+                tf_results = np.zeros(list(img.shape)[:-1] + [pred.shape[-1]])
                 self.logger.debug('Initialized output tensor of shape %s',
                                   tf_results.shape)
             tf_results[..., a:b, c:d, :] = pred[..., winx:-winx, winy:-winy, :]
@@ -204,7 +209,8 @@ class PredictionConsumer(Consumer):
                              image.shape, model_name, model_version)
 
             url = self.tf_client.get_url(model_name, model_version)
-            results = await self.tf_client.post_image(image, url, max_clients=1)
+            results = await self.tf_client.post_image(
+                image, url, max_clients=1)
 
             self.logger.debug('Segmented image with model %s:%s in %ss',
                               model_name, model_version,

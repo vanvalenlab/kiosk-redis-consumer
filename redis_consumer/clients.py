@@ -90,8 +90,8 @@ class Client(object):  # pylint: disable=useless-object-inheritance
                 self.logger.warning('Encountered %s while checking API '
                                     ' liveness:  %s', type(err).__name__, err)
             except Exception as err:
-                self.logger.warning('Encountered unexpected %s while checking '
-                                    'API liveness: %s', type(err).__name__, err)
+                self.logger.warning('Encountered %s while checking API '
+                                    'liveness: %s', type(err).__name__, err)
                 raise err
             # sleep as long as needed to allow tf-serving time to startup
             time.sleep(retry_interval)
@@ -209,15 +209,18 @@ class Client(object):  # pylint: disable=useless-object-inheritance
         #     try:
         #         if payload is None:
         #             raise ZeroDivisionError
-        #         response = await http_client.fetch(url, method='POST', body=payload)
+        #         response = await http_client.fetch(
+        #             url, method='POST', body=payload)
         #         self.logger.info('Waited for response %s', i)
         #         result = self.handle_response(response)
         #         results.append(result)
         #     except tornado.iostream.StreamClosedError as err:
-        #         self.logger.warning('Stream Closed: %s: %s', type(err).__name__, err)
+        #         self.logger.warning('Stream Closed: %s: %s',
+        #                             type(err).__name__, err)
         #     except httpclient.HTTPError as err:
         #         errtxt = self.parse_error(err)
-        #         self.logger.error('%s %s: %s', type(err).__name__, err, errtxt)
+        #         self.logger.error('%s %s: %s',
+        #                           type(err).__name__, err, errtxt)
         #         raise httpclient.HTTPError(err.code, '{}'.format(errtxt))
         #     except Exception as err:
         #         self.logger.error('%s: %s', type(err).__name__, err)
@@ -230,7 +233,8 @@ class Client(object):  # pylint: disable=useless-object-inheritance
             responses = await tornado.gen.multi(reqs)
             results = [self.handle_response(r) for r in responses]
         except tornado.iostream.StreamClosedError as err:
-            self.logger.warning('Stream Closed: %s: %s', type(err).__name__, err)
+            self.logger.warning('Stream Closed: %s: %s',
+                                type(err).__name__, err)
         except httpclient.HTTPError as err:
             errtxt = self.parse_error(err)
             self.logger.error('%s %s: %s', type(err).__name__, err, errtxt)
@@ -257,8 +261,8 @@ class TensorFlowServingClient(Client):
             self.host, self.port, model_name, model_version, 'predict')
 
     def fix_json(self, response_text):
-        """Some TensorFlow Serving versions have strange scientific notation bug
-        (e.g. '1e5.0,'). Convert the float exponent to an int for JSON parsing.
+        """Some TensorFlow Serving versions have strange scientific notation
+        bug (e.g. '1e5.0,'). Convert the float exponent to an int.
         # Arguments:
             response_text: HTTP response as string
         # Returns:
@@ -267,8 +271,8 @@ class TensorFlowServingClient(Client):
         self.logger.debug('tf-serving response is not well-formed JSON. '
                           'Attempting to fix the response.')
         try:
-            fixed_text = response_text.replace('.0,', ',').replace('.0],', '],')
-            fixed_json = json.loads(fixed_text)
+            fixed = response_text.replace('.0,', ',').replace('.0],', '],')
+            fixed_json = json.loads(fixed)
             self.logger.debug('Successfully parsed tf-serving JSON response')
             return fixed_json
         except Exception as err:
