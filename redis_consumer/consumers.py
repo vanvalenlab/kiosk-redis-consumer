@@ -316,8 +316,8 @@ class PredictionConsumer(Consumer):
 
                 # images = (utils.get_image(i) for i in image_files)
                 # pre = (self.preprocess(i, pre_func) for i in images)
-                # predictions = await asyncio.gather(*(predict(i) for i in pre))
-                # post = (self.postprocess(i, post_func) for i in predictions)
+                # pred = await asyncio.gather(*(predict(i) for i in pre))
+                # post = (self.postprocess(i, post_func) for i in pred)
 
                 # # Save each post processed image as a file
                 # all_output = []
