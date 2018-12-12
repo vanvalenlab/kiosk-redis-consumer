@@ -146,11 +146,9 @@ class PredictionConsumer(Consumer):
     def __init__(self,
                  redis_client,
                  storage_client,
-                 dp_client,
                  tf_client,
                  final_status='done'):
         self.tf_client = tf_client
-        self.dp_client = dp_client
         super(PredictionConsumer, self).__init__(
             redis_client, storage_client, final_status)
 
@@ -218,7 +216,7 @@ class PredictionConsumer(Consumer):
                               model_name, model_version, err)
             raise err
 
-    async def _process_image(self, image, key, process_type):
+    def _process_image(self, image, key, process_type):
         """Apply each processing function to each image in images
         # Arguments:
             images: iterable of image data
@@ -232,11 +230,11 @@ class PredictionConsumer(Consumer):
 
         start = default_timer()
         process_type = str(process_type).lower()
+        processing_function = utils.get_processing_function(process_type, key)
+        self.logger.debug('Starting %s %s-processing image of shape %s',
+                          key, process_type, image.shape)
         try:
-            self.logger.debug('Starting %s %s-processing image of shape %s',
-                              key, process_type, image.shape)
-            url = self.dp_client.get_url(process_type, key)
-            results = await self.dp_client.post_image(image, url)
+            results = processing_function(image)
             self.logger.debug('Finished %s %s-processing image in %ss',
                               key, process_type, default_timer() - start)
             return results
@@ -245,7 +243,7 @@ class PredictionConsumer(Consumer):
                               type(err).__name__, key, process_type, err)
             raise err
 
-    async def preprocess_image(self, image, key):
+    def preprocess_image(self, image, key):
         """Wrapper for _process_image but can only call with type="pre"
         # Arguments:
             image: numpy array of image data
@@ -253,10 +251,9 @@ class PredictionConsumer(Consumer):
         # Returns:
             pre-processed image data
         """
-        pre = await self._process_image(image, key, 'pre')
-        return pre
+        return self._process_image(image, key, 'pre')
 
-    async def postprocess_image(self, image, key):
+    def postprocess_image(self, image, key):
         """Wrapper for _process_image but can only call with type="post"
         # Arguments:
             image: numpy array of image data
@@ -264,12 +261,10 @@ class PredictionConsumer(Consumer):
         # Returns:
             post-processed image data
         """
-        post = await self._process_image(image, key, 'post')
-        return post
+        return self._process_image(image, key, 'post')
 
     async def _consume(self, redis_hash):
         self.tf_client.verify_endpoint_liveness(code=404, endpoint='')
-        self.dp_client.verify_endpoint_liveness(code=200, endpoint='health')
 
         hvals = self.redis.hgetall(redis_hash)
         self.logger.debug('Found hash to process "%s": %s',
@@ -291,27 +286,27 @@ class PredictionConsumer(Consumer):
                 for i, imfile in enumerate(image_files):
                     image = utils.get_image(imfile)
 
-                    image = await self.preprocess_image(
+                    pre = await self.preprocess_image(
                         image, hvals.get('preprocess_function'))
 
                     if cuts.isdigit() and int(cuts) > 0:
-                        image = await self.process_big_image(
-                            cuts, image,
+                        prediction = await self.process_big_image(
+                            cuts, pre,
                             hvals.get('field_size', 61),
                             model_name, model_version)
                     else:
-                        image = await self.segment_image(
-                            image, model_name, model_version)
+                        prediction = await self.segment_image(
+                            pre, model_name, model_version)
 
-                    image = await self.postprocess_image(
-                        image, hvals.get('postprocess_function'))
+                    post = await self.postprocess_image(
+                        prediction, hvals.get('postprocess_function'))
 
                     # Save each result channel as an image file
                     subdir = os.path.dirname(imfile.replace(tempdir, ''))
                     name = os.path.splitext(os.path.basename(imfile))[0]
 
                     _out_paths = utils.save_numpy_array(
-                        image, name=name, subdir=subdir, output_dir=tempdir)
+                        post, name=name, subdir=subdir, output_dir=tempdir)
 
                     all_output.extend(_out_paths)
                     self.logger.info('Saved data for image %s', i)

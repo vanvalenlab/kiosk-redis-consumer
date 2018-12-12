@@ -32,6 +32,20 @@ import os
 
 from decouple import config
 
+import redis_consumer
+
+
+# Map for processing functions
+PROCESSING_FUNCTIONS = {
+    'pre': {
+        'normalize': redis_consumer.processing.noramlize,
+    },
+    'post': {
+        'deepcell': redis_consumer.processing.deepcell,
+        'mibi': redis_consumer.processing.mibi,
+        'watershed': redis_consumer.processing.watershed
+    },
+}
 
 # remove leading/trailing "/"s from cloud bucket folder names
 _strip = lambda x: '/'.join(y for y in x.split('/') if y)
@@ -52,10 +66,6 @@ REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
 # tensorflow-serving client connection
 TF_HOST = config('TF_HOST', default='tf-serving-service')
 TF_PORT = config('TF_PORT', default=1337, cast=int)
-
-# tensorflow-serving client connection
-DP_HOST = config('DP_HOST', default='data-processing-service')
-DP_PORT = config('DP_PORT', default=7777, cast=int)
 
 # Status of hashes marked for prediction
 STATUS = config('STATUS', default='new')

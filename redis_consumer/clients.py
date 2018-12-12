@@ -284,31 +284,7 @@ class TensorFlowServingClient(Client):
         # except:  # pylint: disable=bare-except
         #     prediction_json = self.fix_json(text)
         prediction_json = response
-        result = np.array(list(prediction_json['predictions'][0]), dtype='float16')
-        self.logger.debug('Loaded response into np.array of shape %s',
-                          result.shape)
-        return result
-
-
-class DataProcessingClient(Client):
-    """Class to interact with the DataProcessing API"""
-
-    def get_url(self, process_type, function):
-        """Get API URL for TensorFlow Serving, based on model name and version
-        # Arguments:
-            process_type: pre or post processing
-            function: name of function to use on data
-        # Returns:
-            formatted URL for HTTP request
-        """
-        return 'http://{}:{}/process/{}/{}'.format(
-            self.host, self.port, process_type, function)
-
-    def handle_response(self, response):
-        # text = response.body
-        # processed_json = json.loads(text)
-        processed_json = response
-        result = np.array(list(processed_json['processed'][0]), dtype='float16')
+        result = np.array(list(prediction_json['predictions'][0]))
         self.logger.debug('Loaded response into np.array of shape %s',
                           result.shape)
         return result

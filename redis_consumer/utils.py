@@ -39,8 +39,19 @@ from PIL import Image
 from skimage.external import tifffile as tiff
 from keras_preprocessing.image import img_to_array
 
+from redis_consumer import settings
+
 
 logger = logging.getLogger('redis_consumer.utils')
+
+
+def get_processing_function(process_type, function_name):
+    """Based on the function category and name, return the function"""
+    clean = lambda x: str(x).lower()
+    # first, verify the route parameters
+    name = clean(function_name)
+    cat = clean(process_type)
+    return settings.PROCESSING_FUNCTIONS[cat][name]
 
 
 def get_image(filepath):

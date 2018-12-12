@@ -27,6 +27,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from redis_consumer import processing
 from redis_consumer import consumers
 from redis_consumer import settings
 from redis_consumer import storage
