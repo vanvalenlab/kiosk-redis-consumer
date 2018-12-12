@@ -33,6 +33,7 @@ import json
 import asyncio
 import logging
 import time
+from timeit import default_timer
 
 import numpy as np
 import requests
@@ -50,7 +51,65 @@ class Client(object):  # pylint: disable=useless-object-inheritance
 
     def get_url(self, *args):
         """Based on the inputs, return a formatted API URL"""
-        raise NotImplementedError
+        raise NotImplementedError('Override this function in a child class.')
+
+    def format_image_payload(self, image):
+        """Format the payload of the list of numpy image data.
+        # Arguments:
+            images: list of np arrays of image data
+        # Returns:
+            Formatted payload for the specific API
+        """
+        raise NotImplementedError('Override this function in a child class.')
+
+    def handle_response(self, response):
+        """Handle the API response.
+        Each client will have a different implementation
+        # Arguments:
+            response: response from the http server
+        # Returns:
+            result: data parsed from the API repsonse
+        """
+        raise NotImplementedError('Override this function in a child class.')
+
+    async def _post(self, url, image, session, retries=5):
+        """POST image data to given URL using async session.
+        # Arguments:
+            url: API endpoint URL
+            image: np array of image data
+            session: async session
+            retries: number of retries for each request
+        # Returns:
+            API response parsed by self.handle_response
+        """
+        backoff = np.random.randint(3, 6)
+        payload = self.format_image_payload(image)
+        async with session.post(url, json=payload) as response:
+            for _ in range(retries):
+                try:
+                    return self.handle_response(await response.json())
+                except (aiohttp.ClientPayloadError,
+                        aiohttp.ClientResponseError) as err:
+                    self.logger.error('Encountered %s: %s. Retrying in %ss'
+                                      '...', type(err).__name__, err, backoff)
+                await asyncio.sleep(backoff)
+            raise ValueError('Maximum retries exceeded ({})'.format(retries))
+
+    async def post_image(self, image, url, retries=5, max_clients=3):
+        """POSTs many images to the API at once.
+        # Arguments:
+            image: image data to pass to the API
+            url: URL to send the request
+            max_clients: max number of simultaneous http clients
+            retries: max number of attempts to retry the POST request
+        # Returns:
+            results: list of results from API
+        """
+        conn = aiohttp.TCPConnector(limit=max_clients)
+        async with aiohttp.ClientSession(connector=conn) as session:
+            request = self._post(url, image, session, retries=retries)
+            fut = asyncio.ensure_future(request)
+            return await fut
 
     def verify_endpoint_liveness(self,
                                  num_retries=60,
@@ -99,150 +158,6 @@ class Client(object):  # pylint: disable=useless-object-inheritance
             return False
         return True
 
-    def format_image_payload(self, image):
-        """Format the payload of the list of numpy image data.
-        # TODO: Placeholder - implement for each subclass
-        # Arguments:
-            images: list of np arrays of image data
-        # Returns:
-            Formatted payload for the specific API
-        """
-        try:
-            # downgrade the float precision to conserve memory
-            self.logger.debug('Formatting image payload with shape %s as JSON',
-                              image.shape)
-            payload = {'instances': [{'image': image.tolist()}]}
-        except Exception as err:  # pylint: disable=broad-except
-            self.logger.error('Failed to format payload image with shape %s '
-                              'due to %s: %s', image.shape,
-                              type(err).__name__, image.shape)
-        self.logger.debug('Successfully formatted image payload with shape %s'
-                          ' as JSON', image.shape)
-        return payload
-
-    def handle_response(self, response):
-        """Handle the API response.
-        Each client will have a different implementation
-        # Arguments:
-            response: response from the http server
-        # Returns:
-            result: data parsed from the API repsonse
-        """
-        raise NotImplementedError
-
-    def parse_error(self, error):
-        """Parse the error message from the object.
-        Override-able for various API response formats
-        # Arguments:
-            error: the error object
-        # Returns:
-            the error message as a string
-        """
-        return tornado.escape.json_decode(error.response.body)['error']
-
-    async def post_image(self,
-                         image,
-                         url,
-                         timeout=30,
-                         max_clients=10,
-                         retries=5):
-        """POSTs many images to the API at once.
-        # Arguments:
-            image: image data to pass to the API
-            url: URL to send the request
-            max_clients: max number of simultaneous http clients
-            retries: max number of attempts to retry the POST request
-        # Returns:
-            results: list of results from API
-        """
-        backoff = np.random.randint(3, 6)
-        payload = self.format_image_payload(image)
-        async with aiohttp.ClientSession() as session:
-            for _ in range(retries):
-                try:
-                    async with session.post(url, json=payload) as resp:
-                        result = self.handle_response(await resp.json())
-                        return result
-                except (aiohttp.ClientPayloadError,
-                        aiohttp.ClientResponseError) as err:
-                    self.logger.error('Encountered %s: %s. Sleeping for %ss '
-                                      'and retrying...', type(err).__name__,
-                                      err, backoff)
-                except Exception as err:
-                    self.logger.error('%s: %s', type(err).__name__, err)
-                    raise err
-                await asyncio.sleep(backoff)
-            raise ValueError('Maximum retries exceeded ({})'.format(retries))
-
-    async def post_images(self, images, url, max_clients=10):
-        """POSTs many images to the API at once.
-        # Arguments:
-            images: list of image data to pass to the API
-            url: URL to send the request
-            timeout: total timeout for all requests
-            max_clients: max number of simultaneous http clients
-        # Returns:
-            results: list of results from API
-        """
-        # Create the HTTP Client
-        httpclient.AsyncHTTPClient.configure(
-            None,
-            max_body_size=self.max_body_size,
-            max_buffer_size=self.max_body_size,
-            max_clients=max_clients)
-
-        kwargs = {
-            'method': 'POST',
-            'request_timeout': 30 * len(images),
-            'connect_timeout': 30 * len(images)
-        }
-
-        # Construct the JSON Payload for each image
-        json_payload = (self.format_image_payload(i) for i in images)
-        payloads = (tornado.escape.json_encode(jp) for jp in json_payload)
-        http_client = httpclient.AsyncHTTPClient()
-
-        results = []
-        # for i, payload in enumerate(payloads):
-        #     try:
-        #         if payload is None:
-        #             raise ZeroDivisionError
-        #         response = await http_client.fetch(
-        #             url, method='POST', body=payload)
-        #         self.logger.info('Waited for response %s', i)
-        #         result = self.handle_response(response)
-        #         results.append(result)
-        #     except tornado.iostream.StreamClosedError as err:
-        #         self.logger.warning('Stream Closed: %s: %s',
-        #                             type(err).__name__, err)
-        #     except httpclient.HTTPError as err:
-        #         errtxt = self.parse_error(err)
-        #         self.logger.error('%s %s: %s',
-        #                           type(err).__name__, err, errtxt)
-        #         raise httpclient.HTTPError(err.code, '{}'.format(errtxt))
-        #     except Exception as err:
-        #         self.logger.error('%s: %s', type(err).__name__, err)
-        #         raise err
-
-        # Using tornado.gen.multi - too many requests causes tf-serving OOM.
-        try:
-            http_client = httpclient.AsyncHTTPClient()
-            reqs = [http_client.fetch(url, body=p, **kwargs) for p in payloads]
-            responses = await tornado.gen.multi(reqs)
-            results = [self.handle_response(r) for r in responses]
-        except tornado.iostream.StreamClosedError as err:
-            self.logger.warning('Stream Closed: %s: %s',
-                                type(err).__name__, err)
-        except httpclient.HTTPError as err:
-            errtxt = self.parse_error(err)
-            self.logger.error('%s %s: %s', type(err).__name__, err, errtxt)
-            raise httpclient.HTTPError(err.code, '{}'.format(errtxt))
-        except Exception as err:
-            self.logger.error('%s: %s', type(err).__name__, err)
-            raise err
-
-        return results
-
 
 class TensorFlowServingClient(Client):
     """Class to interact with TensorFlow Serving"""
@@ -257,6 +172,43 @@ class TensorFlowServingClient(Client):
         """
         return 'http://{}:{}/v1/models/{}/versions/{}:{}'.format(
             self.host, self.port, model_name, model_version, 'predict')
+
+    def format_image_payload(self, image):
+        """Format the payload of the list of numpy image data.
+        # Arguments:
+            images: list of np arrays of image data
+        # Returns:
+            Formatted payload for the specific API
+        """
+        start = default_timer()
+        self.logger.debug('JSON formatting image of shape %s', image.shape)
+        try:
+            payload = {'instances': [{'image': image.tolist()}]}
+            self.logger.debug('Successfully JSON formatted image payload of '
+                              'shape %s in %ss', image.shape,
+                              default_timer() - start)
+            return payload
+        except Exception as err:
+            self.logger.error('Failed to JSON format image of shape %s due to '
+                              '%s: %s', image.shape, type(err).__name__, err)
+            raise err
+
+    def handle_response(self, response):
+        """Handle the API response.
+        Each client will have a different implementation
+        # Arguments:
+            response: response from the http server
+        # Returns:
+            result: data parsed from the API repsonse
+        """
+        # try:
+        #     prediction_json = json.loads(response.body)
+        # except:  # pylint: disable=bare-except
+        #     prediction_json = self.fix_json(text)
+        result = np.array(list(response['predictions'][0]))
+        self.logger.debug('Loaded response into np.array of shape %s',
+                          result.shape)
+        return result
 
     def fix_json(self, response_text):
         """Some TensorFlow Serving versions have strange scientific notation
@@ -276,17 +228,3 @@ class TensorFlowServingClient(Client):
         except Exception as err:
             self.logger.error('Cannot fix tf-serving response JSON: %s', err)
             raise err
-
-    def handle_response(self, response):
-        # text = response.body
-        # if text is None:
-        #     self.logger.error('response body is None')
-        # try:
-        #     prediction_json = json.loads(text)
-        # except:  # pylint: disable=bare-except
-        #     prediction_json = self.fix_json(text)
-        prediction_json = response
-        result = np.array(list(prediction_json['predictions'][0]))
-        self.logger.debug('Loaded response into np.array of shape %s',
-                          result.shape)
-        return result
