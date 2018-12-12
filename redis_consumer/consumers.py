@@ -152,15 +152,6 @@ class PredictionConsumer(Consumer):
         super(PredictionConsumer, self).__init__(
             redis_client, storage_client, final_status)
 
-    def _iter_cuts(self, img, cuts):
-        crop_x = img.shape[img.ndim - 3] // cuts
-        crop_y = img.shape[img.ndim - 2] // cuts
-        for i in range(cuts):
-            for j in range(cuts):
-                a, b = i * crop_x, (i + 1) * crop_x
-                c, d = j * crop_y, (j + 1) * crop_y
-                yield a, b, c, d
-
     async def process_big_image(self,
                                 cuts,
                                 img,
@@ -181,17 +172,31 @@ class PredictionConsumer(Consumer):
         cuts = int(cuts)
         winx, winy = (field - 1) // 2, (field - 1) // 2
 
-        padded_img = utils.pad_image(img, field)
+        def iter_cuts(img, cuts, field):
+            padded_img = utils.pad_image(img, field)
+            crop_x = img.shape[img.ndim - 3] // cuts
+            crop_y = img.shape[img.ndim - 2] // cuts
+            for i in range(cuts):
+                for j in range(cuts):
+                    a, b = i * crop_x, (i + 1) * crop_x
+                    c, d = j * crop_y, (j + 1) * crop_y
+                    data = padded_img[..., a:b + 2 * winx, c:d + 2 * winy, :]
+                    coord = (a, b, c, d)
+                    yield data, coord
 
-        tf_results = None  # Channel shape is unknown until first request
-        for a, b, c, d in self._iter_cuts(img, cuts):
-            data = padded_img[..., a:b + 2 * winx, c:d + 2 * winy, :]
-            pred = await self.segment_image(data, model_name, model_version)
+        slcs, coords = zip(*iter_cuts(img, cuts, field))
+        reqs = (self.segment_image(s, model_name, model_version) for s in slcs)
+
+        tf_results = None
+        for req, (a, b, c, d) in zip(reqs, coords):
+            resp = await asyncio.ensure_future(req)
             if tf_results is None:
-                tf_results = np.zeros(list(img.shape)[:-1] + [pred.shape[-1]])
+                tf_results = np.zeros(list(img.shape)[:-1] + [resp.shape[-1]])
                 self.logger.debug('Initialized output tensor of shape %s',
                                   tf_results.shape)
-            tf_results[..., a:b, c:d, :] = pred[..., winx:-winx, winy:-winy, :]
+
+            tf_results[..., a:b, c:d, :] = resp[..., winx:-winx, winy:-winy, :]
+
         return tf_results
 
     async def segment_image(self, image, model_name, model_version):
