@@ -57,6 +57,39 @@ def _write_image(filepath, img_w=300, img_h=300):
         img.save(filepath)
 
 
+def test_iter_image_archive():
+    with tempfile.TemporaryDirectory() as tempdir:
+        zip_path = os.path.join(tempdir, 'test.zip')
+        archive = zipfile.ZipFile(zip_path, 'w')
+        num_files = 3
+        for n in range(num_files):
+            path = os.path.join(tempdir, '{}.tif'.format(n))
+            _write_image(path, 30, 30)
+            archive.write(path)
+        archive.close()
+
+        unzipped = [z for z in utils.iter_image_archive(zip_path, tempdir)]
+        assert len(unzipped) == num_files
+
+
+def test_get_image_files_from_dir():
+    with tempfile.TemporaryDirectory() as tempdir:
+        zip_path = os.path.join(tempdir, 'test.zip')
+        archive = zipfile.ZipFile(zip_path, 'w')
+        num_files = 3
+        for n in range(num_files):
+            path = os.path.join(tempdir, '{}.tif'.format(n))
+            _write_image(path, 30, 30)
+            archive.write(path)
+        archive.close()
+
+        imfiles = utils.get_image_files_from_dir(path, None)
+        assert len(imfiles) == 1
+
+        imfiles = utils.get_image_files_from_dir(zip_path, tempdir)
+        assert len(imfiles) == num_files
+
+
 def test_get_processing_function():
     types = ('pre', 'post')
     for t in types:

@@ -45,6 +45,42 @@ from redis_consumer import settings
 logger = logging.getLogger('redis_consumer.utils')
 
 
+def iter_image_archive(zip_path, destination):
+    """Extract all files in archie and yield the paths of all images
+    # Arguments:
+        zip_path: path to zip archive
+        destination: path to extract all images
+    # Returns:
+        Iterator of all image paths in extracted archive
+    """
+    archive = zipfile.ZipFile(zip_path, 'r')
+    is_valid = lambda x: os.path.splitext(x)[1] and '__MACOSX' not in x
+    for info in archive.infolist():
+        try:
+            extracted = archive.extract(info, path=destination)
+            if os.path.isfile(extracted):
+                if is_valid(extracted):
+                    yield extracted
+        except:  # pylint: disable=bare-except
+            logger.warning('Could not extract %s', info.filename)
+
+
+def get_image_files_from_dir(fname, destination=None):
+    """Based on the file, returns a list of all images in that file.
+    # Arguments:
+        fname: file (image or zip file)
+        destination: folder to save image files from archive, if applicable
+    # Returns:
+        list of image file paths
+    """
+    if zipfile.is_zipfile(fname):
+        archive = iter_image_archive(fname, destination)
+        image_files = [f for f in archive]
+    else:
+        image_files = [fname]
+    return image_files
+
+
 def get_processing_function(process_type, function_name):
     """Based on the function category and name, return the function"""
     clean = lambda x: str(x).lower()

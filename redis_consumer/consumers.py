@@ -86,40 +86,6 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         self.logger.error('Failed to process redis key %s. %s: %s',
                           redis_hash, type(err).__name__, err)
 
-    def iter_image_archive(self, zip_path, destination):
-        """Extract all files in archie and yield the paths of all images
-        # Arguments:
-            zip_path: path to zip archive
-            destination: path to extract all images
-        # Returns:
-            Iterator of all image paths in extracted archive
-        """
-        archive = zipfile.ZipFile(zip_path, 'r')
-        is_valid = lambda x: os.path.splitext(x)[1] and '__MACOSX' not in x
-        for info in archive.infolist():
-            try:
-                extracted = archive.extract(info, path=destination)
-                if os.path.isfile(extracted):
-                    if is_valid(extracted):
-                        yield extracted
-            except:  # pylint: disable=bare-except
-                self.logger.warning('Could not extract %s', info.filename)
-
-    def get_image_files_from_dir(self, fname, destination=None):
-        """Based on the file, returns a list of all images in that file.
-        # Arguments:
-            fname: file (image or zip file)
-            destination: folder to save image files from archive, if applicable
-        # Returns:
-            list of image file paths
-        """
-        if zipfile.is_zipfile(fname):
-            archive = self.iter_image_archive(fname, destination)
-            image_files = [f for f in archive]
-        else:
-            image_files = [fname]
-        return image_files
-
     async def _consume(self, redis_hash):
         raise NotImplementedError
 
@@ -307,7 +273,7 @@ class PredictionConsumer(Consumer):
         try:
             with tempfile.TemporaryDirectory() as tempdir:
                 fname = self.storage.download(hvals.get('file_name'), tempdir)
-                image_files = self.get_image_files_from_dir(fname, tempdir)
+                image_files = utils.get_image_files_from_dir(fname, tempdir)
 
                 # sub_dirs, names = [], []
                 # for i in image_files:
