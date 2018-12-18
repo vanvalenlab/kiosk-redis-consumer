@@ -1,7 +1,7 @@
 import logging
 import numpy as np
-from predict_client.pbs.tensor_pb2 import TensorProto
-from predict_client.dict_to_protobuf import dict_to_protobuf
+from redis_consumer.predict_client.pbs.tensor_pb2 import TensorProto
+from redis_consumer.predict_client.dict_to_protobuf import dict_to_protobuf
 
 logger = logging.getLogger(__name__)
 

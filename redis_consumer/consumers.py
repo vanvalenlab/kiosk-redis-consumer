@@ -38,7 +38,7 @@ import tempfile
 
 import numpy as np
 
-from predict_client.prod_client import ProdClient
+from redis_consumer.predict_client.prod_client import ProdClient
 
 from redis_consumer import utils
 from redis_consumer import settings

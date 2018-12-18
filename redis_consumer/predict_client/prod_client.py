@@ -2,9 +2,10 @@ import logging
 import time
 import grpc
 from grpc import RpcError
-from predict_client.pbs.prediction_service_pb2 import PredictionServiceStub
-from predict_client.pbs.predict_pb2 import PredictRequest
-from predict_client.util import predict_response_to_dict, make_tensor_proto
+from redis_consumer.predict_client.pbs.prediction_service_pb2 import PredictionServiceStub
+from redis_consumer.predict_client.pbs.predict_pb2 import PredictRequest
+from redis_consumer.predict_client.util import predict_response_to_dict
+from redis_consumer.predict_client.util import make_tensor_proto
 
 
 class ProdClient:

@@ -13,8 +13,8 @@ from google.protobuf import descriptor_pb2
 _sym_db = _symbol_database.Default()
 
 
-import predict_client.pbs.tensor_pb2 as tensor__pb2
-import predict_client.pbs.model_pb2 as model__pb2
+import redis_consumer.predict_client.pbs.tensor_pb2 as tensor__pb2
+import redis_consumer.predict_client.pbs.model_pb2 as model__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
