@@ -2,6 +2,7 @@
 output/
 download/
 logs/
+protos/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -35,12 +35,13 @@ import json
 import asyncio
 import logging
 import tempfile
-import zipfile
 
 import numpy as np
 
+from predict_client.prod_client import ProdClient
+
 from redis_consumer import utils
-from redis_consumer.settings import OUTPUT_DIR
+from redis_consumer import settings
 
 
 class Consumer(object):  # pylint: disable=useless-object-inheritance
@@ -50,7 +51,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                  redis_client,
                  storage_client,
                  final_status='done'):
-        self.output_dir = OUTPUT_DIR
+        self.output_dir = settings.OUTPUT_DIR
         self.redis = redis_client
         self.storage = storage_client
         self.final_status = final_status
@@ -152,11 +153,11 @@ class PredictionConsumer(Consumer):
                     yield data, coord
 
         slcs, coords = zip(*iter_cuts(img, cuts, field))
-        reqs = (self.segment_image(s, model_name, model_version) for s in slcs)
+        reqs = (self.grpc_image(s, model_name, model_version) for s in slcs)
 
         tf_results = None
-        for req, (a, b, c, d) in zip(reqs, coords):
-            resp = await asyncio.ensure_future(req)
+        for resp, (a, b, c, d) in zip(reqs, coords):
+            # resp = await asyncio.ensure_future(req)
             if tf_results is None:
                 tf_results = np.zeros(list(img.shape)[:-1] + [resp.shape[-1]])
                 self.logger.debug('Initialized output tensor of shape %s',
@@ -241,6 +242,16 @@ class PredictionConsumer(Consumer):
         """
         return self._process(image, key, 'post')
 
+    def grpc_image(self, img, model_name, model_version):
+        hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
+        req_data = [{'in_tensor_name': 'inputs',
+                     'in_tensor_dtype': 'DT_FLOAT',
+                     'data': img}]
+
+        client = ProdClient(hostname, model_name, model_version)
+        prediction = client.predict(req_data, request_timeout=10)
+        return prediction
+
     async def _consume(self, redis_hash):
         """
         TODO: process each imfile in parallel.
@@ -299,7 +310,10 @@ class PredictionConsumer(Consumer):
 
                     pre = self.preprocess(image, pre_func)
 
-                    prediction = await predict(pre)
+                    # prediction = await predict(pre)
+                    prediction = self.grpc_image(image,
+                                                 model_name,
+                                                 model_version)
 
                     post = self.postprocess(prediction, post_func)
 
