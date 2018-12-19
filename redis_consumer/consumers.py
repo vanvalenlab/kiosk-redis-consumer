@@ -39,7 +39,7 @@ import contextlib
 
 import numpy as np
 
-from redis_consumer.predict_client.prod_client import ProdClient
+from redis_consumer.predict_client.grpc_client import GrpcClient
 
 from redis_consumer import utils
 from redis_consumer import settings
@@ -272,11 +272,11 @@ class PredictionConsumer(Consumer):
                          'in_tensor_dtype': 'DT_FLOAT',
                          'data': img}]
 
-            client = ProdClient(hostname, model_name, int(model_version))
+            client = GrpcClient(hostname, model_name, int(model_version))
             prediction = client.predict(req_data, request_timeout=timeout)
             self.logger.debug('Segmented image with model %s:%s in %ss',
-                            model_name, model_version,
-                            default_timer() - start)
+                              model_name, model_version,
+                              default_timer() - start)
             return prediction
         except Exception as err:
             self.logger.error('Encountered %s during tf-serving request to '
