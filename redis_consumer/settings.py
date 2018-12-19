@@ -66,6 +66,7 @@ REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
 # tensorflow-serving client connection
 TF_HOST = config('TF_HOST', default='tf-serving-service')
 TF_PORT = config('TF_PORT', default=1337, cast=int)
+TF_TENSOR_NAME = config('TF_TENSOR_NAME', default='image')
 
 # Status of hashes marked for prediction
 STATUS = config('STATUS', default='new')
