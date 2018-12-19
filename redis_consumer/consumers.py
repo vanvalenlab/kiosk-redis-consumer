@@ -261,7 +261,7 @@ class PredictionConsumer(Consumer):
                               model_name, model_version, err)
             raise err
 
-    async def _consume(self, redis_hash):
+    def _consume(self, redis_hash):
         """
         TODO: process each imfile in parallel.
         TODO: Killed due to memory when processing ALL at once.
