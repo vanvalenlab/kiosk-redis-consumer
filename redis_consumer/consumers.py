@@ -269,7 +269,7 @@ class PredictionConsumer(Consumer):
         try:
             hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
             req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
-                         'in_tensor_dtype': 'DT_FLOAT',
+                         'in_tensor_dtype': settings.TF_TENSOR_DTYPE,
                          'data': img}]
 
             client = GrpcClient(hostname, model_name, int(model_version))
