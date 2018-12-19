@@ -60,7 +60,7 @@ def predict_response_to_dict(predict_response):
     for k in predict_response.outputs:
         shape = [x.size for x in predict_response.outputs[k].tensor_shape.dim]
 
-        logger.debug('Key: ' + k + ', shape: ' + str(shape))
+        logger.debug('Key: %s, shape: %s', k, shape)
 
         dtype_constant = predict_response.outputs[k].dtype
 
