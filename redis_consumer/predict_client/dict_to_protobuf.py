@@ -1,4 +1,8 @@
 # Copied from https://github.com/davyzhang/dict-to-protobuf, thanks!
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import logging
 
 logger = logging.getLogger('dict_to_protbuf')

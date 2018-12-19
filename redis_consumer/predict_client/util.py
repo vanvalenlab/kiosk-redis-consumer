@@ -1,5 +1,12 @@
+# Copied from https://github.com/epigramai/tfserving-python-predict-client
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import logging
+
 import numpy as np
+
 from redis_consumer.predict_client.pbs.tensor_pb2 import TensorProto
 from redis_consumer.predict_client.dict_to_protobuf import dict_to_protobuf
 
