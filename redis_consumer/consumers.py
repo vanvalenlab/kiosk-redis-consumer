@@ -33,7 +33,9 @@ from timeit import default_timer
 import os
 import json
 import logging
+import shutil
 import tempfile
+import contextlib
 
 import numpy as np
 
@@ -41,6 +43,27 @@ from redis_consumer.predict_client.prod_client import ProdClient
 
 from redis_consumer import utils
 from redis_consumer import settings
+
+
+# Workaround for python2 not supporting `with tempfile.TemporaryDirectory() as`
+# These are unnecessary if not supporting python2
+@contextlib.contextmanager
+def cd(newdir, cleanup=lambda: True):
+    prevdir = os.getcwd()
+    os.chdir(os.path.expanduser(newdir))
+    try:
+        yield
+    finally:
+        os.chdir(prevdir)
+        cleanup()
+
+
+@contextlib.contextmanager
+def get_tempdir():
+    dirpath = tempfile.mkdtemp()
+    cleanup = lambda: shutil.rmtree(dirpath)
+    with cd(dirpath, cleanup):
+        yield dirpath
 
 
 class Consumer(object):  # pylint: disable=useless-object-inheritance
@@ -288,7 +311,7 @@ class PredictionConsumer(Consumer):
             return self.grpc_image(data, model_name, model_version)
 
         try:
-            with tempfile.TemporaryDirectory() as tempdir:
+            with get_tempdir() as tempdir:
                 fname = self.storage.download(hvals.get('file_name'), tempdir)
                 image_files = utils.get_image_files_from_dir(fname, tempdir)
 
