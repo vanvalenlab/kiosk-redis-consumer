@@ -269,10 +269,10 @@ class PredictionConsumer(Consumer):
         try:
             hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
             req_data = [{'in_tensor_name': 'inputs',
-                        'in_tensor_dtype': 'DT_FLOAT',
-                        'data': img}]
+                         'in_tensor_dtype': 'DT_FLOAT',
+                         'data': img}]
 
-            client = ProdClient(hostname, model_name, model_version)
+            client = ProdClient(hostname, model_name, int(model_version))
             prediction = client.predict(req_data, request_timeout=timeout)
             self.logger.debug('Segmented image with model %s:%s in %ss',
                             model_name, model_version,
