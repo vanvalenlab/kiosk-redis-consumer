@@ -34,9 +34,7 @@ from __future__ import print_function
 import sys
 import time
 import logging
-import asyncio
 
-import uvloop
 from redis import StrictRedis
 
 from redis_consumer import consumers
@@ -62,8 +60,6 @@ def initialize_logger(debug_mode=False):
 
 
 if __name__ == '__main__':
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-
     initialize_logger(settings.DEBUG)
 
     _logger = logging.getLogger(__file__)
@@ -75,20 +71,15 @@ if __name__ == '__main__':
         charset='utf-8')
 
     storage_client = storage.get_client(settings.CLOUD_PROVIDER)
-    tf_client = TensorFlowServingClient(settings.TF_HOST, settings.TF_PORT)
 
     consumer = consumers.PredictionConsumer(
         redis_client=redis,
         storage_client=storage_client,
-        tf_client=tf_client,
         final_status='done')
 
     while True:
         try:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(consumer.consume(
-                settings.STATUS, settings.HASH_PREFIX))
-
+            consumer.consume(settings.STATUS, settings.HASH_PREFIX)
             time.sleep(settings.INTERVAL)
         except Exception as err:  # pylint: disable=broad-except
             _logger.critical('Fatal Error: %s: %s', type(err).__name__, err)

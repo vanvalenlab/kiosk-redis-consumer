@@ -32,7 +32,6 @@ from timeit import default_timer
 
 import os
 import json
-import asyncio
 import logging
 import tempfile
 
@@ -87,10 +86,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         self.logger.error('Failed to process redis key %s. %s: %s',
                           redis_hash, type(err).__name__, err)
 
-    async def _consume(self, redis_hash):
+    def _consume(self, redis_hash):
         raise NotImplementedError
 
-    async def consume(self, status=None, prefix=None):
+    def consume(self, status=None, prefix=None):
         """Consume all redis events every `interval` seconds
         # Arguments:
             interval: waits this many seconds between consume calls
@@ -101,7 +100,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             # process each unprocessed hash
             for redis_hash in self.iter_redis_hashes(status, prefix):
                 start = default_timer()
-                await self._consume(redis_hash)
+                self._consume(redis_hash)
                 self.logger.debug('Consumed key %s in %ss',
                                   redis_hash, default_timer() - start)
         except Exception as err:  # pylint: disable=broad-except
@@ -114,18 +113,16 @@ class PredictionConsumer(Consumer):
     def __init__(self,
                  redis_client,
                  storage_client,
-                 tf_client,
                  final_status='done'):
-        self.tf_client = tf_client
         super(PredictionConsumer, self).__init__(
             redis_client, storage_client, final_status)
 
-    async def process_big_image(self,
-                                cuts,
-                                img,
-                                field,
-                                model_name,
-                                model_version):
+    def process_big_image(self,
+                          cuts,
+                          img,
+                          field,
+                          model_name,
+                          model_version):
         """Slice big image into smaller images for prediction,
         then stitches all the smaller images back together
         # Arguments:
@@ -167,33 +164,33 @@ class PredictionConsumer(Consumer):
 
         return tf_results
 
-    async def segment_image(self, image, model_name, model_version):
-        """Use the TensorFlowServingClient to segment each image
-        # Arguments:
-            image: image data to segment
-            model_name: name of model in tf-serving
-            model_version: integer version number of model in tf-serving
-        # Returns:
-            results: list of numpy array of transformed data.
-        """
-        try:
-            start = default_timer()
-            self.logger.debug('Segmenting image of shape %s with model %s:%s',
-                              image.shape, model_name, model_version)
+    # async def segment_image(self, image, model_name, model_version):
+    #     """Use the TensorFlowServingClient to segment each image
+    #     # Arguments:
+    #         image: image data to segment
+    #         model_name: name of model in tf-serving
+    #         model_version: integer version number of model in tf-serving
+    #     # Returns:
+    #         results: list of numpy array of transformed data.
+    #     """
+    #     try:
+    #         start = default_timer()
+    #         self.logger.debug('Segmenting image of shape %s with model %s:%s',
+    #                           image.shape, model_name, model_version)
 
-            url = self.tf_client.get_url(model_name, model_version)
-            request = self.tf_client.post_image(image, url)
-            results = await asyncio.ensure_future(request)
+    #         url = self.tf_client.get_url(model_name, model_version)
+    #         request = self.tf_client.post_image(image, url)
+    #         results = await asyncio.ensure_future(request)
 
-            self.logger.debug('Segmented image with model %s:%s in %ss',
-                              model_name, model_version,
-                              default_timer() - start)
-            return results
-        except Exception as err:
-            self.logger.error('Encountered %s during tf-serving request to '
-                              'model %s:%s: %s', type(err).__name__,
-                              model_name, model_version, err)
-            raise err
+    #         self.logger.debug('Segmented image with model %s:%s in %ss',
+    #                           model_name, model_version,
+    #                           default_timer() - start)
+    #         return results
+    #     except Exception as err:
+    #         self.logger.error('Encountered %s during tf-serving request to '
+    #                           'model %s:%s: %s', type(err).__name__,
+    #                           model_name, model_version, err)
+    #         raise err
 
     def _process(self, image, key, process_type):
         """Apply each processing function to each image in images
@@ -243,14 +240,26 @@ class PredictionConsumer(Consumer):
         return self._process(image, key, 'post')
 
     def grpc_image(self, img, model_name, model_version):
-        hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
-        req_data = [{'in_tensor_name': 'inputs',
-                     'in_tensor_dtype': 'DT_FLOAT',
-                     'data': img}]
+        start = default_timer()
+        self.logger.debug('Segmenting image of shape %s with model %s:%s',
+                          img.shape, model_name, model_version)
+        try:
+            hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
+            req_data = [{'in_tensor_name': 'inputs',
+                        'in_tensor_dtype': 'DT_FLOAT',
+                        'data': img}]
 
-        client = ProdClient(hostname, model_name, model_version)
-        prediction = client.predict(req_data, request_timeout=10)
-        return prediction
+            client = ProdClient(hostname, model_name, model_version)
+            prediction = client.predict(req_data, request_timeout=10)
+            self.logger.debug('Segmented image with model %s:%s in %ss',
+                            model_name, model_version,
+                            default_timer() - start)
+            return prediction
+        except Exception as err:
+            self.logger.error('Encountered %s during tf-serving request to '
+                              'model %s:%s: %s', type(err).__name__,
+                              model_name, model_version, err)
+            raise err
 
     async def _consume(self, redis_hash):
         """
@@ -258,8 +267,7 @@ class PredictionConsumer(Consumer):
         TODO: Killed due to memory when processing ALL at once.
         TODO: process some number of batches in parallel?
         """
-        self.tf_client.verify_endpoint_liveness(code=404, endpoint='')
-
+        # self.tf_client.verify_endpoint_liveness(code=404, endpoint='')
         hvals = self.redis.hgetall(redis_hash)
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
@@ -273,13 +281,11 @@ class PredictionConsumer(Consumer):
         pre_func = hvals.get('preprocess_function')
         post_func = hvals.get('postprocess_function')
 
-        async def predict(data):
+        def predict(data):
             if cuts.isdigit() and int(cuts) > 0:
-                fut = self.process_big_image(
+                return self.process_big_image(
                     cuts, data, field, model_name, model_version)
-            else:
-                fut = self.segment_image(data, model_name, model_version)
-            return await asyncio.ensure_future(fut)
+            return self.grpc_image(data, model_name, model_version)
 
         try:
             with tempfile.TemporaryDirectory() as tempdir:
@@ -311,9 +317,7 @@ class PredictionConsumer(Consumer):
                     pre = self.preprocess(image, pre_func)
 
                     # prediction = await predict(pre)
-                    prediction = self.grpc_image(image,
-                                                 model_name,
-                                                 model_version)
+                    prediction = predict(pre)
 
                     post = self.postprocess(prediction, post_func)
 

@@ -5,6 +5,4 @@ redis>=2.10.6
 requests>=2.19.1
 scikit-image>=0.14.0
 keras-preprocessing==1.0.5
-uvloop==0.11.3
-aiohttp==3.4.4
 grpcio==1.17.1
