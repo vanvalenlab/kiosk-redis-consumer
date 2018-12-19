@@ -40,7 +40,6 @@ from redis import StrictRedis
 from redis_consumer import consumers
 from redis_consumer import settings
 from redis_consumer import storage
-from redis_consumer.clients import TensorFlowServingClient
 
 
 def initialize_logger(debug_mode=False):

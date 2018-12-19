@@ -30,14 +30,12 @@ from __future__ import division
 from __future__ import print_function
 
 import json
-import asyncio
 import logging
 import time
 from timeit import default_timer
 
 import numpy as np
 import requests
-import aiohttp
 
 
 class Client(object):  # pylint: disable=useless-object-inheritance
@@ -72,7 +70,7 @@ class Client(object):  # pylint: disable=useless-object-inheritance
         """
         raise NotImplementedError('Override this function in a child class.')
 
-    async def _post(self, url, image, session, retries=5):
+    def _post(self, url, image, session, retries=5):
         """POST image data to given URL using async session.
         # Arguments:
             url: API endpoint URL
@@ -84,18 +82,17 @@ class Client(object):  # pylint: disable=useless-object-inheritance
         """
         backoff = np.random.randint(3, 6)
         payload = self.format_image_payload(image)
-        async with session.post(url, json=payload) as response:
+        with session.post(url, json=payload) as response:
             for _ in range(retries):
                 try:
-                    return self.handle_response(await response.json())
+                    return self.handle_response(response.json())
                 except (aiohttp.ClientPayloadError,
                         aiohttp.ClientResponseError) as err:
                     self.logger.error('Encountered %s: %s. Retrying in %ss'
                                       '...', type(err).__name__, err, backoff)
-                await asyncio.sleep(backoff)
             raise ValueError('Maximum retries exceeded ({})'.format(retries))
 
-    async def post_image(self, image, url, retries=5, max_clients=3):
+    def post_image(self, image, url, retries=5, max_clients=3):
         """POSTs many images to the API at once.
         # Arguments:
             image: image data to pass to the API
@@ -106,10 +103,9 @@ class Client(object):  # pylint: disable=useless-object-inheritance
             results: list of results from API
         """
         conn = aiohttp.TCPConnector(limit=max_clients)
-        async with aiohttp.ClientSession(connector=conn) as session:
+        with aiohttp.ClientSession(connector=conn) as session:
             request = self._post(url, image, session, retries=retries)
-            fut = asyncio.ensure_future(request)
-            return await fut
+            return request
 
     def verify_endpoint_liveness(self,
                                  num_retries=60,
