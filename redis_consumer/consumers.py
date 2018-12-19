@@ -239,7 +239,7 @@ class PredictionConsumer(Consumer):
         """
         return self._process(image, key, 'post')
 
-    def grpc_image(self, img, model_name, model_version):
+    def grpc_image(self, img, model_name, model_version, timeout=15):
         start = default_timer()
         self.logger.debug('Segmenting image of shape %s with model %s:%s',
                           img.shape, model_name, model_version)
@@ -250,7 +250,7 @@ class PredictionConsumer(Consumer):
                         'data': img}]
 
             client = ProdClient(hostname, model_name, model_version)
-            prediction = client.predict(req_data, request_timeout=10)
+            prediction = client.predict(req_data, request_timeout=timeout)
             self.logger.debug('Segmented image with model %s:%s in %ss',
                             model_name, model_version,
                             default_timer() - start)
