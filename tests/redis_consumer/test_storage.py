@@ -23,17 +23,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+"""Tests for API Storage classes"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from redis_consumer import predict_client
-from redis_consumer import processing
-from redis_consumer import consumers
-from redis_consumer import settings
+import tempfile
+
+import pytest
+
 from redis_consumer import storage
 from redis_consumer import utils
 
-del absolute_import
-del division
-del print_function
+
+def test_get_client():
+    aws = storage.get_client('aws')
+    AWS = storage.get_client('AWS')
+    assert isinstance(aws, type(AWS))
+
+    # TODO: set GCLOUD env vars to test this
+    # with pytest.raises(OSError):
+    #     gke = storage.get_client('gke')
+    #     GKE = storage.get_client('GKE')
+    #     assert isinstance(gke, type(GKE))
+
+    with pytest.raises(ValueError):
+        _ = storage.get_client('bad_value')
+
+
+class TestStorage(object):
+
+    def test_get_download_path(self):
+        with utils.get_tempdir() as tempdir:
+            bucket = 'test-bucket'
+            stg = storage.Storage(bucket, tempdir)
+            filekey = 'upload_dir/key/to.zip'
+            path = stg.get_download_path(filekey, tempdir)
+            path2 = stg.get_download_path(filekey)
+            assert path == path2
+            assert str(path).startswith(tempdir)
+            assert str(path).endswith(filekey.replace('upload_dir/', ''))

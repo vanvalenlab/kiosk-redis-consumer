@@ -7,7 +7,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.github.com/vanvalenlab/kiosk-redis-consumer/LICENSE
+#     http://www.github.com/vanvalenlab/kiosk-data-processing/LICENSE
 #
 # The Work provided may be used for non-commercial academic purposes only.
 # For any other use of the Work, including commercial use, please contact:
@@ -23,17 +23,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+"""Tests for post-processing functions"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from redis_consumer import predict_client
-from redis_consumer import processing
-from redis_consumer import consumers
-from redis_consumer import settings
-from redis_consumer import storage
-from redis_consumer import utils
+import numpy as np
 
-del absolute_import
-del division
-del print_function
+from redis_consumer import processing
+
+
+def _get_image(img_h=300, img_w=300):
+    bias = np.random.rand(img_w, img_h) * 64
+    variance = np.random.rand(img_w, img_h) * (255 - 64)
+    img = np.random.rand(img_w, img_h) * variance + bias
+    return img
+
+
+def test_normalize():
+    height, width = 300, 300
+    img = _get_image(height, width)
+    normalized_img = processing.noramlize(img)
+    np.testing.assert_almost_equal(normalized_img.mean(), 0)
+    np.testing.assert_almost_equal(normalized_img.var(), 1)
+
+
+def test_mibi():
+    channels = 3
+    img = np.random.rand(300, 300, channels)
+    mibi_img = processing.mibi(img)
+    np.testing.assert_equal(mibi_img.shape, (300, 300, 1))
+
+
+def test_deepcell():
+    channels = 4
+    img = np.random.rand(300, 300, channels)
+    deepcell_img = processing.deepcell(img)
+    np.testing.assert_equal(deepcell_img.shape, (300, 300, 1))
+
+
+def test_watershed():
+    channels = np.random.randint(4, 8)
+    img = np.random.rand(300, 300, channels)
+    watershed_img = processing.watershed(img)
+    np.testing.assert_equal(watershed_img.shape, (300, 300, 1))

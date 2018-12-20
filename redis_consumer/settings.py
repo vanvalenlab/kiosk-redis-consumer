@@ -32,36 +32,60 @@ import os
 
 from decouple import config
 
+import redis_consumer
+
+
+# Map for processing functions
+PROCESSING_FUNCTIONS = {
+    'pre': {
+        'normalize': redis_consumer.processing.noramlize,
+    },
+    'post': {
+        'deepcell': redis_consumer.processing.deepcell,
+        'mibi': redis_consumer.processing.mibi,
+        'watershed': redis_consumer.processing.watershed
+    },
+}
+
+# remove leading/trailing "/"s from cloud bucket folder names
+_strip = lambda x: '/'.join(y for y in x.split('/') if y)
+
+# Debug Mode
+DEBUG = config('DEBUG', cast=bool, default=False)
+
+# Consumer settings
+INTERVAL = config('INTERVAL', default=10, cast=int)
+
+# Hash Prefix - filter out prediction jobs
+HASH_PREFIX = _strip(config('HASH_PREFIX', cast=str, default='predict'))
+
+# Redis client connection
+REDIS_HOST = config('REDIS_HOST', default='redis-master')
+REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
+
+# tensorflow-serving client connection
+TF_HOST = config('TF_HOST', default='tf-serving-service')
+TF_PORT = config('TF_PORT', default=8500, cast=int)
+TF_TENSOR_NAME = config('TF_TENSOR_NAME', default='image')
+TF_TENSOR_DTYPE = config('TF_TENSOR_DTYPE', default='DT_FLOAT')
+
+# Status of hashes marked for prediction
+STATUS = config('STATUS', default='new')
+
+# Cloud storage
+CLOUD_PROVIDER = config('CLOUD_PROVIDER', cast=str, default='aws').lower()
 
 # Application directories
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_DIR = os.path.join(ROOT_DIR, 'logs')
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOWNLOAD_DIR = os.path.join(ROOT_DIR, 'download')
 OUTPUT_DIR = os.path.join(ROOT_DIR, 'output')
+LOG_DIR = os.path.join(ROOT_DIR, 'logs')
 
 for d in (DOWNLOAD_DIR, OUTPUT_DIR, LOG_DIR):
     try:
         os.mkdir(d)
     except OSError:
         pass
-
-# Parse environment variables
-DEBUG = config('DEBUG', default=True, cast=bool)
-
-# Consumer settings
-CONSUMER_TYPE = config('CONSUMER_TYPE', default='predict')
-CONSUMER_INTERVAL = config('CONSUMER_INTERVAL', default=10, cast=int)
-
-# tensorflow-serving client connection
-TF_HOST = config('TF_HOST', default='tf-serving-service')
-TF_PORT = config('TF_PORT', default=1337, cast=int)
-
-# redis client connection
-REDIS_HOST = config('REDIS_HOST', default='redis-master')
-REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
-
-# cloud storage
-CLOUD_PROVIDER = config('CLOUD_PROVIDER', default='aws')
 
 # AWS Credentials
 AWS_REGION = config('AWS_REGION', default='us-east-1')

@@ -32,6 +32,7 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
+import time
 import logging
 
 from redis import StrictRedis
@@ -39,7 +40,6 @@ from redis import StrictRedis
 from redis_consumer import consumers
 from redis_consumer import settings
 from redis_consumer import storage
-from redis_consumer.tf_client import TensorFlowServingClient
 
 
 def initialize_logger(debug_mode=False):
@@ -58,60 +58,28 @@ def initialize_logger(debug_mode=False):
     logger.addHandler(console)
 
 
-def get_redis_consumer(event_type):
+if __name__ == '__main__':
+    initialize_logger(settings.DEBUG)
+
+    _logger = logging.getLogger(__file__)
+
     redis = StrictRedis(
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
         decode_responses=True,
         charset='utf-8')
 
-    tf_client = TensorFlowServingClient(settings.TF_HOST, settings.TF_PORT)
+    storage_client = storage.get_client(settings.CLOUD_PROVIDER)
 
-    if settings.CLOUD_PROVIDER == 'aws':
-        storage_client = storage.S3Storage(settings.AWS_S3_BUCKET)
-    elif settings.CLOUD_PROVIDER == 'gke':
-        storage_client = storage.GoogleStorage(settings.GCLOUD_STORAGE_BUCKET)
-    else:
-        print('Bad value for CLOUD_PROVIDER:', settings.CLOUD_PROVIDER)
-        storage_client = None
+    consumer = consumers.PredictionConsumer(
+        redis_client=redis,
+        storage_client=storage_client,
+        final_status='done')
 
-    if event_type == 'pre':
-        consumer = consumers.PreProcessingConsumer(
-            redis_client=redis,
-            storage_client=storage_client,
-            hash_prefix='predict',
-            watch_status='new',
-            final_status='preprocessed')
-
-    elif event_type == 'predict':
-        consumer = consumers.PredictionConsumer(
-            redis_client=redis,
-            storage_client=storage_client,
-            tf_client=tf_client,
-            hash_prefix='predict',
-            watch_status='preprocessed',
-            final_status='processed')
-
-    elif event_type == 'post':
-        consumer = consumers.PostProcessingConsumer(
-            redis_client=redis,
-            storage_client=storage_client,
-            hash_prefix='predict',
-            watch_status='processed',
-            final_status='done')
-
-    else:
-        raise ValueError('Unexpected CONSUMER_TYPE: `{}`'.format(event_type))
-
-    return consumer
-
-
-if __name__ == '__main__':
-    initialize_logger(settings.DEBUG)
-
-    try:
-        consumer = get_redis_consumer(settings.CONSUMER_TYPE)
-        consumer.consume(interval=settings.CONSUMER_INTERVAL)
-    except Exception as err:
-        print(err)
-        sys.exit(1)
+    while True:
+        try:
+            consumer.consume(settings.STATUS, settings.HASH_PREFIX)
+            time.sleep(settings.INTERVAL)
+        except Exception as err:  # pylint: disable=broad-except
+            _logger.critical('Fatal Error: %s: %s', type(err).__name__, err)
+            sys.exit(1)

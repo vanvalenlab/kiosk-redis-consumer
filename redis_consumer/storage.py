@@ -23,31 +23,49 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Storage Interface to upload / download files
-from a variety of cloud platforms.
-"""
+"""Storage Interface to upload / download files from / to the cloud"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from timeit import default_timer
+
 import os
 import logging
 
-import boto3
-from google.cloud import storage as google_storage
-
 from redis_consumer import settings
+from redis_consumer.settings import DOWNLOAD_DIR
 
 
-class Storage(object):
+def get_client(cloud_provider):
+    """Returns the Storage Client appropriate for the cloud provider
+    # Arguments:
+        cloud_provider: Indicates which cloud platform (AWS vs GKE)
+    # Returns:
+        storage_client: Client for interacting with the cloud.
+    """
+    cloud_provider = str(cloud_provider).lower()
+    logger = logging.getLogger('storage.get_client')
+    if cloud_provider == 'aws':
+        storage_client = S3Storage(settings.AWS_S3_BUCKET)
+    elif cloud_provider == 'gke':
+        storage_client = GoogleStorage(settings.GCLOUD_STORAGE_BUCKET)
+    else:
+        errmsg = 'Bad value for CLOUD_PROVIDER: %s'
+        logger.error(errmsg, cloud_provider)
+        raise ValueError(errmsg % cloud_provider)
+    return storage_client
+
+
+class Storage(object):  # pylint: disable=useless-object-inheritance
     """General class to interact with cloud storage buckets.
     Supported cloud stroage provider will have child class implementations.
     """
 
-    def __init__(self, bucket):
+    def __init__(self, bucket, download_dir=DOWNLOAD_DIR):
         self._client = None
         self.bucket = bucket
-        self.download_dir = settings.DOWNLOAD_DIR
+        self.download_dir = download_dir
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
     def get_download_path(self, filename, download_dir=None):
@@ -89,8 +107,10 @@ class Storage(object):
 class GoogleStorage(Storage):
     """Interact with Google Cloud Storage buckets"""
 
-    def __init__(self, bucket):
-        super(GoogleStorage, self).__init__(bucket)
+    def __init__(self, bucket, download_dir=DOWNLOAD_DIR):
+        super(GoogleStorage, self).__init__(bucket, download_dir)
+
+        from google.cloud import storage as google_storage
         self._client = google_storage.Client()
         self.bucket_url = 'www.googleapis.com/storage/v1/b/{}/o'.format(bucket)
 
@@ -113,14 +133,15 @@ class GoogleStorage(Storage):
         # Returns:
             dest: key of uploaded file in cloud storage
         """
+        start = default_timer()
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         try:
             dest = os.path.join('output', os.path.basename(filepath))
             bucket = self._client.get_bucket(self.bucket)
             blob = bucket.blob(dest)
             blob.upload_from_filename(filepath)
-            self.logger.debug('Successfully uploaded %s to bucket %s',
-                              filepath, self.bucket)
+            self.logger.debug('Successfully uploaded %s to bucket %s in %ss',
+                              filepath, self.bucket, default_timer() - start)
             return dest
         except Exception as err:
             self.logger.error('Error while uploading image %s: %s',
@@ -135,13 +156,15 @@ class GoogleStorage(Storage):
         # Returns:
             dest: local path to downloaded file
         """
+        start = default_timer()
         dest = self.get_download_path(filename, download_dir)
         self.logger.debug('Downloading %s to %s.', filename, dest)
         try:
             blob = self._client.get_bucket(self.bucket).blob(filename)
             with open(dest, 'wb') as new_file:
                 blob.download_to_file(new_file)
-            self.logger.debug('Downloaded %s', dest)
+            self.logger.debug('Downloaded %s in %ss',
+                              dest, default_timer() - start)
             return dest
         except Exception as err:
             self.logger.error('Error while downloading image %s: %s',
@@ -152,8 +175,12 @@ class GoogleStorage(Storage):
 class S3Storage(Storage):
     """Interact with Amazon S3 buckets"""
 
-    def __init__(self, bucket):
-        super(S3Storage, self).__init__(bucket)
+    def __init__(self,
+                 bucket,
+                 download_dir=DOWNLOAD_DIR):
+        super(S3Storage, self).__init__(bucket, download_dir)
+
+        import boto3
         self._client = boto3.client(
             's3',
             region_name=settings.AWS_REGION,
@@ -177,12 +204,13 @@ class S3Storage(Storage):
         # Returns:
             dest: key of uploaded file in cloud storage
         """
+        start = default_timer()
         dest = os.path.join('output', os.path.basename(filepath))
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         try:
             self._client.upload_file(filepath, self.bucket, dest)
-            self.logger.debug('Successfully uploaded %s to bucket %s',
-                              filepath, self.bucket)
+            self.logger.debug('Successfully uploaded %s to bucket %s in %ss',
+                              filepath, self.bucket, default_timer() - start)
             return dest
         except Exception as err:
             self.logger.error('Error while uploading image %s: %s',
@@ -197,6 +225,7 @@ class S3Storage(Storage):
         # Returns:
             dest: local path to downloaded file
         """
+        start = default_timer()
         # Bucket keys shouldn't start with "/"
         if filename.startswith('/'):
             filename = filename[1:]
@@ -205,7 +234,8 @@ class S3Storage(Storage):
         self.logger.debug('Downloading %s to %s.', filename, dest)
         try:
             self._client.download_file(self.bucket, filename, dest)
-            self.logger.debug('Downloaded %s', dest)
+            self.logger.debug('Downloaded %s in %ss',
+                              dest, default_timer() - start)
             return dest
         except Exception as err:
             self.logger.error('Error while downloading image %s: %s',
