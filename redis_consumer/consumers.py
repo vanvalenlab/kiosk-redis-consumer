@@ -37,6 +37,7 @@ import shutil
 import tempfile
 import contextlib
 
+import grpc
 import numpy as np
 
 from redis_consumer.predict_client.grpc_client import GrpcClient
@@ -243,6 +244,20 @@ class PredictionConsumer(Consumer):
                               model_name, model_version,
                               default_timer() - start)
             return prediction
+        except grpc.RpcError as err:
+            retry_statuses = {
+                grpc.StatusCode.DEADLINE_EXCEEDED,
+                grpc.StatusCode.UNAVAILABLE
+            }
+            code = err.code() if hasattr(err, 'code') else None
+            if code in retry_statuses:
+                self.logger.warning(err.name)
+                self.logger.warning(err.value)
+                self.logger.warning('Encountered %s during tf-serving request '
+                                    'to model %s:%s: %s', type(err).__name__,
+                                    model_name, model_version, err)
+                return self.grpc_image(img, model_name, model_version, timeout)
+            raise err
         except Exception as err:
             self.logger.error('Encountered %s during tf-serving request to '
                               'model %s:%s: %s', type(err).__name__,
