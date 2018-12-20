@@ -12,7 +12,8 @@ from grpc import RpcError
 import grpc.beta.implementations
 from grpc._cython import cygrpc
 
-from redis_consumer.predict_client import pbs
+from redis_consumer.predict_client.pbs.prediction_service_pb2_grpc import PredictionServiceStub
+from redis_consumer.predict_client.pbs.predict_pb2 import PredictRequest
 from redis_consumer.predict_client.util import predict_response_to_dict
 from redis_consumer.predict_client.util import make_tensor_proto
 
@@ -43,11 +44,11 @@ class GrpcClient:
                           time.time() - t)
 
         t = time.time()
-        stub = pbs.prediction_service_pb2_grpc.PredictionServiceStub(channel)
+        stub = PredictionServiceStub(channel)
         self.logger.debug('Creating stub took: %s', time.time() - t)
 
         t = time.time()
-        request = pbs.predict_pb2.PredictRequest()
+        request = PredictRequest()
         self.logger.debug('Creating request object took: %s', time.time() - t)
 
         request.model_spec.name = self.model_name
