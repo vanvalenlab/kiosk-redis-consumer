@@ -19,9 +19,7 @@ from redis_consumer.predict_client.util import make_tensor_proto
 
 class GrpcClient:
     def __init__(self, host, model_name, model_version):
-
         self.logger = logging.getLogger(self.__class__.__name__)
-
         self.host = host
         self.model_name = model_name
         self.model_version = model_version
