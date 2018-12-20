@@ -14,4 +14,4 @@ show_missing = True
 
 omit =
     redis_consumer/settings.py
-    redis_consumer/predict_client/*
+    redis_consumer/predict_client/pbs/*
