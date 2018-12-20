@@ -46,27 +46,6 @@ from redis_consumer import utils
 from redis_consumer import settings
 
 
-# Workaround for python2 not supporting `with tempfile.TemporaryDirectory() as`
-# These are unnecessary if not supporting python2
-@contextlib.contextmanager
-def cd(newdir, cleanup=lambda: True):
-    prevdir = os.getcwd()
-    os.chdir(os.path.expanduser(newdir))
-    try:
-        yield
-    finally:
-        os.chdir(prevdir)
-        cleanup()
-
-
-@contextlib.contextmanager
-def get_tempdir():
-    dirpath = tempfile.mkdtemp()
-    cleanup = lambda: shutil.rmtree(dirpath)
-    with cd(dirpath, cleanup):
-        yield dirpath
-
-
 class Consumer(object):  # pylint: disable=useless-object-inheritance
     """Base class for all redis event consumer classes"""
 
@@ -251,8 +230,7 @@ class PredictionConsumer(Consumer):
             }
             code = err.code() if hasattr(err, 'code') else None
             if code in retry_statuses:
-                self.logger.warning(err.name)
-                self.logger.warning(err.value)
+                self.logger.warning(err.details())
                 self.logger.warning('Encountered %s during tf-serving request '
                                     'to model %s:%s: %s', type(err).__name__,
                                     model_name, model_version, err)
@@ -278,7 +256,7 @@ class PredictionConsumer(Consumer):
         field = hvals.get('field_size', '61')
 
         try:
-            with get_tempdir() as tempdir:
+            with utils.get_tempdir() as tempdir:
                 fname = self.storage.download(hvals.get('file_name'), tempdir)
                 image_files = utils.get_image_files_from_dir(fname, tempdir)
 

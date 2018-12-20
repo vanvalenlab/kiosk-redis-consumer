@@ -58,7 +58,7 @@ def _write_image(filepath, img_w=300, img_h=300):
 
 
 def test_iter_image_archive():
-    with tempfile.TemporaryDirectory() as tempdir:
+    with utils.get_tempdir() as tempdir:
         zip_path = os.path.join(tempdir, 'test.zip')
         archive = zipfile.ZipFile(zip_path, 'w')
         num_files = 3
@@ -73,7 +73,7 @@ def test_iter_image_archive():
 
 
 def test_get_image_files_from_dir():
-    with tempfile.TemporaryDirectory() as tempdir:
+    with utils.get_tempdir() as tempdir:
         zip_path = os.path.join(tempdir, 'test.zip')
         archive = zipfile.ZipFile(zip_path, 'w')
         num_files = 3
@@ -93,7 +93,7 @@ def test_get_image_files_from_dir():
 def test_get_processing_function():
     types = ('pre', 'post')
     for t in types:
-        for k in settings.PROCESSING_FUNCTIONS[t].keys():
+        for k in settings.PROCESSING_FUNCTIONS[t]:
             F = utils.get_processing_function(t, k)
             assert callable(F)
 
@@ -104,7 +104,7 @@ def test_get_processing_function():
 
 
 def test_get_image():
-    with tempfile.TemporaryDirectory() as temp_dir:
+    with utils.get_tempdir() as temp_dir:
         # test tiff files
         test_img_path = os.path.join(temp_dir, 'phase.tif')
         _write_image(test_img_path, 300, 300)
@@ -140,7 +140,7 @@ def test_save_numpy_array():
     c = np.random.randint(low=1, high=4)
     z = np.random.randint(low=1, high=6)
 
-    with tempfile.TemporaryDirectory() as tempdir:
+    with utils.get_tempdir() as tempdir:
         # 2D images
         img = _get_image(h, w, c)
         files = utils.save_numpy_array(img, 'name', '/a/b/', tempdir)
@@ -165,7 +165,7 @@ def test_save_numpy_array():
 
 def test_zip_files():
     n = np.random.randint(low=3, high=10)
-    with tempfile.TemporaryDirectory() as temp_dir:
+    with utils.get_tempdir() as temp_dir:
         paths = [os.path.join(temp_dir, '{}.tif'.format(i)) for i in range(n)]
         for path in paths:
             _write_image(path, 30, 30)

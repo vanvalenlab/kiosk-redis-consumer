@@ -33,6 +33,7 @@ import tempfile
 import pytest
 
 from redis_consumer import storage
+from redis_consumer import utils
 
 
 def test_get_client():
@@ -53,7 +54,7 @@ def test_get_client():
 class TestStorage(object):
 
     def test_get_download_path(self):
-        with tempfile.TemporaryDirectory() as tempdir:
+        with utils.get_tempdir() as tempdir:
             bucket = 'test-bucket'
             stg = storage.Storage(bucket, tempdir)
             filekey = 'upload_dir/key/to.zip'

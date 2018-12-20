@@ -30,8 +30,11 @@ from __future__ import print_function
 
 import os
 import time
+import contextlib
 import hashlib
 import logging
+import shutil
+import tempfile
 import zipfile
 
 import numpy as np
@@ -43,6 +46,27 @@ from redis_consumer import settings
 
 
 logger = logging.getLogger('redis_consumer.utils')
+
+
+# Workaround for python2 not supporting `with tempfile.TemporaryDirectory() as`
+# These are unnecessary if not supporting python2
+@contextlib.contextmanager
+def cd(newdir, cleanup=lambda: True):
+    prevdir = os.getcwd()
+    os.chdir(os.path.expanduser(newdir))
+    try:
+        yield
+    finally:
+        os.chdir(prevdir)
+        cleanup()
+
+
+@contextlib.contextmanager
+def get_tempdir():
+    dirpath = tempfile.mkdtemp()
+    cleanup = lambda: shutil.rmtree(dirpath)
+    with cd(dirpath, cleanup):
+        yield dirpath
 
 
 def iter_image_archive(zip_path, destination):
