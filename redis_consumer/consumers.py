@@ -236,14 +236,14 @@ class PredictionConsumer(Consumer):
             hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
             req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
                          'in_tensor_dtype': settings.TF_TENSOR_DTYPE,
-                         'data': img}]
+                         'data': np.expand_dims(img, axis=0)}]
 
             client = GrpcClient(hostname, model_name, int(model_version))
             prediction = client.predict(req_data, request_timeout=timeout)
             self.logger.debug('Segmented image with model %s:%s in %ss',
                               model_name, model_version,
                               default_timer() - start)
-            return prediction
+            return prediction['prediction']
         except grpc.RpcError as err:
             retry_statuses = {
                 grpc.StatusCode.DEADLINE_EXCEEDED,
