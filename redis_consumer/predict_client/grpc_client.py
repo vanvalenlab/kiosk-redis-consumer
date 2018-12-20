@@ -5,8 +5,13 @@ from __future__ import print_function
 
 import logging
 import time
+
 import grpc
 from grpc import RpcError
+
+import grpc.beta.implementations
+from grpc._cython import cygrpc
+
 from redis_consumer.predict_client.pbs.prediction_service_pb2_grpc import PredictionServiceStub
 from redis_consumer.predict_client.pbs.predict_pb2 import PredictRequest
 from redis_consumer.predict_client.util import predict_response_to_dict
@@ -22,8 +27,13 @@ class GrpcClient:
         self.model_name = model_name
         self.model_version = model_version
 
-    def predict(self, request_data, request_timeout=10):
+    def insecure_channel(self):
+        return grpc.insecure_channel(
+            target=self.host,
+            options=[(cygrpc.ChannelArgKey.max_send_message_length, -1),
+                     (cygrpc.ChannelArgKey.max_receive_message_length, -1)])
 
+    def predict(self, request_data, request_timeout=10):
         self.logger.info('Sending request to tfserving model')
         self.logger.info('Host: %s', self.host)
         self.logger.info('Model name: %s', self.model_name)
@@ -31,7 +41,7 @@ class GrpcClient:
 
         # Create gRPC client and request
         t = time.time()
-        channel = grpc.insecure_channel(self.host)
+        channel = self.insecure_channel()
         self.logger.debug('Establishing insecure channel took: %s', time.time() - t)
 
         t = time.time()
