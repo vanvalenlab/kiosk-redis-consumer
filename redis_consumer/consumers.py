@@ -272,12 +272,22 @@ class PredictionConsumer(Consumer):
                     start = default_timer()
                     image = utils.get_image(imfile)
 
-                    pre = self.preprocess(image, pre_func)
+                    pre = None
+                    for f in hvals.get('preprocess_function', '').split(','):
+                        x = pre if pre else image
+                        pre = self.preprocess(x, f)
 
-                    # prediction = await predict(pre)
-                    prediction = predict(pre)
+                    if cuts.isdigit() and int(cuts) > 0:
+                        prediction = self.process_big_image(
+                            cuts, pre, field, model_name, model_version)
+                    else:
+                        prediction = self.grpc_image(
+                            pre, model_name, model_version, timeout=30)
 
-                    post = self.postprocess(prediction, post_func)
+                    post = None
+                    for f in hvals.get('postprocess_function', '').split(','):
+                        x = post if post else prediction
+                        post = self.postprocess(x, f)
 
                     # Save each result channel as an image file
                     subdir = os.path.dirname(imfile.replace(tempdir, ''))
