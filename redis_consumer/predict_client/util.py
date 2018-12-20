@@ -65,14 +65,17 @@ def predict_response_to_dict(predict_response):
         dtype_constant = predict_response.outputs[k].dtype
 
         if dtype_constant not in number_to_dtype_value:
-            logger.error('Tensor output data type not supported. Returning empty dict.')
             predict_response_dict[k] = 'value not found'
+            logger.error('Tensor output data type not supported. '
+                         'Returning empty dict.')
 
         if shape == [1]:
-            predict_response_dict[k] = eval('predict_response.outputs[k].' + number_to_dtype_value[dtype_constant])[0]
+            dt = number_to_dtype_value[dtype_constant]
+            predict_response_dict[k] = eval(
+                'predict_response.outputs[k].' + dt)[0]
         else:
             predict_response_dict[k] = np.array(
-                eval('predict_response.outputs[k].' + number_to_dtype_value[dtype_constant])).reshape(shape)
+                eval('predict_response.outputs[k].' + dt)).reshape(shape)
 
     return predict_response_dict
 
