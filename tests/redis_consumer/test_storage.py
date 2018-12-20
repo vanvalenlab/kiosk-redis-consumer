@@ -36,19 +36,19 @@ from redis_consumer import storage
 from redis_consumer import utils
 
 
-def test_get_client():
-    aws = storage.get_client('aws')
-    AWS = storage.get_client('AWS')
-    assert isinstance(aws, type(AWS))
+# def test_get_client():
+#     aws = storage.get_client('aws')
+#     AWS = storage.get_client('AWS')
+#     assert isinstance(aws, type(AWS))
 
-    # TODO: set GCLOUD env vars to test this
-    with pytest.raises(OSError):
-        gke = storage.get_client('gke')
-        GKE = storage.get_client('GKE')
-        assert isinstance(gke, type(GKE))
+#     # TODO: set GCLOUD env vars to test this
+#     with pytest.raises(OSError):
+#         gke = storage.get_client('gke')
+#         GKE = storage.get_client('GKE')
+#         assert isinstance(gke, type(GKE))
 
-    with pytest.raises(ValueError):
-        _ = storage.get_client('bad_value')
+#     with pytest.raises(ValueError):
+#         _ = storage.get_client('bad_value')
 
 
 class TestStorage(object):
