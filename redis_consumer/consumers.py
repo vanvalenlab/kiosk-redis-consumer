@@ -133,13 +133,6 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
 class PredictionConsumer(Consumer):
     """Consumer to send image data to tf-serving and upload the results"""
 
-    def __init__(self,
-                 redis_client,
-                 storage_client,
-                 final_status='done'):
-        super(PredictionConsumer, self).__init__(
-            redis_client, storage_client, final_status)
-
     def process_big_image(self,
                           cuts,
                           img,
@@ -186,34 +179,6 @@ class PredictionConsumer(Consumer):
             tf_results[..., a:b, c:d, :] = resp[..., winx:-winx, winy:-winy, :]
 
         return tf_results
-
-    # async def segment_image(self, image, model_name, model_version):
-    #     """Use the TensorFlowServingClient to segment each image
-    #     # Arguments:
-    #         image: image data to segment
-    #         model_name: name of model in tf-serving
-    #         model_version: integer version number of model in tf-serving
-    #     # Returns:
-    #         results: list of numpy array of transformed data.
-    #     """
-    #     try:
-    #         start = default_timer()
-    #         self.logger.debug('Segmenting image of shape %s with model %s:%s',
-    #                           image.shape, model_name, model_version)
-
-    #         url = self.tf_client.get_url(model_name, model_version)
-    #         request = self.tf_client.post_image(image, url)
-    #         results = await asyncio.ensure_future(request)
-
-    #         self.logger.debug('Segmented image with model %s:%s in %ss',
-    #                           model_name, model_version,
-    #                           default_timer() - start)
-    #         return results
-    #     except Exception as err:
-    #         self.logger.error('Encountered %s during tf-serving request to '
-    #                           'model %s:%s: %s', type(err).__name__,
-    #                           model_name, model_version, err)
-    #         raise err
 
     def _process(self, image, key, process_type):
         """Apply each processing function to each image in images
@@ -285,12 +250,7 @@ class PredictionConsumer(Consumer):
             raise err
 
     def _consume(self, redis_hash):
-        """
-        TODO: process each imfile in parallel.
-        TODO: Killed due to memory when processing ALL at once.
-        TODO: process some number of batches in parallel?
-        """
-        # self.tf_client.verify_endpoint_liveness(code=404, endpoint='')
+        # TODO: investigate parallel requests
         hvals = self.redis.hgetall(redis_hash)
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
@@ -300,37 +260,12 @@ class PredictionConsumer(Consumer):
         model_name = hvals.get('model_name')
         model_version = hvals.get('model_version')
         cuts = hvals.get('cuts', '0')
-        field = hvals.get('field_size', 61)
-        pre_func = hvals.get('preprocess_function')
-        post_func = hvals.get('postprocess_function')
-
-        def predict(data):
-            if cuts.isdigit() and int(cuts) > 0:
-                return self.process_big_image(
-                    cuts, data, field, model_name, model_version)
-            return self.grpc_image(data, model_name, model_version)
+        field = hvals.get('field_size', '61')
 
         try:
             with get_tempdir() as tempdir:
                 fname = self.storage.download(hvals.get('file_name'), tempdir)
                 image_files = utils.get_image_files_from_dir(fname, tempdir)
-
-                # sub_dirs, names = [], []
-                # for i in image_files:
-                #     sub_dirs.append(os.path.dirname(i.replace(tempdir, '')))
-                #     names.append(os.path.splitext(os.path.basename(i))[0])
-
-                # images = (utils.get_image(i) for i in image_files)
-                # pre = (self.preprocess(i, pre_func) for i in images)
-                # pred = await asyncio.gather(*(predict(i) for i in pre))
-                # post = (self.postprocess(i, post_func) for i in pred)
-
-                # # Save each post processed image as a file
-                # all_output = []
-                # for i, res in enumerate(post):
-                #     name, sub = names[i], sub_dirs[i]
-                #     _out = utils.save_numpy_array(res, name, sub, tempdir)
-                #     all_output.extend(_out)
 
                 all_output = []
                 for i, imfile in enumerate(image_files):
