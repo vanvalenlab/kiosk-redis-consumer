@@ -69,8 +69,8 @@ def predict_response_to_dict(predict_response):
             logger.error('Tensor output data type not supported. '
                          'Returning empty dict.')
 
+        dt = number_to_dtype_value[dtype_constant]
         if shape == [1]:
-            dt = number_to_dtype_value[dtype_constant]
             predict_response_dict[k] = eval(
                 'predict_response.outputs[k].' + dt)[0]
         else:
