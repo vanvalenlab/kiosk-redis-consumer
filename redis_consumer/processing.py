@@ -155,6 +155,10 @@ def deepcell(prediction, threshold=.8):
     # Returns:
         post-processed data with each cell uniquely annotated
     """
+    try:
+        prediction = prediction.squeeze(axis=0)
+    except ValueError:
+        pass
     interior = prediction[..., 2] > threshold
     data = np.expand_dims(interior, axis=-1)
     labeled = label(data)
