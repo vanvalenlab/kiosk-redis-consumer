@@ -12,8 +12,7 @@ from grpc import RpcError
 import grpc.beta.implementations
 from grpc._cython import cygrpc
 
-from redis_consumer.predict_client.pbs.prediction_service_pb2_grpc import PredictionServiceStub
-from redis_consumer.predict_client.pbs.predict_pb2 import PredictRequest
+from redis_consumer.predict_client import pbs
 from redis_consumer.predict_client.util import predict_response_to_dict
 from redis_consumer.predict_client.util import make_tensor_proto
 
@@ -42,14 +41,15 @@ class GrpcClient:
         # Create gRPC client and request
         t = time.time()
         channel = self.insecure_channel()
-        self.logger.debug('Establishing insecure channel took: %s', time.time() - t)
+        self.logger.debug('Establishing insecure channel took: %s',
+                          time.time() - t)
 
         t = time.time()
-        stub = PredictionServiceStub(channel)
+        stub = pbs.prediction_service_pb2_grpc.PredictionServiceStub(channel)
         self.logger.debug('Creating stub took: %s', time.time() - t)
 
         t = time.time()
-        request = PredictRequest()
+        request = pbs.predict_pb2.PredictRequest()
         self.logger.debug('Creating request object took: %s', time.time() - t)
 
         request.model_spec.name = self.model_name
@@ -68,7 +68,8 @@ class GrpcClient:
             t = time.time()
             predict_response = stub.Predict(request, timeout=request_timeout)
 
-            self.logger.debug('Actual request took: %s seconds', time.time() - t)
+            self.logger.debug('Actual request took: %s seconds',
+                              time.time() - t)
 
             predict_response_dict = predict_response_to_dict(predict_response)
 
