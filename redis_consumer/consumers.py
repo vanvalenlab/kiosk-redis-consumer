@@ -40,7 +40,7 @@ import contextlib
 import grpc
 import numpy as np
 
-from redis_consumer.predict_client.grpc_client import GrpcClient
+from redis_consumer.grpc_client import GrpcClient
 
 from redis_consumer import utils
 from redis_consumer import settings

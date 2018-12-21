@@ -13,5 +13,4 @@ fail_under = 50
 show_missing = True
 
 omit =
-    redis_consumer/settings.py
-    redis_consumer/predict_client/pbs/*
+    redis_consumer/pbs/*

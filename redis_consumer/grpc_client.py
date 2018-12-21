@@ -12,10 +12,10 @@ from grpc import RpcError
 import grpc.beta.implementations
 from grpc._cython import cygrpc
 
-from redis_consumer.predict_client.pbs.prediction_service_pb2_grpc import PredictionServiceStub
-from redis_consumer.predict_client.pbs.predict_pb2 import PredictRequest
-from redis_consumer.predict_client.util import predict_response_to_dict
-from redis_consumer.predict_client.util import make_tensor_proto
+from redis_consumer.pbs.prediction_service_pb2_grpc import PredictionServiceStub
+from redis_consumer.pbs.predict_pb2 import PredictRequest
+from redis_consumer.utils import predict_response_to_dict
+from redis_consumer.utils import make_tensor_proto
 
 
 class GrpcClient:
