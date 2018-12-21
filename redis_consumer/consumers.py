@@ -172,6 +172,7 @@ class PredictionConsumer(Consumer):
             tf_results: single numpy array of predictions on big input image
         """
         cuts = int(cuts)
+        field = int(field)
         winx, winy = (field - 1) // 2, (field - 1) // 2
 
         def iter_cuts(img, cuts, field):
@@ -222,8 +223,7 @@ class PredictionConsumer(Consumer):
                 grpc.StatusCode.DEADLINE_EXCEEDED,
                 grpc.StatusCode.UNAVAILABLE
             }
-            code = err.code() if hasattr(err, 'code') else None
-            if code in retry_statuses:
+            if err.code() in retry_statuses:
                 self.logger.warning(err.details())
                 self.logger.warning('Encountered %s during tf-serving request '
                                     'to model %s:%s: %s', type(err).__name__,
@@ -264,7 +264,7 @@ class PredictionConsumer(Consumer):
                         x = pre if pre else image
                         pre = self.preprocess(x, f)
 
-                    if cuts.isdigit() and int(cuts) > 0:
+                    if str(cuts).isdigit() and int(cuts) > 0:
                         prediction = self.process_big_image(
                             cuts, pre, field, model_name, model_version)
                     else:
