@@ -33,9 +33,6 @@ from timeit import default_timer
 import os
 import json
 import logging
-import shutil
-import tempfile
-import contextlib
 
 import grpc
 import numpy as np
