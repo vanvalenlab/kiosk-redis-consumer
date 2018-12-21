@@ -49,10 +49,7 @@ from redis_consumer import settings
 class Consumer(object):  # pylint: disable=useless-object-inheritance
     """Base class for all redis event consumer classes"""
 
-    def __init__(self,
-                 redis_client,
-                 storage_client,
-                 final_status='done'):
+    def __init__(self, redis_client, storage_client, final_status='done'):
         self.output_dir = settings.OUTPUT_DIR
         self.redis = redis_client
         self.storage = storage_client
