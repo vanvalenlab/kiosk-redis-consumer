@@ -80,13 +80,10 @@ def iter_image_archive(zip_path, destination):
     archive = zipfile.ZipFile(zip_path, 'r')
     is_valid = lambda x: os.path.splitext(x)[1] and '__MACOSX' not in x
     for info in archive.infolist():
-        try:
-            extracted = archive.extract(info, path=destination)
-            if os.path.isfile(extracted):
-                if is_valid(extracted):
-                    yield extracted
-        except:  # pylint: disable=bare-except
-            logger.warning('Could not extract %s', info.filename)
+        extracted = archive.extract(info, path=destination)
+        if os.path.isfile(extracted):
+            if is_valid(extracted):
+                yield extracted
 
 
 def get_image_files_from_dir(fname, destination=None):
