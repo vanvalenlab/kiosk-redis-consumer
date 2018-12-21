@@ -74,6 +74,53 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 else:  # no need to check the status
                     yield key
 
+    def _process(self, image, key, process_type):
+        """Apply each processing function to each image in images
+        # Arguments:
+            images: iterable of image data
+            key: function to apply to images
+            process_type: pre or post processing
+        # Returns:
+            list of processed image data
+        """
+        if not key:
+            return image
+
+        start = default_timer()
+        process_type = str(process_type).lower()
+        processing_function = utils.get_processing_function(process_type, key)
+        self.logger.debug('Starting %s %s-processing image of shape %s',
+                          key, process_type, image.shape)
+        try:
+            results = processing_function(image)
+            self.logger.debug('Finished %s %s-processing image in %ss',
+                              key, process_type, default_timer() - start)
+            return results
+        except Exception as err:
+            self.logger.error('Encountered %s during %s %s-processing: %s',
+                              type(err).__name__, key, process_type, err)
+            raise err
+
+    def preprocess(self, image, key):
+        """Wrapper for _process_image but can only call with type="pre"
+        # Arguments:
+            image: numpy array of image data
+            key: function to apply to image
+        # Returns:
+            pre-processed image data
+        """
+        return self._process(image, key, 'pre')
+
+    def postprocess(self, image, key):
+        """Wrapper for _process_image but can only call with type="post"
+        # Arguments:
+            image: numpy array of image data
+            key: function to apply to image
+        # Returns:
+            post-processed image data
+        """
+        return self._process(image, key, 'post')
+
     def _handle_error(self, err, redis_hash):
         # Update redis with failed status
         self.redis.hmset(redis_hash, {
@@ -153,53 +200,6 @@ class PredictionConsumer(Consumer):
             tf_results[..., a:b, c:d, :] = resp[..., winx:-winx, winy:-winy, :]
 
         return tf_results
-
-    def _process(self, image, key, process_type):
-        """Apply each processing function to each image in images
-        # Arguments:
-            images: iterable of image data
-            key: function to apply to images
-            process_type: pre or post processing
-        # Returns:
-            list of processed image data
-        """
-        if not key:
-            return image
-
-        start = default_timer()
-        process_type = str(process_type).lower()
-        processing_function = utils.get_processing_function(process_type, key)
-        self.logger.debug('Starting %s %s-processing image of shape %s',
-                          key, process_type, image.shape)
-        try:
-            results = processing_function(image)
-            self.logger.debug('Finished %s %s-processing image in %ss',
-                              key, process_type, default_timer() - start)
-            return results
-        except Exception as err:
-            self.logger.error('Encountered %s during %s %s-processing: %s',
-                              type(err).__name__, key, process_type, err)
-            raise err
-
-    def preprocess(self, image, key):
-        """Wrapper for _process_image but can only call with type="pre"
-        # Arguments:
-            image: numpy array of image data
-            key: function to apply to image
-        # Returns:
-            pre-processed image data
-        """
-        return self._process(image, key, 'pre')
-
-    def postprocess(self, image, key):
-        """Wrapper for _process_image but can only call with type="post"
-        # Arguments:
-            image: numpy array of image data
-            key: function to apply to image
-        # Returns:
-            post-processed image data
-        """
-        return self._process(image, key, 'post')
 
     def grpc_image(self, img, model_name, model_version, timeout=15):
         start = default_timer()
