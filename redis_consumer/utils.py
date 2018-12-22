@@ -29,7 +29,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import six
 import time
 import contextlib
 import hashlib
@@ -37,43 +36,28 @@ import logging
 import shutil
 import tempfile
 import zipfile
+import six
 
 import numpy as np
 from PIL import Image
 from skimage.external import tifffile as tiff
 from keras_preprocessing.image import img_to_array
 from dict_to_protobuf import dict_to_protobuf
+# from dict_to_protobuf import protobuf_to_dict
 
+from redis_consumer.pbs.types_pb2 import DESCRIPTOR
 from redis_consumer.pbs.tensor_pb2 import TensorProto
 from redis_consumer import settings
 
 
 logger = logging.getLogger('redis_consumer.utils')
 
+
 dtype_to_number = {
-    'DT_INVALID': 0,
-    'DT_FLOAT': 1,
-    'DT_DOUBLE': 2,
-    'DT_INT32': 3,
-    'DT_UINT8': 4,
-    'DT_INT16': 5,
-    'DT_INT8': 6,
-    'DT_STRING': 7,
-    'DT_COMPLEX64': 8,
-    'DT_INT64': 9,
-    'DT_BOOL': 10,
-    'DT_QINT8': 11,
-    'DT_QUINT8': 12,
-    'DT_QINT32': 13,
-    'DT_BFLOAT16': 14,
-    'DT_QINT16': 15,
-    'DT_QUINT16': 16,
-    'DT_UINT16': 17,
-    'DT_COMPLEX128': 18,
-    'DT_HALF': 19,
-    'DT_RESOURCE': 20
+    i.name: i.number for i in DESCRIPTOR.enum_types_by_name['DataType'].values
 }
 
+# TODO: build this dynamically
 number_to_dtype_value = {
     1: 'float_val',
     2: 'double_val',
@@ -92,6 +76,9 @@ number_to_dtype_value = {
 
 
 def predict_response_to_dict(predict_response):
+    # TODO: 'unicode' object has no attribute 'ListFields'
+    # response_dict = protobuf_to_dict(predict_response)
+    # return response_dict
     predict_response_dict = dict()
 
     for k in predict_response.outputs:
