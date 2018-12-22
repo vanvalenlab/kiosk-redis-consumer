@@ -32,18 +32,18 @@ import os
 
 from decouple import config
 
-import redis_consumer
+from redis_consumer import processing
 
 
 # Map for processing functions
 PROCESSING_FUNCTIONS = {
     'pre': {
-        'normalize': redis_consumer.processing.noramlize,
+        'normalize': processing.noramlize,
     },
     'post': {
-        'deepcell': redis_consumer.processing.deepcell,
-        'mibi': redis_consumer.processing.mibi,
-        'watershed': redis_consumer.processing.watershed
+        'deepcell': processing.deepcell,
+        'mibi': processing.mibi,
+        'watershed': processing.watershed
     },
 }
 

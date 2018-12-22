@@ -29,7 +29,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import tempfile
 import zipfile
 
 from keras_preprocessing.image import array_to_img
@@ -37,6 +36,9 @@ from skimage.external import tifffile as tiff
 import numpy as np
 import pytest
 
+from redis_consumer.pbs.predict_pb2 import PredictResponse
+from redis_consumer.pbs import types_pb2
+from redis_consumer.pbs.tensor_pb2 import TensorProto
 from redis_consumer import utils
 from redis_consumer import settings
 
@@ -55,6 +57,24 @@ def _write_image(filepath, img_w=300, img_h=300):
     else:
         img = array_to_img(imarray, scale=False, data_format='channels_last')
         img.save(filepath)
+
+
+def test_make_tensor_proto():
+    # test with numpy array
+    data = _get_image(300, 300, 1)
+    proto = utils.make_tensor_proto(data, 'DT_FLOAT')
+    assert isinstance(proto, (TensorProto,))
+    # test with value
+    data = 10.0
+    proto = utils.make_tensor_proto(data, types_pb2.DT_FLOAT)
+    assert isinstance(proto, (TensorProto,))
+
+
+def test_predict_response_to_dict():
+    # TODO: how to fill up a dummy PredictResponse?
+    response = PredictResponse()
+    response_dict = utils.predict_response_to_dict(response)
+    assert isinstance(response_dict, (dict,))
 
 
 def test_iter_image_archive():

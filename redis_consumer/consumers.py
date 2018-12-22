@@ -33,14 +33,11 @@ from timeit import default_timer
 import os
 import json
 import logging
-import shutil
-import tempfile
-import contextlib
 
 import grpc
 import numpy as np
 
-from redis_consumer.predict_client.grpc_client import GrpcClient
+from redis_consumer.grpc_client import GrpcClient
 
 from redis_consumer import utils
 from redis_consumer import settings
@@ -49,10 +46,7 @@ from redis_consumer import settings
 class Consumer(object):  # pylint: disable=useless-object-inheritance
     """Base class for all redis event consumer classes"""
 
-    def __init__(self,
-                 redis_client,
-                 storage_client,
-                 final_status='done'):
+    def __init__(self, redis_client, storage_client, final_status='done'):
         self.output_dir = settings.OUTPUT_DIR
         self.redis = redis_client
         self.storage = storage_client
@@ -79,6 +73,53 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                         yield key
                 else:  # no need to check the status
                     yield key
+
+    def _process(self, image, key, process_type):
+        """Apply each processing function to each image in images
+        # Arguments:
+            images: iterable of image data
+            key: function to apply to images
+            process_type: pre or post processing
+        # Returns:
+            list of processed image data
+        """
+        if not key:
+            return image
+
+        start = default_timer()
+        process_type = str(process_type).lower()
+        processing_function = utils.get_processing_function(process_type, key)
+        self.logger.debug('Starting %s %s-processing image of shape %s',
+                          key, process_type, image.shape)
+        try:
+            results = processing_function(image)
+            self.logger.debug('Finished %s %s-processing image in %ss',
+                              key, process_type, default_timer() - start)
+            return results
+        except Exception as err:
+            self.logger.error('Encountered %s during %s %s-processing: %s',
+                              type(err).__name__, key, process_type, err)
+            raise err
+
+    def preprocess(self, image, key):
+        """Wrapper for _process_image but can only call with type="pre"
+        # Arguments:
+            image: numpy array of image data
+            key: function to apply to image
+        # Returns:
+            pre-processed image data
+        """
+        return self._process(image, key, 'pre')
+
+    def postprocess(self, image, key):
+        """Wrapper for _process_image but can only call with type="post"
+        # Arguments:
+            image: numpy array of image data
+            key: function to apply to image
+        # Returns:
+            post-processed image data
+        """
+        return self._process(image, key, 'post')
 
     def _handle_error(self, err, redis_hash):
         # Update redis with failed status
@@ -131,6 +172,7 @@ class PredictionConsumer(Consumer):
             tf_results: single numpy array of predictions on big input image
         """
         cuts = int(cuts)
+        field = int(field)
         winx, winy = (field - 1) // 2, (field - 1) // 2
 
         def iter_cuts(img, cuts, field):
@@ -160,53 +202,6 @@ class PredictionConsumer(Consumer):
 
         return tf_results
 
-    def _process(self, image, key, process_type):
-        """Apply each processing function to each image in images
-        # Arguments:
-            images: iterable of image data
-            key: function to apply to images
-            process_type: pre or post processing
-        # Returns:
-            list of processed image data
-        """
-        if not key:
-            return image
-
-        start = default_timer()
-        process_type = str(process_type).lower()
-        processing_function = utils.get_processing_function(process_type, key)
-        self.logger.debug('Starting %s %s-processing image of shape %s',
-                          key, process_type, image.shape)
-        try:
-            results = processing_function(image)
-            self.logger.debug('Finished %s %s-processing image in %ss',
-                              key, process_type, default_timer() - start)
-            return results
-        except Exception as err:
-            self.logger.error('Encountered %s during %s %s-processing: %s',
-                              type(err).__name__, key, process_type, err)
-            raise err
-
-    def preprocess(self, image, key):
-        """Wrapper for _process_image but can only call with type="pre"
-        # Arguments:
-            image: numpy array of image data
-            key: function to apply to image
-        # Returns:
-            pre-processed image data
-        """
-        return self._process(image, key, 'pre')
-
-    def postprocess(self, image, key):
-        """Wrapper for _process_image but can only call with type="post"
-        # Arguments:
-            image: numpy array of image data
-            key: function to apply to image
-        # Returns:
-            post-processed image data
-        """
-        return self._process(image, key, 'post')
-
     def grpc_image(self, img, model_name, model_version, timeout=15):
         start = default_timer()
         self.logger.debug('Segmenting image of shape %s with model %s:%s',
@@ -228,8 +223,7 @@ class PredictionConsumer(Consumer):
                 grpc.StatusCode.DEADLINE_EXCEEDED,
                 grpc.StatusCode.UNAVAILABLE
             }
-            code = err.code() if hasattr(err, 'code') else None
-            if code in retry_statuses:
+            if err.code() in retry_statuses:
                 self.logger.warning(err.details())
                 self.logger.warning('Encountered %s during tf-serving request '
                                     'to model %s:%s: %s', type(err).__name__,
@@ -270,7 +264,7 @@ class PredictionConsumer(Consumer):
                         x = pre if pre else image
                         pre = self.preprocess(x, f)
 
-                    if cuts.isdigit() and int(cuts) > 0:
+                    if str(cuts).isdigit() and int(cuts) > 0:
                         prediction = self.process_big_image(
                             cuts, pre, field, model_name, model_version)
                     else:
