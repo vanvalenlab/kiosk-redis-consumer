@@ -194,7 +194,7 @@ def get_processing_function(process_type, function_name):
     Args:
         process_type: either `post` or `pre`
         function_name: name of processing function to use
-    
+
     Returns:
         the specified function
     """
