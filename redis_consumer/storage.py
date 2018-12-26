@@ -60,6 +60,10 @@ def get_client(cloud_provider):
 class Storage(object):  # pylint: disable=useless-object-inheritance
     """General class to interact with cloud storage buckets.
     Supported cloud stroage provider will have child class implementations.
+
+    Args:
+        bucket: cloud storage bucket name
+        download_dir: path to local directory to save downloaded files
     """
 
     def __init__(self, bucket, download_dir=DOWNLOAD_DIR):
@@ -69,11 +73,13 @@ class Storage(object):  # pylint: disable=useless-object-inheritance
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
     def get_download_path(self, filename, download_dir=None):
-        """Get local filepath for soon-to-be downloaded file
-        # Arguments:
+        """Get local filepath for soon-to-be downloaded file.
+
+        Args:
             filename: key of file in cloud storage to download
             download_dir: path to directory to save file
-        # Returns:
+
+        Returns:
             dest: local path to downloaded file
         """
         if download_dir is None:
@@ -85,27 +91,36 @@ class Storage(object):  # pylint: disable=useless-object-inheritance
         return dest
 
     def download(self, filename, download_dir):
-        """Download a  file from the cloud storage bucket
-        # Arguments:
+        """Download a  file from the cloud storage bucket.
+
+        Args:
             filename: key of file in cloud storage to download
             download_dir: path to directory to save file
-        # Returns:
+
+        Returns:
             dest: local path to downloaded file
         """
         raise NotImplementedError
 
     def upload(self, filepath):
-        """Upload a file to the cloud storage bucket
-        # Arguments:
+        """Upload a file to the cloud storage bucket.
+
+        Args:
             filepath: local path to file to upload
-        # Returns:
+
+        Returns:
             dest: key of uploaded file in cloud storage
         """
         raise NotImplementedError
 
 
 class GoogleStorage(Storage):
-    """Interact with Google Cloud Storage buckets"""
+    """Interact with Google Cloud Storage buckets.
+
+    Args:
+        bucket: cloud storage bucket name
+        download_dir: path to local directory to save downloaded files
+    """
 
     def __init__(self, bucket, download_dir=DOWNLOAD_DIR):
         super(GoogleStorage, self).__init__(bucket, download_dir)
@@ -115,10 +130,12 @@ class GoogleStorage(Storage):
         self.bucket_url = 'www.googleapis.com/storage/v1/b/{}/o'.format(bucket)
 
     def get_public_url(self, filepath):
-        """Get the public URL to download the file
-        # Arguments:
+        """Get the public URL to download the file.
+
+        Args:
             filepath: key to file in cloud storage
-        # Returns:
+
+        Returns:
             url: Public URL to download the file
         """
         bucket = self._client.get_bucket(self.bucket)
@@ -127,10 +144,12 @@ class GoogleStorage(Storage):
         return blob.public_url
 
     def upload(self, filepath):
-        """Upload a file to the cloud storage bucket
-        # Arguments:
+        """Upload a file to the cloud storage bucket.
+
+        Args:
             filepath: local path to file to upload
-        # Returns:
+
+        Returns:
             dest: key of uploaded file in cloud storage
         """
         start = default_timer()
@@ -149,11 +168,13 @@ class GoogleStorage(Storage):
             raise err
 
     def download(self, filename, download_dir=None):
-        """Download a  file from the cloud storage bucket
-        # Arguments:
+        """Download a  file from the cloud storage bucket.
+
+        Args:
             filename: key of file in cloud storage to download
             download_dir: path to directory to save file
-        # Returns:
+
+        Returns:
             dest: local path to downloaded file
         """
         start = default_timer()
@@ -173,11 +194,14 @@ class GoogleStorage(Storage):
 
 
 class S3Storage(Storage):
-    """Interact with Amazon S3 buckets"""
+    """Interact with Amazon S3 buckets.
 
-    def __init__(self,
-                 bucket,
-                 download_dir=DOWNLOAD_DIR):
+    Args:
+        bucket: cloud storage bucket name
+        download_dir: path to local directory to save downloaded files
+    """
+
+    def __init__(self, bucket, download_dir=DOWNLOAD_DIR):
         super(S3Storage, self).__init__(bucket, download_dir)
 
         import boto3
@@ -189,19 +213,23 @@ class S3Storage(Storage):
         self.bucket_url = 's3.amazonaws.com/{}'.format(bucket)
 
     def get_public_url(self, filepath):
-        """Get the public URL to download the file
-        # Arguments:
+        """Get the public URL to download the file.
+
+        Args:
             filepath: key to file in cloud storage
-        # Returns:
+
+        Returns:
             url: Public URL to download the file
         """
         return 'https://{url}/{obj}'.format(url=self.bucket_url, obj=filepath)
 
     def upload(self, filepath):
-        """Upload a file to the cloud storage bucket
-        # Arguments:
+        """Upload a file to the cloud storage bucket.
+
+        Args:
             filepath: local path to file to upload
-        # Returns:
+
+        Returns:
             dest: key of uploaded file in cloud storage
         """
         start = default_timer()
@@ -218,11 +246,13 @@ class S3Storage(Storage):
             raise err
 
     def download(self, filename, download_dir=None):
-        """Download a  file from the cloud storage bucket
-        # Arguments:
+        """Download a  file from the cloud storage bucket.
+
+        Args:
             filename: key of file in cloud storage to download
             download_dir: path to directory to save file
-        # Returns:
+
+        Returns:
             dest: local path to downloaded file
         """
         start = default_timer()

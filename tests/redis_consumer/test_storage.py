@@ -28,6 +28,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
+
 import pytest
 
 from redis_consumer import storage
@@ -61,3 +64,55 @@ class TestStorage(object):
             assert path == path2
             assert str(path).startswith(tempdir)
             assert str(path).endswith(filekey.replace('upload_dir/', ''))
+
+
+class TestS3Storage(object):
+
+    def test_get_public_url(self):
+        with utils.get_tempdir() as tempdir:
+            bucket = 'test-bucket'
+            stg = storage.S3Storage(bucket, tempdir)
+            url = stg.get_public_url('test')
+            assert url == 'https://{}/{}'.format(stg.bucket_url, 'test')
+
+    def test_upload(self):
+        with utils.get_tempdir() as tempdir:
+            with tempfile.NamedTemporaryFile(dir=tempdir) as temp:
+                bucket = 'test-bucket'
+                stg = storage.S3Storage(bucket, tempdir)
+
+                def dummy_upload(path, bucket, dest):
+                    assert os.path.exists(path)
+
+                # monkey path client functions
+                stg._client.upload_file = dummy_upload
+
+                # test succesful upload
+                dest = stg.upload(temp.name)
+                assert dest == 'output/{}'.format(os.path.basename(temp.name))
+
+                # test failed upload
+                with pytest.raises(Exception):
+                    # self._client raises, but so does storage.upload
+                    dest = stg.upload('file-does-not-exist')
+
+    def test_download(self):
+        remote_file = '/test/file.txt'
+        with utils.get_tempdir() as tempdir:
+            bucket = 'test-bucket'
+            stg = storage.S3Storage(bucket, tempdir)
+
+            def dummy_download(bucket, path, dest):
+                assert path.startswith('test')
+
+            # monkey path client functions
+            stg._client.download_file = dummy_download
+
+            # test succesful download
+            dest = stg.download(remote_file, tempdir)
+            assert dest == stg.get_download_path(remote_file[1:], tempdir)
+
+            # test failed download
+            with pytest.raises(Exception):
+                # self._client raises, but so does storage.download
+                dest = stg.download('bad/file.txt', tempdir)

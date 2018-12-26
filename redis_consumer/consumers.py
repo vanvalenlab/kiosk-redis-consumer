@@ -44,7 +44,13 @@ from redis_consumer import settings
 
 
 class Consumer(object):  # pylint: disable=useless-object-inheritance
-    """Base class for all redis event consumer classes"""
+    """Base class for all redis event consumer classes.
+
+    Args:
+        redis_client: Client class to communicate with redis
+        storage_client: Client to communicate with cloud storage buckets.
+        final_status: Update the status of redis event with this value.
+    """
 
     def __init__(self, redis_client, storage_client, final_status='done'):
         self.output_dir = settings.OUTPUT_DIR
@@ -54,9 +60,11 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
     def iter_redis_hashes(self, status='new', prefix='predict'):
-        """Iterate over hash values in redis
-        and yield each with the given status value.
-        # Returns: Iterator of all hashes with a valid status
+        """Iterate over hash values in redis.
+        Yield each with the given status value.
+
+        Returns:
+            Iterator of all hashes with a valid status
         """
         for key in self.redis.keys():
             # Check if the key is a hash
@@ -75,12 +83,14 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                     yield key
 
     def _process(self, image, key, process_type):
-        """Apply each processing function to each image in images
-        # Arguments:
+        """Apply each processing function to each image in images.
+
+        Args:
             images: iterable of image data
             key: function to apply to images
             process_type: pre or post processing
-        # Returns:
+
+        Returns:
             list of processed image data
         """
         if not key:
@@ -102,21 +112,25 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             raise err
 
     def preprocess(self, image, key):
-        """Wrapper for _process_image but can only call with type="pre"
-        # Arguments:
+        """Wrapper for _process_image but can only call with type="pre".
+
+        Args:
             image: numpy array of image data
             key: function to apply to image
-        # Returns:
+
+        Returns:
             pre-processed image data
         """
         return self._process(image, key, 'pre')
 
     def postprocess(self, image, key):
-        """Wrapper for _process_image but can only call with type="post"
-        # Arguments:
+        """Wrapper for _process_image but can only call with type="post".
+
+        Args:
             image: numpy array of image data
             key: function to apply to image
-        # Returns:
+
+        Returns:
             post-processed image data
         """
         return self._process(image, key, 'post')
@@ -134,10 +148,12 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         raise NotImplementedError
 
     def consume(self, status=None, prefix=None):
-        """Consume all redis events every `interval` seconds
-        # Arguments:
+        """Consume all redis events every `interval` seconds.
+
+        Args:
             interval: waits this many seconds between consume calls
-        # Returns:
+
+        Returns:
             nothing: this is the consumer main process
         """
         try:
@@ -161,14 +177,16 @@ class PredictionConsumer(Consumer):
                           model_name,
                           model_version):
         """Slice big image into smaller images for prediction,
-        then stitches all the smaller images back together
-        # Arguments:
+        then stitches all the smaller images back together.
+
+        Args:
             cuts: number of cuts in x and y to slice smaller images
             img: image data as numpy array
             field: receptive field size of model, changes padding sizes
             model_name: hosted model to send image data
             model_version: model version to query
-        # Returns:
+
+        Returns:
             tf_results: single numpy array of predictions on big input image
         """
         cuts = int(cuts)
