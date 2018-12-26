@@ -35,10 +35,12 @@ from skimage.measure import label
 
 
 def noramlize(image):
-    """Normalize image data by dividing by the maximum pixel value
-    # Arguments:
+    """Normalize image data by dividing by the maximum pixel value.
+
+    Args:
         image: numpy array of image data
-    # Returns:
+
+    Returns:
         normal_image: normalized image data
     """
     normal_image = (image - image.mean()) / image.std()
@@ -49,11 +51,13 @@ def mibi(prediction, edge_threshold=.25, interior_threshold=.25):
     """Post-processing for MIBI data. Uniquely segments every cell by
     repeatedly eroding and dilating the cell interior prediction  until a
     boundary is reached.
-    # Arguments:
+
+    Args:
         prediction: output from a deepcell transform (edge, interior, bg)
         edge_threshold: confidence threshold to determine edge pixels
         interior_threshold: confidence threshold to determine interior pixels
-    # Returns:
+
+    Returns:
         transformed data where each cell is labeled uniquely
     """
 
@@ -119,12 +123,15 @@ def mibi(prediction, edge_threshold=.25, interior_threshold=.25):
 def watershed(image, min_distance=10, threshold_abs=0.05):
     """Use the watershed method to identify unique cells based
     on their distance transform.
+
     # TODO: labels should be the fgbg output, NOT the union of distances
-    # Arguments:
+
+    Args:
         image: distance transform of image (model output)
         min_distance: minimum number of pixels separating peaks
         threshold_abs: minimum intensity of peaks
-    # Returns:
+
+    Returns:
         image mask where each cell is annotated uniquely
     """
     distance = np.argmax(image, axis=-1)
@@ -149,10 +156,12 @@ def watershed(image, min_distance=10, threshold_abs=0.05):
 def deepcell(prediction, threshold=.8):
     """Post-processing for deepcell transform predictions.
     Uses the interior predictions to uniquely label every instance.
-    # Arguments:
+
+    Args:
         prediction: deepcell transform prediction
         threshold: confidence threshold for interior predictions
-    # Returns:
+
+    Returns:
         post-processed data with each cell uniquely annotated
     """
     try:

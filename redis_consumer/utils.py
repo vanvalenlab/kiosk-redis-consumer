@@ -152,11 +152,13 @@ def get_tempdir():
 
 
 def iter_image_archive(zip_path, destination):
-    """Extract all files in archie and yield the paths of all images
-    # Arguments:
+    """Extract all files in archie and yield the paths of all images.
+
+    Args:
         zip_path: path to zip archive
         destination: path to extract all images
-    # Returns:
+
+    Returns:
         Iterator of all image paths in extracted archive
     """
     archive = zipfile.ZipFile(zip_path, 'r')
@@ -170,10 +172,12 @@ def iter_image_archive(zip_path, destination):
 
 def get_image_files_from_dir(fname, destination=None):
     """Based on the file, returns a list of all images in that file.
-    # Arguments:
+
+    Args:
         fname: file (image or zip file)
         destination: folder to save image files from archive, if applicable
-    # Returns:
+
+    Returns:
         list of image file paths
     """
     if zipfile.is_zipfile(fname):
@@ -185,7 +189,15 @@ def get_image_files_from_dir(fname, destination=None):
 
 
 def get_processing_function(process_type, function_name):
-    """Based on the function category and name, return the function"""
+    """Based on the function category and name, return the function
+
+    Args:
+        process_type: either `post` or `pre`
+        function_name: name of processing function to use
+    
+    Returns:
+        the specified function
+    """
     clean = lambda x: str(x).lower()
     # first, verify the route parameters
     name = clean(function_name)
@@ -194,10 +206,12 @@ def get_processing_function(process_type, function_name):
 
 
 def get_image(filepath):
-    """Open image file as numpy array
-    # Arguments:
+    """Open image file as numpy array.
+
+    Args:
         filepath: full filepath of image file
-    # Returns:
+
+    Returns:
         img: numpy array of image data
     """
     logger.debug('Loading %s into numpy array', filepath)
@@ -214,11 +228,13 @@ def get_image(filepath):
 
 
 def pad_image(image, field):
-    """Pad each the input image for proper dimensions when stitiching
-    # Arguments:
+    """Pad each the input image for proper dimensions when stitiching.
+
+    Args:
         image: np.array of image data
         field: receptive field size of model
-    # Returns:
+
+    Returns:
         image data padded in the x and y axes
     """
     window = (field - 1) // 2
@@ -236,13 +252,15 @@ def pad_image(image, field):
 
 
 def save_numpy_array(arr, name='', subdir='', output_dir=None):
-    """Split tensor into channels and save each as a tiff
-    # Arguments:
+    """Split tensor into channels and save each as a tiff.
+
+    Args:
         arr: numpy array of image data
         name: name of original input image file
         subdir: optional subdirectory to save the result.
         output_dir: base directory for features
-    # Returns:
+
+    Returns:
         out_paths: list of all saved image paths
     """
     output_dir = output_dir if output_dir is None else output_dir
@@ -276,11 +294,13 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
 
 
 def zip_files(files, dest=None, prefix=None):
-    """Save files in zip archive and return the path
-    # Arguments:
+    """Save files in zip archive and return the path.
+
+    Args:
         files: all filepaths that will be saved in the zip
         dest: saves zip file to this directory, OUTPUT_DIR by default
-    # Returns:
+
+    Returns:
         zip_filename: filepath to new zip archive
     """
     filename = '{prefix}{join}{hash}.zip'.format(
