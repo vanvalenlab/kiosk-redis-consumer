@@ -92,7 +92,7 @@ class PredictClient(GrpcClient):
             t = time.time()
             predict_response = stub.Predict(request, timeout=request_timeout)
 
-            self.logger.debug('Actual request took: %s s', time.time() - t)
+            self.logger.debug('Actual request took: %ss', time.time() - t)
 
             predict_response_dict = grpc_response_to_dict(predict_response)
 
@@ -132,7 +132,7 @@ class ProcessClient(GrpcClient):
 
         t = time.time()
         stub = ProcessingServiceStub(channel)
-        self.logger.debug('Creating stub took %s s', time.time() - t)
+        self.logger.debug('Creating stub took %ss', time.time() - t)
 
         t = time.time()
         request = ProcessRequest()
@@ -152,7 +152,7 @@ class ProcessClient(GrpcClient):
             t = time.time()
             response = stub.Process(request, timeout=request_timeout)
 
-            self.logger.debug('Actual request took: %s s', time.time() - t)
+            self.logger.debug('Actual request took: %ss', time.time() - t)
 
             response_dict = grpc_response_to_dict(response)
 
