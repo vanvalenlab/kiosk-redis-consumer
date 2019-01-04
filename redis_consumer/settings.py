@@ -32,20 +32,6 @@ import os
 
 from decouple import config
 
-from redis_consumer import processing
-
-
-# Map for processing functions
-PROCESSING_FUNCTIONS = {
-    'pre': {
-        'normalize': processing.noramlize,
-    },
-    'post': {
-        'deepcell': processing.deepcell,
-        'mibi': processing.mibi,
-        'watershed': processing.watershed
-    },
-}
 
 # remove leading/trailing "/"s from cloud bucket folder names
 _strip = lambda x: '/'.join(y for y in x.split('/') if y)

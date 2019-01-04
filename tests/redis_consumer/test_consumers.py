@@ -80,8 +80,8 @@ class DummyRedis(object):
             'model_version': '0',
             'field': '61',
             'cuts': '0',
-            'postprocess_function': 'watershed',
-            'preprocess_function': 'normalize',
+            'postprocess_function': '',
+            'preprocess_function': '',
             'file_name': 'test_image.tiff'
         }
 
@@ -229,8 +229,8 @@ class TestPredictionConsumer(object):
             'model_version': '0',
             'field': '61',
             'cuts': '2',
-            'postprocess_function': 'watershed',
-            'preprocess_function': 'normalize',
+            'postprocess_function': '',
+            'preprocess_function': '',
             'file_name': 'test_image.tiff'
         }
         consumer = consumers.PredictionConsumer(redis, storage)
