@@ -47,7 +47,6 @@ from dict_to_protobuf import dict_to_protobuf
 
 from redis_consumer.pbs.types_pb2 import DESCRIPTOR
 from redis_consumer.pbs.tensor_pb2 import TensorProto
-from redis_consumer import settings
 
 
 logger = logging.getLogger('redis_consumer.utils')
