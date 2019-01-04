@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package tensorflow.serving;
+option cc_enable_arenas = true;
+
+import "process.proto";
+
+// ProcessingService provides access to data processing functions
+service ProcessingService {
+  // Process -- provides access to a data processing function
+  rpc Process(ProcessRequest) returns (ProcessResponse);
+}

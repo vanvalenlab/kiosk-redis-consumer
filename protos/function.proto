@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package tensorflow.serving;
+option cc_enable_arenas = true;
+
+// Metadata for an inference request such as the processing name and type
+message FunctionSpec {
+  // Required function name.
+  string name = 1;
+  // Required function type.
+  string type = 2;
+}
