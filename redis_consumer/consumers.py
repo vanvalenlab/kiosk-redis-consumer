@@ -286,6 +286,8 @@ class PredictionConsumer(Consumer):
                     for f in hvals.get('preprocess_function', '').split(','):
                         x = pre if pre else image
                         pre = self.preprocess(x, f)
+                        if pre.shape[0] == 1:
+                            pre = np.squeeze(pre, axis=0)
 
                     if str(cuts).isdigit() and int(cuts) > 0:
                         prediction = self.process_big_image(
@@ -294,10 +296,15 @@ class PredictionConsumer(Consumer):
                         prediction = self.grpc_image(
                             pre, model_name, model_version, timeout=30)
 
+                    if prediction.shape[0] == 1:
+                        prediction = np.squeeze(prediction, axis=0)
+
                     post = None
                     for f in hvals.get('postprocess_function', '').split(','):
                         x = post if post else prediction
                         post = self.postprocess(x, f)
+                        if post.shape[0] == 1:
+                            post = np.squeeze(post, axis=0)
 
                     # Save each result channel as an image file
                     subdir = os.path.dirname(imfile.replace(tempdir, ''))
