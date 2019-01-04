@@ -116,28 +116,6 @@ class TestConsumer(object):
         keys = [k for k in consumer.iter_redis_hashes(None, prefix)]
         assert keys == [k for k in redis.keys() if k.startswith(prefix)]
 
-    def test_process(self):
-        consumer = consumers.Consumer(None, None)
-        img = _get_image(30, 30)
-        # test post-processing
-        post = consumer.postprocess(img, 'watershed')
-        # test pre-processing
-        pre = consumer.preprocess(img, 'normalize')
-        np.testing.assert_equal(post.shape[:-1], pre.shape[:-1])
-        # test falsey function key
-        results = consumer._process(img, None, 'pre')
-        np.testing.assert_equal(img, results)
-        # test bad key
-        with np.testing.assert_raises(KeyError):
-            results = consumer.postprocess(img, 'normalize')
-        # test bad pre or post type
-        with np.testing.assert_raises(KeyError):
-            results = consumer._process(img, 'watershed', 'bad')
-        # test bad input to processing function
-        with np.testing.assert_raises(Exception):
-            arr = np.array([])
-            results = consumer._process(arr, 'watershed', 'post')
-
     def test_handle_error(self):
         global _redis_values
         _redis_values = None
@@ -197,10 +175,6 @@ class TestPredictionConsumer(object):
         redis = None
         storage = None
         consumer = consumers.PredictionConsumer(redis, storage)
-
-        def trim_padding(data, *args):
-            win = (int(field) - 1) // 2
-            return data[:, win:-win, win:-win]
 
         consumer.grpc_image = lambda x, y, z: x
         res = consumer.process_big_image(cuts, img, field, name, version)
