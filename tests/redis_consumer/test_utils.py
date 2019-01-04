@@ -70,10 +70,10 @@ def test_make_tensor_proto():
     assert isinstance(proto, (TensorProto,))
 
 
-def test_predict_response_to_dict():
+def test_grpc_response_to_dict():
     # TODO: how to fill up a dummy PredictResponse?
     response = PredictResponse()
-    response_dict = utils.predict_response_to_dict(response)
+    response_dict = utils.grpc_response_to_dict(response)
     assert isinstance(response_dict, (dict,))
 
 
