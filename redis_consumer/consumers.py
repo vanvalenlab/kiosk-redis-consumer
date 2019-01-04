@@ -37,8 +37,8 @@ import logging
 import grpc
 import numpy as np
 
-from redis_consumer.grpc_client import GrpcClient
-
+from redis_consumer.grpc_clients import PredictClient
+from redis_consumer.grpc_clients import ProcessClient
 from redis_consumer import utils
 from redis_consumer import settings
 
@@ -97,12 +97,19 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             return image
 
         start = default_timer()
-        process_type = str(process_type).lower()
-        processing_function = utils.get_processing_function(process_type, key)
         self.logger.debug('Starting %s %s-processing image of shape %s',
                           key, process_type, image.shape)
+
+        process_type = str(process_type).lower()
+        key = str(key).lower()
+
         try:
+            hostname = '{}:{}'.format(settings.DP_HOST, settings.DP_PORT)
+            req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
+                         'in_tensor_dtype': settings.TF_TENSOR_DTYPE,
+                         'data': np.expand_dims(img, axis=0)}]
             results = processing_function(image)
+            client = ProcessClient(hostname, model_name, int(model_version))
             self.logger.debug('Finished %s %s-processing image in %ss',
                               key, process_type, default_timer() - start)
             return results
@@ -230,7 +237,7 @@ class PredictionConsumer(Consumer):
                          'in_tensor_dtype': settings.TF_TENSOR_DTYPE,
                          'data': np.expand_dims(img, axis=0)}]
 
-            client = GrpcClient(hostname, model_name, int(model_version))
+            client = PredictClient(hostname, model_name, int(model_version))
             prediction = client.predict(req_data, request_timeout=timeout)
             self.logger.debug('Segmented image with model %s:%s in %ss',
                               model_name, model_version,

@@ -110,19 +110,6 @@ def test_get_image_files_from_dir():
         assert len(imfiles) == num_files
 
 
-def test_get_processing_function():
-    types = ('pre', 'post')
-    for t in types:
-        for k in settings.PROCESSING_FUNCTIONS[t]:
-            F = utils.get_processing_function(t, k)
-            assert callable(F)
-
-    with pytest.raises(KeyError):
-        _ = utils.get_processing_function('bad', 'normalize')
-    with pytest.raises(KeyError):
-        _ = utils.get_processing_function('pre', 'bad')
-
-
 def test_get_image():
     with utils.get_tempdir() as temp_dir:
         # test tiff files

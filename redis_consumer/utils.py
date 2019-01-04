@@ -188,23 +188,6 @@ def get_image_files_from_dir(fname, destination=None):
     return image_files
 
 
-def get_processing_function(process_type, function_name):
-    """Based on the function category and name, return the function
-
-    Args:
-        process_type: either `post` or `pre`
-        function_name: name of processing function to use
-
-    Returns:
-        the specified function
-    """
-    clean = lambda x: str(x).lower()
-    # first, verify the route parameters
-    name = clean(function_name)
-    cat = clean(process_type)
-    return settings.PROCESSING_FUNCTIONS[cat][name]
-
-
 def get_image(filepath):
     """Open image file as numpy array.
 
