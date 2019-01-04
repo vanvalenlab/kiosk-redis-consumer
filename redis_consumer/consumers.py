@@ -110,7 +110,19 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             results = client.process(req_data, request_timeout=timeout)
             self.logger.debug('Finished %s %s-processing image in %ss',
                               key, process_type, default_timer() - start)
-            return results
+            return results['results']
+        except grpc.RpcError as err:
+            retry_statuses = {
+                grpc.StatusCode.DEADLINE_EXCEEDED,
+                grpc.StatusCode.UNAVAILABLE
+            }
+            if err.code() in retry_statuses:
+                self.logger.warning(err.details())
+                self.logger.warning('Encountered %s during %s %s-processing '
+                                    'request: %s', type(err).__name__, key,
+                                    process_type, err)
+                return self._process(image, key, process_type, timeout)
+            raise err
         except Exception as err:
             self.logger.error('Encountered %s during %s %s-processing: %s',
                               type(err).__name__, key, process_type, err)
