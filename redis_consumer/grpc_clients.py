@@ -65,7 +65,6 @@ class PredictClient(GrpcClient):
         self.logger.info('Model name: %s', self.model_name)
         self.logger.info('Model version: %s', self.model_version)
 
-        # Create gRPC client and request
         channel = self.insecure_channel()
 
         t = time.time()
@@ -163,7 +162,7 @@ class ProcessClient(GrpcClient):
 
         except RpcError as e:
             self.logger.error(e)
-            self.logger.error('Prediction failed!')
+            self.logger.error('Processing failed!')
             raise e
 
         return {}
