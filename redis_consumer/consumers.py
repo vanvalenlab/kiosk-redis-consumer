@@ -82,7 +82,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 else:  # no need to check the status
                     yield key
 
-    def _process(self, image, key, process_type, timeout=15):
+    def _process(self, image, key, process_type, timeout=30):
         """Apply each processing function to each image in images.
 
         Args:
@@ -237,7 +237,7 @@ class PredictionConsumer(Consumer):
 
         return tf_results
 
-    def grpc_image(self, img, model_name, model_version, timeout=15):
+    def grpc_image(self, img, model_name, model_version, timeout=30):
         start = default_timer()
         self.logger.debug('Segmenting image of shape %s with model %s:%s',
                           img.shape, model_name, model_version)
