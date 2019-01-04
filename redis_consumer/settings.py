@@ -69,6 +69,10 @@ TF_PORT = config('TF_PORT', default=8500, cast=int)
 TF_TENSOR_NAME = config('TF_TENSOR_NAME', default='image')
 TF_TENSOR_DTYPE = config('TF_TENSOR_DTYPE', default='DT_FLOAT')
 
+# data-processing client connection
+DP_HOST = config('DP_HOST', default='data-processing-service')
+DP_PORT = config('DP_PORT', default=8080, cast=int)
+
 # Status of hashes marked for prediction
 STATUS = config('STATUS', default='new')
 
