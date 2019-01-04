@@ -82,7 +82,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 else:  # no need to check the status
                     yield key
 
-    def _process(self, image, key, process_type):
+    def _process(self, image, key, process_type, timeout=15):
         """Apply each processing function to each image in images.
 
         Args:
@@ -99,17 +99,15 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         start = default_timer()
         self.logger.debug('Starting %s %s-processing image of shape %s',
                           key, process_type, image.shape)
-
-        process_type = str(process_type).lower()
-        key = str(key).lower()
-
         try:
+            key = str(key).lower()
+            process_type = str(process_type).lower()
             hostname = '{}:{}'.format(settings.DP_HOST, settings.DP_PORT)
             req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
                          'in_tensor_dtype': settings.TF_TENSOR_DTYPE,
-                         'data': np.expand_dims(img, axis=0)}]
-            results = processing_function(image)
-            client = ProcessClient(hostname, model_name, int(model_version))
+                         'data': np.expand_dims(image, axis=0)}]
+            client = ProcessClient(hostname, process_type, key)
+            results = client.process(req_data, request_timeout=timeout)
             self.logger.debug('Finished %s %s-processing image in %ss',
                               key, process_type, default_timer() - start)
             return results
