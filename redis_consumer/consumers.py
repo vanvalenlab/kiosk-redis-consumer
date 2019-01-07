@@ -246,7 +246,6 @@ class PredictionConsumer(Consumer):
             req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
                          'in_tensor_dtype': settings.TF_TENSOR_DTYPE,
                          'data': np.expand_dims(img, axis=0)}]
-
             client = PredictClient(hostname, model_name, int(model_version))
             prediction = client.predict(req_data, request_timeout=timeout)
             self.logger.debug('Segmented image with model %s:%s in %ss',
