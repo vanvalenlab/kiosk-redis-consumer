@@ -71,10 +71,31 @@ def test_make_tensor_proto():
 
 
 def test_grpc_response_to_dict():
-    # TODO: how to fill up a dummy PredictResponse?
+    # test valid response
+    data = _get_image(300, 300, 1)
+    tensor_proto = utils.make_tensor_proto(data, 'DT_FLOAT')
     response = PredictResponse()
+    response.outputs['prediction'].CopyFrom(tensor_proto)
     response_dict = utils.grpc_response_to_dict(response)
     assert isinstance(response_dict, (dict,))
+    np.testing.assert_allclose(response_dict['prediction'], data)
+    # test scalar input
+    data = 3
+    tensor_proto = utils.make_tensor_proto(data, 'DT_FLOAT')
+    response = PredictResponse()
+    response.outputs['prediction'].CopyFrom(tensor_proto)
+    response_dict = utils.grpc_response_to_dict(response)
+    assert isinstance(response_dict, (dict,))
+    np.testing.assert_allclose(response_dict['prediction'], data)
+    # test bad dtype
+    # logs an error, but should throw a KeyError as well.
+    data = _get_image(300, 300, 1)
+    tensor_proto = utils.make_tensor_proto(data, 'DT_FLOAT')
+    response = PredictResponse()
+    response.outputs['prediction'].CopyFrom(tensor_proto)
+    response.outputs['prediction'].dtype = 32
+    with pytest.raises(KeyError):
+        response_dict = utils.grpc_response_to_dict(response)
 
 
 def test_iter_image_archive():
