@@ -58,6 +58,15 @@ def initialize_logger(debug_mode=False):
     logger.addHandler(console)
 
 
+def get_consumer(consumer_type, **kwargs):
+    ct = str(consumer_type).lower()
+    if ct == 'image':
+        return consumers.ImageFileConsumer(**kwargs)
+    if ct == 'zip':
+        return consumers.ZipFileConsumer(**kwargs)
+    raise ValueError('Invalid `consumer_type`: "{}"'.format(consumer_type))
+
+
 if __name__ == '__main__':
     initialize_logger(settings.DEBUG)
 
@@ -71,10 +80,13 @@ if __name__ == '__main__':
 
     storage_client = storage.get_client(settings.CLOUD_PROVIDER)
 
-    consumer = consumers.PredictionConsumer(
-        redis_client=redis,
-        storage_client=storage_client,
-        final_status='done')
+    kwargs = {
+        'redis_client': redis,
+        'storage_client': storage_client,
+        'final_status': 'done'
+    }
+
+    consumer = get_consumer(settings.CONSUMER_TYPE, **kwargs)
 
     while True:
         try:

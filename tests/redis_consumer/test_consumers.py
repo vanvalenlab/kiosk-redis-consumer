@@ -45,7 +45,7 @@ def _get_image(img_h=300, img_w=300):
 
 
 class DummyRedis(object):
-    def __init__(self, prefix, status):
+    def __init__(self, prefix='predict', status='new'):
         self.prefix = '/'.join(x for x in prefix.split('/') if x)
         self.status = status
 
@@ -68,6 +68,8 @@ class DummyRedis(object):
 
     def hget(self, rhash, field):
         if field == 'status':
+            return rhash.split('_')[1]
+        elif field == 'file_name':
             return rhash.split('_')[1]
         return False
 
@@ -120,12 +122,12 @@ class TestConsumer(object):
         global _redis_values
         _redis_values = None
 
-        class DummyRedis(object):
+        class _DummyRedis(object):
             def hmset(self, hash, hvals):
                 global _redis_values
                 _redis_values = hvals
 
-        redis = DummyRedis()
+        redis = _DummyRedis()
         consumer = consumers.Consumer(redis, None)
         err = Exception('test exception')
         consumer._handle_error(err, 'redis-hash')
@@ -137,7 +139,7 @@ class TestConsumer(object):
         N = 4
         status = 'new'
         prefix = 'prefix'
-        consumer = consumers.Consumer(None, None)
+        consumer = consumers.Consumer(DummyRedis(), DummyStorage())
         mock_hashes = lambda s, p: ['{}/{}'.format(p, i) for i in range(N)]
         consumer.iter_redis_hashes = mock_hashes
         # test that _consume is called on each hash
@@ -161,7 +163,7 @@ class TestConsumer(object):
             consumer._consume('hash')
 
 
-class TestPredictionConsumer(object):
+class TestImageFileConsumer(object):
 
     def test_process_big_image(self):
         name = 'model'
@@ -174,7 +176,24 @@ class TestPredictionConsumer(object):
 
         redis = None
         storage = None
-        consumer = consumers.PredictionConsumer(redis, storage)
+        consumer = consumers.ImageFileConsumer(redis, storage)
+
+        consumer.grpc_image = lambda x, y, z: x
+        res = consumer.process_big_image(cuts, img, field, name, version)
+        np.testing.assert_equal(res, img)
+
+    def test_iter_redis_hashes(self):
+        name = 'model'
+        version = 0
+        field = 11
+        cuts = 2
+
+        img = np.expand_dims(_get_image(300, 300), axis=-1)
+        img = np.expand_dims(img, axis=0)
+
+        redis = None
+        storage = None
+        consumer = consumers.ImageFileConsumer(redis, storage)
 
         consumer.grpc_image = lambda x, y, z: x
         res = consumer.process_big_image(cuts, img, field, name, version)
@@ -185,7 +204,7 @@ class TestPredictionConsumer(object):
         status = 'new'
         redis = DummyRedis(prefix, status)
         storage = DummyStorage()
-        consumer = consumers.PredictionConsumer(redis, storage)
+        consumer = consumers.ImageFileConsumer(redis, storage)
 
         def _handle_error(err, rhash):  # pylint: disable=W0613
             raise err
@@ -207,15 +226,15 @@ class TestPredictionConsumer(object):
             'preprocess_function': '',
             'file_name': 'test_image.tiff'
         }
-        consumer = consumers.PredictionConsumer(redis, storage)
+        consumer = consumers.ImageFileConsumer(redis, storage)
         consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image
         consumer._consume('dummyhash')
 
         # test no error raised
-        def grpc_image_fail(data, *args, **kwargs):  # pylint: disable=W0613
-            raise Exception('test error')
+        # def grpc_image_fail(data, *args, **kwargs):  # pylint: disable=W0613
+        #     raise Exception('test error')
 
-        consumer = consumers.PredictionConsumer(redis, storage)
-        consumer.grpc_image = grpc_image_fail
-        consumer._consume('dummyhash')
+        # consumer = consumers.ImageFileConsumer(redis, storage)
+        # consumer.grpc_image = grpc_image_fail
+        # consumer._consume('dummyhash')

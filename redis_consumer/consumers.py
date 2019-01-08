@@ -32,6 +32,7 @@ from timeit import default_timer
 
 import os
 import json
+import hashlib
 import logging
 
 import grpc
@@ -81,6 +82,54 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                         yield key
                 else:  # no need to check the status
                     yield key
+
+    def _handle_error(self, err, redis_hash):
+        # Update redis with failed status
+        self.redis.hmset(redis_hash, {
+            'reason': '{}'.format(err),
+            'status': 'failed'
+        })
+        self.logger.error('Failed to process redis key %s. %s: %s',
+                          redis_hash, type(err).__name__, err)
+
+    def _consume(self, redis_hash):
+        raise NotImplementedError
+
+    def consume(self, status=None, prefix=None):
+        """Consume all redis events every `interval` seconds.
+
+        Args:
+            interval: waits this many seconds between consume calls
+
+        Returns:
+            nothing: this is the consumer main process
+        """
+        # process each unprocessed hash
+        for redis_hash in self.iter_redis_hashes(status, prefix):
+            try:
+                start = default_timer()
+                self._consume(redis_hash)
+                self.logger.debug('Consumed key %s in %ss',
+                                  redis_hash, default_timer() - start)
+            except Exception as err:  # pylint: disable=broad-except
+                self._handle_error(err, redis_hash)
+
+
+class ImageFileConsumer(Consumer):
+    """Consumes image files and uploads the results"""
+
+    def iter_redis_hashes(self, status='new', prefix='predict'):
+        """Iterate over hash values in redis.
+        Only yield hash values for valid image files
+
+        Returns:
+            Iterator of all hashes with a valid status
+        """
+        keys = super(ImageFileConsumer, self).iter_redis_hashes(status, prefix)
+        for key in keys:
+            fname = str(self.redis.hget(key, 'file_name'))
+            if not fname.lower().endswith('.zip'):
+                yield key
 
     def _process(self, image, key, process_type, timeout=30):
         """Apply each processing function to each image in images.
@@ -151,41 +200,6 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             post-processed image data
         """
         return self._process(image, key, 'post')
-
-    def _handle_error(self, err, redis_hash):
-        # Update redis with failed status
-        self.redis.hmset(redis_hash, {
-            'reason': '{}'.format(err),
-            'status': 'failed'
-        })
-        self.logger.error('Failed to process redis key %s. %s: %s',
-                          redis_hash, type(err).__name__, err)
-
-    def _consume(self, redis_hash):
-        raise NotImplementedError
-
-    def consume(self, status=None, prefix=None):
-        """Consume all redis events every `interval` seconds.
-
-        Args:
-            interval: waits this many seconds between consume calls
-
-        Returns:
-            nothing: this is the consumer main process
-        """
-        try:
-            # process each unprocessed hash
-            for redis_hash in self.iter_redis_hashes(status, prefix):
-                start = default_timer()
-                self._consume(redis_hash)
-                self.logger.debug('Consumed key %s in %ss',
-                                  redis_hash, default_timer() - start)
-        except Exception as err:  # pylint: disable=broad-except
-            self.logger.error(err)
-
-
-class PredictionConsumer(Consumer):
-    """Consumer to send image data to tf-serving and upload the results"""
 
     def process_big_image(self,
                           cuts,
@@ -276,63 +290,64 @@ class PredictionConsumer(Consumer):
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
 
-        self.redis.hset(redis_hash, 'status', 'processing')
+        self.redis.hset(redis_hash, 'status', 'started')
 
         model_name = hvals.get('model_name')
         model_version = hvals.get('model_version')
         cuts = hvals.get('cuts', '0')
         field = hvals.get('field_size', '61')
 
-        try:
-            with utils.get_tempdir() as tempdir:
-                fname = self.storage.download(hvals.get('file_name'), tempdir)
-                image_files = utils.get_image_files_from_dir(fname, tempdir)
+        with utils.get_tempdir() as tempdir:
+            fname = self.storage.download(hvals.get('file_name'), tempdir)
 
-                all_output = []
-                for i, imfile in enumerate(image_files):
-                    start = default_timer()
-                    image = utils.get_image(imfile)
+            start = default_timer()
+            image = utils.get_image(fname)
 
-                    pre = None
-                    for f in hvals.get('preprocess_function', '').split(','):
-                        x = pre if pre else image
-                        pre = self.preprocess(x, f)
-                        if pre.shape[0] == 1:
-                            pre = np.squeeze(pre, axis=0)
+            self.redis.hset(redis_hash, 'status', 'pre-processing')
+            pre = None
+            for f in hvals.get('preprocess_function', '').split(','):
+                x = pre if pre else image
+                pre = self.preprocess(x, f)
+                if pre.shape[0] == 1:
+                    pre = np.squeeze(pre, axis=0)
 
-                    if str(cuts).isdigit() and int(cuts) > 0:
-                        prediction = self.process_big_image(
-                            cuts, pre, field, model_name, model_version)
-                    else:
-                        prediction = self.grpc_image(
-                            pre, model_name, model_version, timeout=30)
+            self.redis.hset(redis_hash, 'status', 'predicting')
+            if str(cuts).isdigit() and int(cuts) > 0:
+                prediction = self.process_big_image(
+                    cuts, pre, field, model_name, model_version)
+            else:
+                prediction = self.grpc_image(
+                    pre, model_name, model_version, timeout=30)
 
-                    if prediction.shape[0] == 1:
-                        prediction = np.squeeze(prediction, axis=0)
+            if prediction.shape[0] == 1:
+                prediction = np.squeeze(prediction, axis=0)
 
-                    post = None
-                    for f in hvals.get('postprocess_function', '').split(','):
-                        x = post if post else prediction
-                        post = self.postprocess(x, f)
-                        if post.shape[0] == 1:
-                            post = np.squeeze(post, axis=0)
+            self.redis.hset(redis_hash, 'status', 'post-processing')
+            post = None
+            for f in hvals.get('postprocess_function', '').split(','):
+                x = post if post else prediction
+                post = self.postprocess(x, f)
+                if post.shape[0] == 1:
+                    post = np.squeeze(post, axis=0)
 
-                    # Save each result channel as an image file
-                    subdir = os.path.dirname(imfile.replace(tempdir, ''))
-                    name = os.path.splitext(os.path.basename(imfile))[0]
+            # Save each result channel as an image file
+            subdir = os.path.dirname(fname.replace(tempdir, ''))
+            name = os.path.splitext(os.path.basename(fname))[0]
 
-                    _out_paths = utils.save_numpy_array(
-                        post, name=name, subdir=subdir, output_dir=tempdir)
+            outpaths = utils.save_numpy_array(
+                post, name=name, subdir=subdir, output_dir=tempdir)
 
-                    all_output.extend(_out_paths)
-                    self.logger.info('Saved data for image %s in %ss',
-                                     i, default_timer() - start)
+            self.logger.info('Saved data for image in %ss',
+                             default_timer() - start)
 
+            if len(outpaths) > 1:
                 # Save each prediction image as zip file
-                zip_file = utils.zip_files(all_output, tempdir)
+                zip_file = utils.zip_files(outpaths, tempdir)
+            else:
+                zip_file = outpaths[0]
 
-                # Upload the zip file to cloud storage bucket
-                uploaded_file_path = self.storage.upload(zip_file)
+            # Upload the zip file to cloud storage bucket
+            uploaded_file_path = self.storage.upload(zip_file)
 
             output_url = self.storage.get_public_url(uploaded_file_path)
             self.logger.debug('Uploaded output to: "%s"', output_url)
@@ -340,9 +355,114 @@ class PredictionConsumer(Consumer):
             # Update redis with the results
             self.redis.hmset(redis_hash, {
                 'output_url': output_url,
+                'output_file': zip_file,
                 'status': self.final_status
             })
             self.logger.debug('Updated status to %s', self.final_status)
 
-        except Exception as err:  # pylint: disable=broad-except
-            self._handle_error(err, redis_hash)
+
+class ZipFileConsumer(Consumer):
+    """Consumes zip files and uploads the results"""
+
+    def iter_redis_hashes(self, status='new', prefix='predict'):
+        """Iterate over hash values in redis.
+        Only yield hash values for zip files
+
+        Returns:
+            Iterator of all zip hashes with a valid status
+        """
+        keys = super(ZipFileConsumer, self).iter_redis_hashes(status, prefix)
+        for key in keys:
+            fname = str(self.redis.hget(key, 'file_name'))
+            if fname.lower().endswith('.zip'):
+                yield key
+
+    def _upload_archived_images(self, hvalues):
+        """Extract all image files and upload them to storage and redis"""
+        all_hashes = set()
+        with utils.get_tempdir() as tempdir:
+            fname = self.storage.download(hvalues.get('file_name'), tempdir)
+            image_files = utils.get_image_files_from_dir(fname, tempdir)
+            for imfile in image_files:
+                image = utils.get_image(imfile)
+
+                # Save each result channel as an image file
+                subdir = os.path.dirname(fname.replace(tempdir, ''))
+                name = os.path.splitext(os.path.basename(fname))[0]
+                outpaths = utils.save_numpy_array(
+                    image, name=name, subdir=subdir, output_dir=tempdir)
+
+                for outpath in outpaths:
+                    uploaded_file_path = self.storage.upload(outpath)
+                    new_hash = hashlib.md5(uploaded_file_path).hexdigest()
+                    new_hvals = dict()
+                    new_hvals.update(hvalues)
+                    new_hvals['file_name'] = uploaded_file_path
+                    new_hvals['status'] = 'new'
+                    self.redis.hmset(new_hash, new_hvals)
+                    all_hashes.add(new_hash)
+        return all_hashes
+
+    def _consume(self, redis_hash):
+        start = default_timer()
+        # TODO: investigate parallel requests
+        hvals = self.redis.hgetall(redis_hash)
+        self.logger.debug('Found hash to process "%s": %s',
+                          redis_hash, json.dumps(hvals, indent=4))
+
+        self.redis.hset(redis_hash, 'status', 'started')
+        all_hashes = self._upload_archived_images(hvals)
+
+        # Now all images have been uploaded with new redis hashes
+        # Wait for these to be processed by an ImageFileConsumer
+        self.redis.hset(redis_hash, 'status', 'waiting')
+
+        with utils.get_tempdir() as tempdir:
+            finished_hashes = set()
+            failed_hashes = set()
+            saved_files = set()
+            # ping redis until all the sets are finished
+            while all_hashes.symmetric_difference(finished_hashes):
+                for h in all_hashes:
+                    if h in finished_hashes:
+                        continue
+
+                    status = self.redis.hget(h, 'status')
+
+                    if status == 'failed':
+                        reason = self.redis.hget(h, 'reason')
+                        # one of the hashes failed to process
+                        self.logger.error('Failed to process hash `%s`: %s',
+                                          h, reason)
+                        failed_hashes.add(h)
+                        finished_hashes.add(h)
+
+                    elif status == self.final_status:
+                        # one of our hashes is done!
+                        fname = self.redis.hget(h, 'output_file')
+                        local_fname = self.storage.download(fname, tempdir)
+                        saved_files.add(local_fname)
+                        finished_hashes.add(h)
+
+            if failed_hashes:
+                self.logger.warning('Failed to process %s hashes',
+                                    len(failed_hashes))
+
+            zip_file = utils.zip_files(list(saved_files), tempdir)
+
+            # Upload the zip file to cloud storage bucket
+            uploaded_file_path = self.storage.upload(zip_file)
+
+            output_url = self.storage.get_public_url(uploaded_file_path)
+            self.logger.debug('Uploaded output to: "%s"', output_url)
+
+            # Update redis with the results
+            self.redis.hmset(redis_hash, {
+                'output_url': output_url,
+                'output_file': zip_file,
+                'status': self.final_status
+            })
+
+            self.logger.info('Processed all %s images of zipfile "%s" in %s',
+                             len(all_hashes), hvals['file_name'],
+                             default_timer() - start)
