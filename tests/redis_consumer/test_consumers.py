@@ -97,7 +97,7 @@ class DummyStorage(object):
         tiff.imsave(os.path.join(dest, path), img)
         return path
 
-    def upload(self, zip_path):  # pylint: disable=W0613
+    def upload(self, zip_path, subdir=None):  # pylint: disable=W0613
         return True
 
     def get_public_url(self, zip_path):  # pylint: disable=W0613
