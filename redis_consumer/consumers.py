@@ -28,11 +28,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from time import time
 from timeit import default_timer
 
 import os
 import json
-import time
 import hashlib
 import logging
 
@@ -395,7 +395,7 @@ class ZipFileConsumer(Consumer):
                 new_hash = '{prefix}_{file}_{hash}'.format(
                     prefix=settings.HASH_PREFIX,
                     file=clean_imfile,
-                    hash=hashlib.md5('%s' % int(time.time())).hexdigest())
+                    hash=hashlib.md5(str(time()).encode('utf-8')).hexdigest())
 
                 new_hvals = dict()
                 new_hvals.update(hvalues)
