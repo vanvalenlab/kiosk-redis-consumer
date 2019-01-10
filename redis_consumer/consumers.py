@@ -310,6 +310,10 @@ class ImageFileConsumer(Consumer):
                 x = pre if pre else image
                 pre = self.preprocess(x, f)
 
+            # Squeeze out unnecessary batch size
+            if pre.shape[0] == 1:
+                pre = np.squeeze(pre, axis=0)
+
             self.redis.hset(redis_hash, 'status', 'predicting')
             if str(cuts).isdigit() and int(cuts) > 0:
                 prediction = self.process_big_image(
@@ -317,6 +321,10 @@ class ImageFileConsumer(Consumer):
             else:
                 prediction = self.grpc_image(
                     pre, model_name, model_version, timeout=30)
+
+            # Squeeze out unnecessary batch size
+            if prediction.shape[0] == 1:
+                prediction = np.squeeze(prediction, axis=0)
 
             self.redis.hset(redis_hash, 'status', 'post-processing')
             post = None
