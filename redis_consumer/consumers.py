@@ -309,8 +309,6 @@ class ImageFileConsumer(Consumer):
             for f in hvals.get('preprocess_function', '').split(','):
                 x = pre if pre else image
                 pre = self.preprocess(x, f)
-                if pre.shape[0] == 1:
-                    pre = np.squeeze(pre, axis=0)
 
             self.redis.hset(redis_hash, 'status', 'predicting')
             if str(cuts).isdigit() and int(cuts) > 0:
@@ -320,20 +318,19 @@ class ImageFileConsumer(Consumer):
                 prediction = self.grpc_image(
                     pre, model_name, model_version, timeout=30)
 
-            if prediction.shape[0] == 1:
-                prediction = np.squeeze(prediction, axis=0)
-
             self.redis.hset(redis_hash, 'status', 'post-processing')
             post = None
             for f in hvals.get('postprocess_function', '').split(','):
                 x = post if post else prediction
                 post = self.postprocess(x, f)
-                if post.shape[0] == 1:
-                    post = np.squeeze(post, axis=0)
 
             # Save each result channel as an image file
             subdir = os.path.dirname(fname.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(fname))[0]
+
+            # Squeeze out unnecessary batch size
+            if post.shape[0] == 1:
+                post = np.squeeze(post, axis=0)
 
             outpaths = utils.save_numpy_array(
                 post, name=name, subdir=subdir, output_dir=tempdir)
