@@ -143,6 +143,10 @@ class ImageFileConsumer(Consumer):
         Returns:
             list of processed image data
         """
+        # Squeeze out batch dimension if unnecessary
+        if image.shape[0] == 1:
+            image = np.squeeze(image, axis=0)
+
         if not key:
             return image
 
@@ -160,7 +164,11 @@ class ImageFileConsumer(Consumer):
             results = client.process(req_data, request_timeout=timeout)
             self.logger.debug('Finished %s %s-processing image in %ss',
                               key, process_type, default_timer() - start)
-            return results['results']
+            results = results['results']
+            # Again, squeeze out batch dimension if unnecessary
+            if results.shape[0] == 1:
+                results = np.squeeze(results, axis=0)
+            return results
         except grpc.RpcError as err:
             retry_statuses = {
                 grpc.StatusCode.DEADLINE_EXCEEDED,
@@ -286,7 +294,6 @@ class ImageFileConsumer(Consumer):
             raise err
 
     def _consume(self, redis_hash):
-        # TODO: investigate parallel requests
         hvals = self.redis.hgetall(redis_hash)
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
@@ -310,10 +317,6 @@ class ImageFileConsumer(Consumer):
                 x = pre if pre else image
                 pre = self.preprocess(x, f)
 
-            # Squeeze out unnecessary batch size
-            if pre.shape[0] == 1:
-                pre = np.squeeze(pre, axis=0)
-
             self.redis.hset(redis_hash, 'status', 'predicting')
             if str(cuts).isdigit() and int(cuts) > 0:
                 prediction = self.process_big_image(
@@ -321,10 +324,6 @@ class ImageFileConsumer(Consumer):
             else:
                 prediction = self.grpc_image(
                     pre, model_name, model_version, timeout=30)
-
-            # Squeeze out unnecessary batch size
-            if prediction.shape[0] == 1:
-                prediction = np.squeeze(prediction, axis=0)
 
             self.redis.hset(redis_hash, 'status', 'post-processing')
             post = None
@@ -335,10 +334,6 @@ class ImageFileConsumer(Consumer):
             # Save each result channel as an image file
             subdir = os.path.dirname(fname.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(fname))[0]
-
-            # Squeeze out unnecessary batch size
-            if post.shape[0] == 1:
-                post = np.squeeze(post, axis=0)
 
             outpaths = utils.save_numpy_array(
                 post, name=name, subdir=subdir, output_dir=tempdir)
