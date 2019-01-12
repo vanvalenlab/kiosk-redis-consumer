@@ -87,7 +87,7 @@ class Storage(object):  # pylint: disable=useless-object-inheritance
         no_upload_dir = os.path.join(*(filename.split(os.path.sep)[1:]))
         dest = os.path.join(download_dir, no_upload_dir)
         if not os.path.isdir(os.path.dirname(dest)):
-            os.makedirs(dest)
+            os.makedirs(os.path.dirname(dest))
         return dest
 
     def download(self, filename, download_dir):
@@ -102,7 +102,7 @@ class Storage(object):  # pylint: disable=useless-object-inheritance
         """
         raise NotImplementedError
 
-    def upload(self, filepath):
+    def upload(self, filepath, subdir=None):
         """Upload a file to the cloud storage bucket.
 
         Args:
@@ -143,7 +143,7 @@ class GoogleStorage(Storage):
         blob.make_public()
         return blob.public_url
 
-    def upload(self, filepath):
+    def upload(self, filepath, subdir=None):
         """Upload a file to the cloud storage bucket.
 
         Args:
@@ -155,7 +155,12 @@ class GoogleStorage(Storage):
         start = default_timer()
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         try:
-            dest = os.path.join('output', os.path.basename(filepath))
+            dest = os.path.basename(filepath)
+            if subdir:
+                if str(subdir).startswith('/'):
+                    subdir = subdir[1:]
+                dest = os.path.join(subdir, dest)
+            dest = os.path.join('output', dest)
             bucket = self._client.get_bucket(self.bucket)
             blob = bucket.blob(dest)
             blob.upload_from_filename(filepath)
@@ -223,7 +228,7 @@ class S3Storage(Storage):
         """
         return 'https://{url}/{obj}'.format(url=self.bucket_url, obj=filepath)
 
-    def upload(self, filepath):
+    def upload(self, filepath, subdir=None):
         """Upload a file to the cloud storage bucket.
 
         Args:
@@ -233,7 +238,12 @@ class S3Storage(Storage):
             dest: key of uploaded file in cloud storage
         """
         start = default_timer()
-        dest = os.path.join('output', os.path.basename(filepath))
+        dest = os.path.basename(filepath)
+        if subdir:
+            if str(subdir).startswith('/'):
+                subdir = subdir[1:]
+            dest = os.path.join(subdir, dest)
+        dest = os.path.join('output', dest)
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         try:
             self._client.upload_file(filepath, self.bucket, dest)
