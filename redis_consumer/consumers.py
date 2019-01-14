@@ -265,9 +265,12 @@ class ImageFileConsumer(Consumer):
         self.logger.debug('Segmenting image of shape %s with model %s:%s',
                           img.shape, model_name, model_version)
         try:
+            floatx = settings.TF_TENSOR_DTYPE
+            if 'f16' in model_name:
+                floatx = 'DT_BFLOAT16'
             hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
             req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
-                         'in_tensor_dtype': settings.TF_TENSOR_DTYPE,
+                         'in_tensor_dtype': floatx,
                          'data': np.expand_dims(img, axis=0)}]
             client = PredictClient(hostname, model_name, int(model_version))
             prediction = client.predict(req_data, request_timeout=timeout)
