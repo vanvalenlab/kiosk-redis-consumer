@@ -310,6 +310,8 @@ class ImageFileConsumer(Consumer):
 
             start = default_timer()
             image = utils.get_image(fname)
+            if 'f16' in model_name.lower():
+                image = image.astype('float16')
 
             self.redis.hset(redis_hash, 'status', 'pre-processing')
             pre = None
