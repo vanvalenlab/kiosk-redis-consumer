@@ -20,7 +20,7 @@ from redis_consumer.utils import grpc_response_to_dict
 from redis_consumer.utils import make_tensor_proto
 
 
-class GrpcClient(object):
+class GrpcClient(object):  # pylint: disable=useless-object-inheritance
     """Abstract class for all gRPC clients.
 
     Arguments:
@@ -75,14 +75,16 @@ class PredictClient(GrpcClient):
         request = PredictRequest()
         self.logger.debug('Creating request object took: %s', time.time() - t)
 
-        request.model_spec.name = self.model_name
+        request.model_spec.name = self.model_name  # pylint: disable=E1101
 
         if self.model_version > 0:
+            # pylint: disable=E1101
             request.model_spec.version.value = self.model_version
 
         t = time.time()
         for d in request_data:
             tensor_proto = make_tensor_proto(d['data'], d['in_tensor_dtype'])
+            # pylint: disable=E1101
             request.inputs[d['in_tensor_name']].CopyFrom(tensor_proto)
 
         self.logger.debug('Making tensor protos took: %s', time.time() - t)
@@ -137,12 +139,15 @@ class ProcessClient(GrpcClient):
         request = ProcessRequest()
         self.logger.debug('Creating request object took: %s', time.time() - t)
 
+        # pylint: disable=E1101
         request.function_spec.name = self.function_name
         request.function_spec.type = self.process_type
+        # pylint: enable=E1101
 
         t = time.time()
         for d in request_data:
             tensor_proto = make_tensor_proto(d['data'], d['in_tensor_dtype'])
+            # pylint: disable=E1101
             request.inputs[d['in_tensor_name']].CopyFrom(tensor_proto)
 
         self.logger.debug('Making tensor protos took: %s', time.time() - t)

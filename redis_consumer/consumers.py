@@ -174,8 +174,8 @@ class ImageFileConsumer(Consumer):
                 grpc.StatusCode.DEADLINE_EXCEEDED,
                 grpc.StatusCode.UNAVAILABLE
             }
-            if err.code() in retry_statuses:
-                self.logger.warning(err.details())
+            if err.code() in retry_statuses:  # pylint: disable=E1101
+                self.logger.warning(err.details())  # pylint: disable=E1101
                 self.logger.warning('Encountered %s during %s %s-processing '
                                     'request: %s', type(err).__name__, key,
                                     process_type, err)
@@ -286,8 +286,8 @@ class ImageFileConsumer(Consumer):
                 grpc.StatusCode.DEADLINE_EXCEEDED,
                 grpc.StatusCode.UNAVAILABLE
             }
-            if err.code() in retry_statuses:
-                self.logger.warning(err.details())
+            if err.code() in retry_statuses:  # pylint: disable=E1101
+                self.logger.warning(err.details())  # pylint: disable=E1101
                 self.logger.warning('Encountered %s during tf-serving request '
                                     'to model %s:%s: %s', type(err).__name__,
                                     model_name, model_version, err)
