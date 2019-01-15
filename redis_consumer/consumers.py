@@ -267,7 +267,10 @@ class ImageFileConsumer(Consumer):
         try:
             floatx = settings.TF_TENSOR_DTYPE
             if 'f16' in model_name:
-                floatx = 'DT_BFLOAT16'
+                floatx = 'DT_HALF'
+                # TODO: seems like should cast to "half"
+                # but the model rejects the type, wants "int" or "long"
+                img = img.astype('int')
             hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
             req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
                          'in_tensor_dtype': floatx,
@@ -313,8 +316,6 @@ class ImageFileConsumer(Consumer):
 
             start = default_timer()
             image = utils.get_image(fname)
-            if 'f16' in model_name.lower():
-                image = image.astype('float16')
 
             self.redis.hset(redis_hash, 'status', 'pre-processing')
             pre = None
