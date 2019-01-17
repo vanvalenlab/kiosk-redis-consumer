@@ -338,6 +338,10 @@ class ImageFileConsumer(Consumer):
             start = default_timer()
             image = utils.get_image(fname)
 
+            streaming = str(cuts).isdigit() and int(cuts) > 0
+            timeout = settings.GRPC_TIMEOUT
+            timeout = timeout if not streaming else timeout * int(cuts)
+
             self.redis.hset(redis_hash, 'status', 'pre-processing')
             pre = None
             for f in hvals.get('preprocess_function', '').split(','):
