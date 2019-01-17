@@ -12,10 +12,13 @@ from grpc import RpcError
 import grpc.beta.implementations
 from grpc._cython import cygrpc
 
+import numpy as np
+
 from redis_consumer.pbs.prediction_service_pb2_grpc import PredictionServiceStub
 from redis_consumer.pbs.processing_service_pb2_grpc import ProcessingServiceStub
 from redis_consumer.pbs.predict_pb2 import PredictRequest
 from redis_consumer.pbs.process_pb2 import ProcessRequest
+from redis_consumer.pbs.process_pb2 import ChunkedProcessRequest
 from redis_consumer.utils import grpc_response_to_dict
 from redis_consumer.utils import make_tensor_proto
 
@@ -164,6 +167,65 @@ class ProcessClient(GrpcClient):
             self.logger.info('Got processing_response with keys: %s', keys)
 
             return response_dict
+
+        except RpcError as e:
+            self.logger.error(e)
+            self.logger.error('Processing failed!')
+            raise e
+
+        return {}
+
+    def stream_process(self, request_data, request_timeout=10):
+        self.logger.info('Sending request to %s %s-process data with the '
+                         'data-processing API at %s.', self.function_name,
+                         self.process_type, self.host)
+
+        # Create gRPC client and request
+        channel = self.insecure_channel()
+
+        t = time.time()
+        stub = ProcessingServiceStub(channel)
+        self.logger.debug('Creating stub took %ss', time.time() - t)
+
+        def request_iterator(image, chunk_size=4 * 1024 * 1024):
+            bytearr = image.tobytes()
+            for i, j in enumerate(range(0, len(bytearr), chunk_size)):
+                self.logger.info('Streaming %s / %s bytes',
+                                 (i + 1) * chunk_size, len(bytearr))
+                t = time.time()
+                request = ChunkedProcessRequest()
+                # pylint: disable=E1101
+                request.function_spec.name = self.function_name
+                request.function_spec.type = self.process_type
+                request.shape[:] = list(image.shape)
+                request.dtype = str(image.dtype)
+                request.inputs['data'] = bytearr[j: j + chunk_size]
+                # pylint: enable=E1101
+                self.logger.debug('Creating request object took: %s',
+                                  time.time() - t)
+                yield request
+
+        try:
+            data = request_data[0]['data']
+            req_iter = request_iterator(data)
+            res_iter = stub.StreamProcess(req_iter, timeout=request_timeout)
+            shape = None
+            dtype = None
+            processed_bytes = []
+            for response in res_iter:
+                shape = tuple(response.shape)
+                dtype = str(response.dtype)
+                processed_bytes.append(response.outputs['data'])
+
+            npbytes = b''.join(processed_bytes)
+            self.logger.info('Got response stream of %s bytes', len(npbytes))
+            processed_image = np.frombuffer(npbytes, dtype=dtype)
+            self.logger.info('Loaded bytes into numpy array of shape %s',
+                             processed_image.shape)
+            results = processed_image.reshape(shape)
+            self.logger.info('Reshaped array into shape %s',
+                             results.shape)
+            return {'results': results}
 
         except RpcError as e:
             self.logger.error(e)
