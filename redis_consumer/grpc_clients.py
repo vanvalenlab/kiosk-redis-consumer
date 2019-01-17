@@ -63,10 +63,8 @@ class PredictClient(GrpcClient):
         self.model_version = model_version
 
     def predict(self, request_data, request_timeout=10):
-        self.logger.info('Sending request to tensorflow-serving model.')
-        self.logger.info('Host: %s', self.host)
-        self.logger.info('Model name: %s', self.model_name)
-        self.logger.info('Model version: %s', self.model_version)
+        self.logger.info('Sending request to %s model %s:%s.',
+                         self.host, self.model_name, self.model_version)
 
         channel = self.insecure_channel()
 
@@ -164,7 +162,7 @@ class ProcessClient(GrpcClient):
             response_dict = grpc_response_to_dict(response)
 
             keys = [k for k in response_dict]
-            self.logger.info('Got processing_response with keys: %s', keys)
+            self.logger.debug('Got processing_response with keys: %s', keys)
 
             return response_dict
 
