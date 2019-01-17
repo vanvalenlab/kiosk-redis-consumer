@@ -132,13 +132,15 @@ class ImageFileConsumer(Consumer):
             if not fname.lower().endswith('.zip'):
                 yield key
 
-    def _process(self, image, key, process_type, timeout=30):
+    def _process(self, image, key, process_type, timeout=30, streaming=False):
         """Apply each processing function to each image in images.
 
         Args:
             images: iterable of image data
             key: function to apply to images
             process_type: pre or post processing
+            timeout: integer. grpc request timeout.
+            streaming: boolean. if True, streams data in multiple requests
 
         Returns:
             list of processed image data
@@ -186,29 +188,33 @@ class ImageFileConsumer(Consumer):
                               type(err).__name__, key, process_type, err)
             raise err
 
-    def preprocess(self, image, key):
+    def preprocess(self, image, key, timeout=30, streaming=False):
         """Wrapper for _process_image but can only call with type="pre".
 
         Args:
             image: numpy array of image data
             key: function to apply to image
+            timeout: integer. grpc request timeout.
+            streaming: boolean. if True, streams data in multiple requests
 
         Returns:
             pre-processed image data
         """
-        return self._process(image, key, 'pre')
+        return self._process(image, key, 'pre', timeout, streaming)
 
-    def postprocess(self, image, key):
+    def postprocess(self, image, key, timeout=30, streaming=False):
         """Wrapper for _process_image but can only call with type="post".
 
         Args:
             image: numpy array of image data
             key: function to apply to image
+            timeout: integer. grpc request timeout.
+            streaming: boolean. if True, streams data in multiple requests
 
         Returns:
             post-processed image data
         """
-        return self._process(image, key, 'post')
+        return self._process(image, key, 'post', timeout, streaming)
 
     def process_big_image(self,
                           cuts,
