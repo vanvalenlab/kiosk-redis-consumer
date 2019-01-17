@@ -346,21 +346,21 @@ class ImageFileConsumer(Consumer):
             pre = None
             for f in hvals.get('preprocess_function', '').split(','):
                 x = pre if pre else image
-                pre = self.preprocess(x, f)
+                pre = self.preprocess(x, f, timeout, streaming)
 
             self.redis.hset(redis_hash, 'status', 'predicting')
-            if str(cuts).isdigit() and int(cuts) > 0:
+            if streaming:
                 prediction = self.process_big_image(
                     cuts, pre, field, model_name, model_version)
             else:
                 prediction = self.grpc_image(
-                    pre, model_name, model_version, timeout=30)
+                    pre, model_name, model_version, timeout)
 
             self.redis.hset(redis_hash, 'status', 'post-processing')
             post = None
             for f in hvals.get('postprocess_function', '').split(','):
                 x = post if post else prediction
-                post = self.postprocess(x, f)
+                post = self.postprocess(x, f, timeout, streaming)
 
             # Save each result channel as an image file
             subdir = os.path.dirname(fname.replace(tempdir, ''))
