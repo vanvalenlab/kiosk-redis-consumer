@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='tensorflow.serving',
   syntax='proto3',
   serialized_options=_b('\370\001\001'),
-  serialized_pb=_b('\n\x18processing_service.proto\x12\x12tensorflow.serving\x1a\rprocess.proto2g\n\x11ProcessingService\x12R\n\x07Process\x12\".tensorflow.serving.ProcessRequest\x1a#.tensorflow.serving.ProcessResponseB\x03\xf8\x01\x01\x62\x06proto3')
+  serialized_pb=_b('\n\x18processing_service.proto\x12\x12tensorflow.serving\x1a\rprocess.proto2\xd3\x01\n\x11ProcessingService\x12R\n\x07Process\x12\".tensorflow.serving.ProcessRequest\x1a#.tensorflow.serving.ProcessResponse\x12j\n\rStreamProcess\x12).tensorflow.serving.ChunkedProcessRequest\x1a*.tensorflow.serving.ChunkedProcessResponse(\x01\x30\x01\x42\x03\xf8\x01\x01\x62\x06proto3')
   ,
   dependencies=[process__pb2.DESCRIPTOR,])
 
@@ -37,8 +37,8 @@ _PROCESSINGSERVICE = _descriptor.ServiceDescriptor(
   file=DESCRIPTOR,
   index=0,
   serialized_options=None,
-  serialized_start=63,
-  serialized_end=166,
+  serialized_start=64,
+  serialized_end=275,
   methods=[
   _descriptor.MethodDescriptor(
     name='Process',
@@ -47,6 +47,15 @@ _PROCESSINGSERVICE = _descriptor.ServiceDescriptor(
     containing_service=None,
     input_type=process__pb2._PROCESSREQUEST,
     output_type=process__pb2._PROCESSRESPONSE,
+    serialized_options=None,
+  ),
+  _descriptor.MethodDescriptor(
+    name='StreamProcess',
+    full_name='tensorflow.serving.ProcessingService.StreamProcess',
+    index=1,
+    containing_service=None,
+    input_type=process__pb2._CHUNKEDPROCESSREQUEST,
+    output_type=process__pb2._CHUNKEDPROCESSRESPONSE,
     serialized_options=None,
   ),
 ])

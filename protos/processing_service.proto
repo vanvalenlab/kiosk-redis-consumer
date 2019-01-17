@@ -9,4 +9,5 @@ import "process.proto";
 service ProcessingService {
   // Process -- provides access to a data processing function
   rpc Process(ProcessRequest) returns (ProcessResponse);
+  rpc StreamProcess(stream ChunkedProcessRequest) returns (stream ChunkedProcessResponse);
 }

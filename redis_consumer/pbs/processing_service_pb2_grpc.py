@@ -19,6 +19,11 @@ class ProcessingServiceStub(object):
         request_serializer=process__pb2.ProcessRequest.SerializeToString,
         response_deserializer=process__pb2.ProcessResponse.FromString,
         )
+    self.StreamProcess = channel.stream_stream(
+        '/tensorflow.serving.ProcessingService/StreamProcess',
+        request_serializer=process__pb2.ChunkedProcessRequest.SerializeToString,
+        response_deserializer=process__pb2.ChunkedProcessResponse.FromString,
+        )
 
 
 class ProcessingServiceServicer(object):
@@ -32,6 +37,13 @@ class ProcessingServiceServicer(object):
     context.set_details('Method not implemented!')
     raise NotImplementedError('Method not implemented!')
 
+  def StreamProcess(self, request_iterator, context):
+    # missing associated documentation comment in .proto file
+    pass
+    context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+    context.set_details('Method not implemented!')
+    raise NotImplementedError('Method not implemented!')
+
 
 def add_ProcessingServiceServicer_to_server(servicer, server):
   rpc_method_handlers = {
@@ -39,6 +51,11 @@ def add_ProcessingServiceServicer_to_server(servicer, server):
           servicer.Process,
           request_deserializer=process__pb2.ProcessRequest.FromString,
           response_serializer=process__pb2.ProcessResponse.SerializeToString,
+      ),
+      'StreamProcess': grpc.stream_stream_rpc_method_handler(
+          servicer.StreamProcess,
+          request_deserializer=process__pb2.ChunkedProcessRequest.FromString,
+          response_serializer=process__pb2.ChunkedProcessResponse.SerializeToString,
       ),
   }
   generic_handler = grpc.method_handlers_generic_handler(
