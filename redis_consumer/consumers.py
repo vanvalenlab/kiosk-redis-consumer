@@ -28,12 +28,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from time import time
+from hashlib import md5
 from timeit import default_timer
 
 import os
 import json
-import hashlib
+import time
 import logging
 
 import grpc
@@ -193,6 +193,9 @@ class ImageFileConsumer(Consumer):
                 self.logger.warning('Encountered %s during %s %s-processing '
                                     'request: %s', type(err).__name__, key,
                                     process_type, err)
+                time.sleep((1 + 9 * int(streaming)))  # sleep before retry
+                self.logger.debug('Waiting for %s seconds before retrying',
+                                  1 + 9 * int(streaming))
                 return self._process(image, key, process_type, timeout)
             raise err
         except Exception as err:
@@ -426,7 +429,7 @@ class ZipFileConsumer(Consumer):
                 new_hash = '{prefix}_{file}_{hash}'.format(
                     prefix=settings.HASH_PREFIX,
                     file=clean_imfile,
-                    hash=hashlib.md5(str(time()).encode('utf-8')).hexdigest())
+                    hash=md5(str(time.time()).encode('utf-8')).hexdigest())
 
                 new_hvals = dict()
                 new_hvals.update(hvalues)
