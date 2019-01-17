@@ -247,6 +247,7 @@ class ImageFileConsumer(Consumer):
         Returns:
             tf_results: single numpy array of predictions on big input image
         """
+        start = default_timer()
         cuts = int(cuts)
         field = int(field)
         winx, winy = (field - 1) // 2, (field - 1) // 2
@@ -276,6 +277,8 @@ class ImageFileConsumer(Consumer):
 
             tf_results[..., a:b, c:d, :] = resp[..., winx:-winx, winy:-winy, :]
 
+        self.logger.debug('Segmented image into shape %s in %s s',
+                          tf_results.shape, default_timer() - start)
         return tf_results
 
     def grpc_image(self, img, model_name, model_version, timeout=30):
