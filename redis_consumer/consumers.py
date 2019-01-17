@@ -159,13 +159,25 @@ class ImageFileConsumer(Consumer):
             key = str(key).lower()
             process_type = str(process_type).lower()
             hostname = '{}:{}'.format(settings.DP_HOST, settings.DP_PORT)
-            req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
-                         'in_tensor_dtype': settings.TF_TENSOR_DTYPE,
-                         'data': np.expand_dims(image, axis=0)}]
             client = ProcessClient(hostname, process_type, key)
-            results = client.process(req_data, request_timeout=timeout)
+
+            if streaming:
+                dtype = 'DT_STRING'
+            else:
+                dtype = settings.TF_TENSOR_DTYPE
+
+            req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
+                         'in_tensor_dtype': dtype,
+                         'data': np.expand_dims(image, axis=0)}]
+
+            if streaming:
+                results = client.stream_process(req_data, request_timeout=timeout)
+            else:
+                results = client.process(req_data, request_timeout=timeout)
+
             self.logger.debug('Finished %s %s-processing image in %ss',
                               key, process_type, default_timer() - start)
+
             results = results['results']
             # Again, squeeze out batch dimension if unnecessary
             if results.shape[0] == 1:
