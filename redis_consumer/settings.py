@@ -60,6 +60,9 @@ TF_TENSOR_DTYPE = config('TF_TENSOR_DTYPE', default='DT_FLOAT')
 DP_HOST = config('DP_HOST', default='data-processing-service')
 DP_PORT = config('DP_PORT', default=8080, cast=int)
 
+# gRPC API timeout in seconds (scales with `cuts`)
+GRPC_TIMEOUT = config('GRPC_TIMEOUT', default=30, cast=int)
+
 # Status of hashes marked for prediction
 STATUS = config('STATUS', default='new')
 
