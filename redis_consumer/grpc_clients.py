@@ -103,10 +103,10 @@ class PredictClient(GrpcClient):
 
             return predict_response_dict
 
-        except RpcError as e:
-            self.logger.error(e)
+        except RpcError as err:
+            self.logger.error(err)
             self.logger.error('Prediction failed!')
-            raise e
+            raise err
 
         return {}
 
@@ -166,10 +166,10 @@ class ProcessClient(GrpcClient):
 
             return response_dict
 
-        except RpcError as e:
-            self.logger.error(e)
+        except RpcError as err:
+            self.logger.error(err)
             self.logger.error('Processing failed!')
-            raise e
+            raise err
 
         return {}
 
