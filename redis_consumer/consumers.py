@@ -200,7 +200,7 @@ class ImageFileConsumer(Consumer):
                     self.logger.warning('%s during %s %s-processing request: '
                                         '%s', type(err).__name__, key,
                                         process_type, err)
-                    sleeptime = np.random.randint(9, 30)[0]
+                    sleeptime = np.random.randint(9, 30)
                     sleeptime = 1 + sleeptime * int(streaming)
                     self.logger.debug('Waiting for %s seconds before retrying',
                                       sleeptime)
