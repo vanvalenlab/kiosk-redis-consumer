@@ -186,7 +186,11 @@ class ProcessClient(GrpcClient):
         self.logger.debug('Creating stub took %ss', time.time() - t)
 
         def request_iterator(image, chunk_size=4 * 1024 * 1024):
+            dtype = str(image.dtype)
+            shape = list(image.shape)
             bytearr = image.tobytes()
+            del image  # effort to decrease memory footprint
+
             for i, j in enumerate(range(0, len(bytearr), chunk_size)):
                 self.logger.info('Streaming %s / %s bytes',
                                  (i + 1) * chunk_size, len(bytearr))
@@ -195,8 +199,8 @@ class ProcessClient(GrpcClient):
                 # pylint: disable=E1101
                 request.function_spec.name = self.function_name
                 request.function_spec.type = self.process_type
-                request.shape[:] = list(image.shape)
-                request.dtype = str(image.dtype)
+                request.shape[:] = shape
+                request.dtype = dtype
                 request.inputs['data'] = bytearr[j: j + chunk_size]
                 # pylint: enable=E1101
                 self.logger.debug('Creating request object took: %s',
@@ -204,8 +208,7 @@ class ProcessClient(GrpcClient):
                 yield request
 
         try:
-            data = request_data[0]['data']
-            req_iter = request_iterator(data)
+            req_iter = request_iterator(request_data[0]['data'])
             res_iter = stub.StreamProcess(req_iter, timeout=request_timeout)
             shape = None
             dtype = None
@@ -217,6 +220,7 @@ class ProcessClient(GrpcClient):
 
             npbytes = b''.join(processed_bytes)
             self.logger.info('Got response stream of %s bytes', len(npbytes))
+
             processed_image = np.frombuffer(npbytes, dtype=dtype)
             self.logger.info('Loaded bytes into numpy array of shape %s',
                              processed_image.shape)

@@ -133,11 +133,11 @@ class ImageFileConsumer(Consumer):
                 yield key
 
     def _process(self, image, key, process_type, timeout=30, streaming=False):
-        """Apply each processing function to each image in images.
+        """Apply each processing function to image.
 
         Args:
-            images: iterable of image data
-            key: function to apply to images
+            image: numpy array of image data
+            key: function to apply to image
             process_type: pre or post processing
             timeout: integer. grpc request timeout.
             streaming: boolean. if True, streams data in multiple requests
@@ -155,81 +155,99 @@ class ImageFileConsumer(Consumer):
         start = default_timer()
         self.logger.debug('Starting %s %s-processing image of shape %s',
                           key, process_type, image.shape)
-        try:
-            key = str(key).lower()
-            process_type = str(process_type).lower()
-            hostname = '{}:{}'.format(settings.DP_HOST, settings.DP_PORT)
-            client = ProcessClient(hostname, process_type, key)
 
-            if streaming:
-                dtype = 'DT_STRING'
-            else:
-                dtype = settings.TF_TENSOR_DTYPE
+        # using while loop instead of recursive call for
+        # help with memory footprint issue.
+        retrying = True
+        while retrying:
+            try:
+                key = str(key).lower()
+                process_type = str(process_type).lower()
+                hostname = '{}:{}'.format(settings.DP_HOST, settings.DP_PORT)
+                client = ProcessClient(hostname, process_type, key)
 
-            req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
-                         'in_tensor_dtype': dtype,
-                         'data': np.expand_dims(image, axis=0)}]
+                if streaming:
+                    dtype = 'DT_STRING'
+                else:
+                    dtype = settings.TF_TENSOR_DTYPE
 
-            if streaming:
-                results = client.stream_process(req_data, request_timeout=timeout)
-            else:
-                results = client.process(req_data, request_timeout=timeout)
+                req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
+                             'in_tensor_dtype': dtype,
+                             'data': np.expand_dims(image, axis=0)}]
 
-            self.logger.debug('Finished %s %s-processing image in %ss',
-                              key, process_type, default_timer() - start)
+                if streaming:
+                    results = client.stream_process(req_data, timeout)
+                else:
+                    results = client.process(req_data, timeout)
 
-            results = results['results']
-            # Again, squeeze out batch dimension if unnecessary
-            if results.shape[0] == 1:
-                results = np.squeeze(results, axis=0)
-            return results
-        except grpc.RpcError as err:
-            retry_statuses = {
-                grpc.StatusCode.DEADLINE_EXCEEDED,
-                grpc.StatusCode.UNAVAILABLE
-            }
-            if err.code() in retry_statuses:  # pylint: disable=E1101
-                self.logger.warning(err.details())  # pylint: disable=E1101
-                self.logger.warning('Encountered %s during %s %s-processing '
-                                    'request: %s', type(err).__name__, key,
-                                    process_type, err)
-                time.sleep((1 + 9 * int(streaming)))  # sleep before retry
-                self.logger.debug('Waiting for %s seconds before retrying',
-                                  1 + 9 * int(streaming))
-                return self._process(image, key, process_type, timeout)
-            raise err
-        except Exception as err:
-            self.logger.error('Encountered %s during %s %s-processing: %s',
-                              type(err).__name__, key, process_type, err)
-            raise err
+                self.logger.debug('Finished %s %s-processing image in %ss',
+                                  key, process_type, default_timer() - start)
 
-    def preprocess(self, image, key, timeout=30, streaming=False):
+                results = results['results']
+                # Again, squeeze out batch dimension if unnecessary
+                if results.shape[0] == 1:
+                    results = np.squeeze(results, axis=0)
+
+                retrying = False
+                return results
+            except grpc.RpcError as err:
+                retry_statuses = {
+                    grpc.StatusCode.DEADLINE_EXCEEDED,
+                    grpc.StatusCode.UNAVAILABLE
+                }
+                if err.code() in retry_statuses:  # pylint: disable=E1101
+                    self.logger.warning(err.details())  # pylint: disable=E1101
+                    self.logger.warning('%s during %s %s-processing request: '
+                                        '%s', type(err).__name__, key,
+                                        process_type, err)
+                    self.logger.debug('Waiting for %s seconds before retrying',
+                                      1 + 9 * int(streaming))
+                    time.sleep((1 + 9 * int(streaming)))  # sleep before retry
+                    retrying = True  # Unneccessary but explicit
+                else:
+                    retrying = False
+                    raise err
+            except Exception as err:
+                retrying = False
+                self.logger.error('Encountered %s during %s %s-processing: %s',
+                                  type(err).__name__, key, process_type, err)
+                raise err
+
+    def preprocess(self, image, keys, timeout=30, streaming=False):
         """Wrapper for _process_image but can only call with type="pre".
 
         Args:
             image: numpy array of image data
-            key: function to apply to image
+            keys: list of function names to apply to the image
             timeout: integer. grpc request timeout.
             streaming: boolean. if True, streams data in multiple requests
 
         Returns:
             pre-processed image data
         """
-        return self._process(image, key, 'pre', timeout, streaming)
+        pre = None
+        for key in keys:
+            x = pre if pre else image
+            pre = self._process(x, key, 'pre', timeout, streaming)
+        return pre
 
-    def postprocess(self, image, key, timeout=30, streaming=False):
+    def postprocess(self, image, keys, timeout=30, streaming=False):
         """Wrapper for _process_image but can only call with type="post".
 
         Args:
             image: numpy array of image data
-            key: function to apply to image
+            keys: list of function names to apply to the image
             timeout: integer. grpc request timeout.
             streaming: boolean. if True, streams data in multiple requests
 
         Returns:
             post-processed image data
         """
-        return self._process(image, key, 'post', timeout, streaming)
+        post = None
+        for key in keys:
+            x = post if post else image
+            post = self._process(x, key, 'post', timeout, streaming)
+        return post
 
     def process_big_image(self,
                           cuts,
@@ -346,31 +364,27 @@ class ImageFileConsumer(Consumer):
             timeout = timeout if not streaming else timeout * int(cuts)
 
             self.redis.hset(redis_hash, 'status', 'pre-processing')
-            pre = None
-            for f in hvals.get('preprocess_function', '').split(','):
-                x = pre if pre else image
-                pre = self.preprocess(x, f, timeout, streaming)
+            pre_funcs = hvals.get('preprocess_function', '').split(',')
+            image = self.preprocess(image, pre_funcs, timeout, streaming)
 
             self.redis.hset(redis_hash, 'status', 'predicting')
             if streaming:
-                prediction = self.process_big_image(
-                    cuts, pre, field, model_name, model_version)
+                image = self.process_big_image(
+                    cuts, image, field, model_name, model_version)
             else:
-                prediction = self.grpc_image(
-                    pre, model_name, model_version, timeout)
+                image = self.grpc_image(
+                    image, model_name, model_version, timeout)
 
             self.redis.hset(redis_hash, 'status', 'post-processing')
-            post = None
-            for f in hvals.get('postprocess_function', '').split(','):
-                x = post if post else prediction
-                post = self.postprocess(x, f, timeout, streaming)
+            post_funcs = hvals.get('postprocess_function', '').split(',')
+            image = self.postprocess(image, post_funcs, timeout, streaming)
 
             # Save each result channel as an image file
             subdir = os.path.dirname(fname.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(fname))[0]
 
             outpaths = utils.save_numpy_array(
-                post, name=name, subdir=subdir, output_dir=tempdir)
+                image, name=name, subdir=subdir, output_dir=tempdir)
 
             self.logger.info('Saved data for image in %ss',
                              default_timer() - start)
