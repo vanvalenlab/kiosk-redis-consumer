@@ -33,6 +33,7 @@ from timeit import default_timer
 import os
 import json
 import logging
+import datetime
 
 import grpc
 import numpy as np
@@ -316,6 +317,7 @@ class PredictionConsumer(Consumer):
 
             # Update redis with the results
             self.redis.hmset(redis_hash, {
+                'timestamp_output': datetime.timestamp() # requires Python3
                 'output_url': output_url,
                 'status': self.final_status
             })
