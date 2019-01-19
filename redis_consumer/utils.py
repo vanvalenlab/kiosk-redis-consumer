@@ -47,7 +47,6 @@ from dict_to_protobuf import dict_to_protobuf
 
 from redis_consumer.pbs.types_pb2 import DESCRIPTOR
 from redis_consumer.pbs.tensor_pb2 import TensorProto
-from redis_consumer import settings
 
 
 logger = logging.getLogger('redis_consumer.utils')
@@ -75,33 +74,33 @@ number_to_dtype_value = {
 }
 
 
-def predict_response_to_dict(predict_response):
+def grpc_response_to_dict(grpc_response):
     # TODO: 'unicode' object has no attribute 'ListFields'
-    # response_dict = protobuf_to_dict(predict_response)
+    # response_dict = protobuf_to_dict(grpc_response)
     # return response_dict
-    predict_response_dict = dict()
+    grpc_response_dict = dict()
 
-    for k in predict_response.outputs:
-        shape = [x.size for x in predict_response.outputs[k].tensor_shape.dim]
+    for k in grpc_response.outputs:
+        shape = [x.size for x in grpc_response.outputs[k].tensor_shape.dim]
 
         logger.debug('Key: %s, shape: %s', k, shape)
 
-        dtype_constant = predict_response.outputs[k].dtype
+        dtype_constant = grpc_response.outputs[k].dtype
 
         if dtype_constant not in number_to_dtype_value:
-            predict_response_dict[k] = 'value not found'
+            grpc_response_dict[k] = 'value not found'
             logger.error('Tensor output data type not supported. '
                          'Returning empty dict.')
 
         dt = number_to_dtype_value[dtype_constant]
         if shape == [1]:
-            predict_response_dict[k] = eval(
-                'predict_response.outputs[k].' + dt)[0]
+            grpc_response_dict[k] = eval(
+                'grpc_response.outputs[k].' + dt)[0]
         else:
-            predict_response_dict[k] = np.array(
-                eval('predict_response.outputs[k].' + dt)).reshape(shape)
+            grpc_response_dict[k] = np.array(
+                eval('grpc_response.outputs[k].' + dt)).reshape(shape)
 
-    return predict_response_dict
+    return grpc_response_dict
 
 
 def make_tensor_proto(data, dtype):
@@ -186,23 +185,6 @@ def get_image_files_from_dir(fname, destination=None):
     else:
         image_files = [fname]
     return image_files
-
-
-def get_processing_function(process_type, function_name):
-    """Based on the function category and name, return the function
-
-    Args:
-        process_type: either `post` or `pre`
-        function_name: name of processing function to use
-
-    Returns:
-        the specified function
-    """
-    clean = lambda x: str(x).lower()
-    # first, verify the route parameters
-    name = clean(function_name)
-    cat = clean(process_type)
-    return settings.PROCESSING_FUNCTIONS[cat][name]
 
 
 def get_image(filepath):

@@ -70,11 +70,32 @@ def test_make_tensor_proto():
     assert isinstance(proto, (TensorProto,))
 
 
-def test_predict_response_to_dict():
-    # TODO: how to fill up a dummy PredictResponse?
+def test_grpc_response_to_dict():
+    # test valid response
+    data = _get_image(300, 300, 1)
+    tensor_proto = utils.make_tensor_proto(data, 'DT_FLOAT')
     response = PredictResponse()
-    response_dict = utils.predict_response_to_dict(response)
+    response.outputs['prediction'].CopyFrom(tensor_proto)
+    response_dict = utils.grpc_response_to_dict(response)
     assert isinstance(response_dict, (dict,))
+    np.testing.assert_allclose(response_dict['prediction'], data)
+    # test scalar input
+    data = 3
+    tensor_proto = utils.make_tensor_proto(data, 'DT_FLOAT')
+    response = PredictResponse()
+    response.outputs['prediction'].CopyFrom(tensor_proto)
+    response_dict = utils.grpc_response_to_dict(response)
+    assert isinstance(response_dict, (dict,))
+    np.testing.assert_allclose(response_dict['prediction'], data)
+    # test bad dtype
+    # logs an error, but should throw a KeyError as well.
+    data = _get_image(300, 300, 1)
+    tensor_proto = utils.make_tensor_proto(data, 'DT_FLOAT')
+    response = PredictResponse()
+    response.outputs['prediction'].CopyFrom(tensor_proto)
+    response.outputs['prediction'].dtype = 32
+    with pytest.raises(KeyError):
+        response_dict = utils.grpc_response_to_dict(response)
 
 
 def test_iter_image_archive():
@@ -108,19 +129,6 @@ def test_get_image_files_from_dir():
 
         imfiles = utils.get_image_files_from_dir(zip_path, tempdir)
         assert len(imfiles) == num_files
-
-
-def test_get_processing_function():
-    types = ('pre', 'post')
-    for t in types:
-        for k in settings.PROCESSING_FUNCTIONS[t]:
-            F = utils.get_processing_function(t, k)
-            assert callable(F)
-
-    with pytest.raises(KeyError):
-        _ = utils.get_processing_function('bad', 'normalize')
-    with pytest.raises(KeyError):
-        _ = utils.get_processing_function('pre', 'bad')
 
 
 def test_get_image():
