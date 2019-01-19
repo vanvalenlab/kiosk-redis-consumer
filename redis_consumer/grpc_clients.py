@@ -184,32 +184,32 @@ class ProcessClient(GrpcClient):
         t = time.time()
         stub = ProcessingServiceStub(channel)
         self.logger.debug('Creating stub took %ss', time.time() - t)
+        chunk_size = 64 * 1024  # 64 kB is recommended payload size
 
-        def request_iterator(image, chunk_size=4 * 1024 * 1024):
+        def request_iterator(image):
             dtype = str(image.dtype)
             shape = list(image.shape)
             bytearr = image.tobytes()
-            del image  # effort to decrease memory footprint
 
-            for i, j in enumerate(range(0, len(bytearr), chunk_size)):
-                self.logger.info('Streaming %s / %s bytes',
-                                 (i + 1) * chunk_size, len(bytearr))
-                t = time.time()
+            self.logger.info('Streaming %s bytes in %s requests',
+                             len(bytearr), chunk_size % len(bytearr))
+
+            for i in range(0, len(bytearr), chunk_size):
                 request = ChunkedProcessRequest()
                 # pylint: disable=E1101
                 request.function_spec.name = self.function_name
                 request.function_spec.type = self.process_type
                 request.shape[:] = shape
                 request.dtype = dtype
-                request.inputs['data'] = bytearr[j: j + chunk_size]
+                request.inputs['data'] = bytearr[i: i + chunk_size]
                 # pylint: enable=E1101
-                self.logger.debug('Creating request object took: %s',
-                                  time.time() - t)
                 yield request
 
         try:
+            t = time.time()
             req_iter = request_iterator(request_data[0]['data'])
             res_iter = stub.StreamProcess(req_iter, timeout=request_timeout)
+
             shape = None
             dtype = None
             processed_bytes = []
@@ -219,14 +219,17 @@ class ProcessClient(GrpcClient):
                 processed_bytes.append(response.outputs['data'])
 
             npbytes = b''.join(processed_bytes)
-            self.logger.info('Got response stream of %s bytes', len(npbytes))
+            self.logger.info('Got response stream of %s bytes in %ss',
+                             len(npbytes), time.time() - t)
 
             processed_image = np.frombuffer(npbytes, dtype=dtype)
             self.logger.info('Loaded bytes into numpy array of shape %s',
                              processed_image.shape)
+
             results = processed_image.reshape(shape)
             self.logger.info('Reshaped array into shape %s',
                              results.shape)
+
             return {'results': results}
 
         except RpcError as e:
