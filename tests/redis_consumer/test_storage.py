@@ -91,6 +91,12 @@ class TestS3Storage(object):
                 dest = stg.upload(temp.name)
                 assert dest == 'output/{}'.format(os.path.basename(temp.name))
 
+                # test succesful upload with subdir
+                subdir = '/abc'
+                dest = stg.upload(temp.name, subdir=subdir)
+                assert dest == 'output{}/{}'.format(
+                    subdir, os.path.basename(temp.name))
+
                 # test failed upload
                 with pytest.raises(Exception):
                     # self._client raises, but so does storage.upload

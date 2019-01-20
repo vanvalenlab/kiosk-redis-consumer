@@ -12,8 +12,8 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
-import tensor_pb2 as tensor__pb2
-import model_pb2 as model__pb2
+import redis_consumer.pbs.tensor_pb2 as tensor__pb2
+import redis_consumer.pbs.model_pb2 as model__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(

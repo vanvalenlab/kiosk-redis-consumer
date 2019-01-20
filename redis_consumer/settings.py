@@ -32,20 +32,6 @@ import os
 
 from decouple import config
 
-from redis_consumer import processing
-
-
-# Map for processing functions
-PROCESSING_FUNCTIONS = {
-    'pre': {
-        'normalize': processing.noramlize,
-    },
-    'post': {
-        'deepcell': processing.deepcell,
-        'mibi': processing.mibi,
-        'watershed': processing.watershed
-    },
-}
 
 # remove leading/trailing "/"s from cloud bucket folder names
 _strip = lambda x: '/'.join(y for y in x.split('/') if y)
@@ -55,6 +41,7 @@ DEBUG = config('DEBUG', cast=bool, default=False)
 
 # Consumer settings
 INTERVAL = config('INTERVAL', default=10, cast=int)
+CONSUMER_TYPE = config('CONSUMER_TYPE', default='image')
 
 # Hash Prefix - filter out prediction jobs
 HASH_PREFIX = _strip(config('HASH_PREFIX', cast=str, default='predict'))
@@ -68,6 +55,13 @@ TF_HOST = config('TF_HOST', default='tf-serving-service')
 TF_PORT = config('TF_PORT', default=8500, cast=int)
 TF_TENSOR_NAME = config('TF_TENSOR_NAME', default='image')
 TF_TENSOR_DTYPE = config('TF_TENSOR_DTYPE', default='DT_FLOAT')
+
+# data-processing client connection
+DP_HOST = config('DP_HOST', default='data-processing-service')
+DP_PORT = config('DP_PORT', default=8080, cast=int)
+
+# gRPC API timeout in seconds (scales with `cuts`)
+GRPC_TIMEOUT = config('GRPC_TIMEOUT', default=30, cast=int)
 
 # Status of hashes marked for prediction
 STATUS = config('STATUS', default='new')

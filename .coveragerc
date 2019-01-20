@@ -14,3 +14,4 @@ show_missing = True
 
 omit =
     redis_consumer/pbs/*
+    redis_consumer/grpc_clients.py
