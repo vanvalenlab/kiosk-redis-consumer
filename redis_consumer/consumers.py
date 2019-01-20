@@ -409,7 +409,7 @@ class ImageFileConsumer(Consumer):
 
             # Update redis with the results
             self.redis.hmset(redis_hash, {
-                'timestamp_output': datetime.timestamp(), # requires Python3
+                'timestamp_output': datetime.timestamp(),  # requires Python3
                 'output_url': output_url,
                 'file_name': uploaded_file_path,
                 'status': self.final_status
@@ -518,6 +518,7 @@ class ZipFileConsumer(Consumer):
 
             # Update redis with the results
             self.redis.hmset(redis_hash, {
+                'timestamp_output': datetime.timestamp(),  # requires Python3
                 'output_url': output_url,
                 'status': self.final_status
             })
