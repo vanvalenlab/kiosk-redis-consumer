@@ -411,11 +411,11 @@ class ImageFileConsumer(Consumer):
             # compliant with Python 2.7, since Travis tests that
             now = datetime.datetime.utcnow()
             time_since_epoch = now - datetime.datetime(1970, 1, 1)
-            seconds_since_epoch = time_since_epoch.total_seconds()
+            milliseconds_since_epoch = time_since_epoch.total_seconds() * 1000
 
             # Update redis with the results
             self.redis.hmset(redis_hash, {
-                'timestamp_output': seconds_since_epoch,
+                'timestamp_output': milliseconds_since_epoch,
                 'output_url': output_url,
                 'file_name': uploaded_file_path,
                 'status': self.final_status
@@ -526,11 +526,11 @@ class ZipFileConsumer(Consumer):
             # compliant with Python 2.7, since Travis tests that
             now = datetime.datetime.utcnow()
             time_since_epoch = now - datetime.datetime(1970, 1, 1)
-            seconds_since_epoch = time_since_epoch.total_seconds()
+            milliseconds_since_epoch = time_since_epoch.total_seconds() * 1000
 
             # Update redis with the results
             self.redis.hmset(redis_hash, {
-                'timestamp_output': seconds_since_epoch,
+                'timestamp_output': milliseconds_since_epoch,
                 'output_url': output_url,
                 'status': self.final_status
             })
