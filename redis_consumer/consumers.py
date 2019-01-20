@@ -407,9 +407,15 @@ class ImageFileConsumer(Consumer):
             output_url = self.storage.get_public_url(uploaded_file_path)
             self.logger.debug('Uploaded output to: "%s"', output_url)
 
+            # compute timestamp using Unix epoch
+            # compliant with Python 2.7, since Travis tests that
+            now = datetime.utcnow()
+            time_since_epoch = now - datetime.datetime(1970,1,1)
+            seconds_since_epoch = time_since_epoch.total_seconds()
+
             # Update redis with the results
             self.redis.hmset(redis_hash, {
-                'timestamp_output': datetime.timestamp(),  # requires Python3
+                'timestamp_output': seconds_since_epoch
                 'output_url': output_url,
                 'file_name': uploaded_file_path,
                 'status': self.final_status
@@ -516,9 +522,15 @@ class ZipFileConsumer(Consumer):
             output_url = self.storage.get_public_url(uploaded_file_path)
             self.logger.debug('Uploaded output to: "%s"', output_url)
 
+            # compute timestamp using Unix epoch
+            # compliant with Python 2.7, since Travis tests that
+            now = datetime.utcnow()
+            time_since_epoch = now - datetime.datetime(1970,1,1)
+            seconds_since_epoch = time_since_epoch.total_seconds()
+            
             # Update redis with the results
             self.redis.hmset(redis_hash, {
-                'timestamp_output': datetime.timestamp(),  # requires Python3
+                'timestamp_output': seconds_since_epoch,
                 'output_url': output_url,
                 'status': self.final_status
             })
