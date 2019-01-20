@@ -415,7 +415,7 @@ class ImageFileConsumer(Consumer):
 
             # Update redis with the results
             self.redis.hmset(redis_hash, {
-                'timestamp_output': seconds_since_epoch
+                'timestamp_output': seconds_since_epoch,
                 'output_url': output_url,
                 'file_name': uploaded_file_path,
                 'status': self.final_status
