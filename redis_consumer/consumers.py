@@ -527,7 +527,7 @@ class ZipFileConsumer(Consumer):
             now = datetime.datetime.utcnow()
             time_since_epoch = now - datetime.datetime(1970, 1, 1)
             seconds_since_epoch = time_since_epoch.total_seconds()
-            
+
             # Update redis with the results
             self.redis.hmset(redis_hash, {
                 'timestamp_output': seconds_since_epoch,
