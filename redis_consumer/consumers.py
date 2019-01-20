@@ -410,7 +410,7 @@ class ImageFileConsumer(Consumer):
             # compute timestamp using Unix epoch
             # compliant with Python 2.7, since Travis tests that
             now = datetime.datetime.utcnow()
-            time_since_epoch = now - datetime.datetime(1970,1,1)
+            time_since_epoch = now - datetime.datetime(1970, 1, 1)
             seconds_since_epoch = time_since_epoch.total_seconds()
 
             # Update redis with the results
@@ -525,7 +525,7 @@ class ZipFileConsumer(Consumer):
             # compute timestamp using Unix epoch
             # compliant with Python 2.7, since Travis tests that
             now = datetime.datetime.utcnow()
-            time_since_epoch = now - datetime.datetime(1970,1,1)
+            time_since_epoch = now - datetime.datetime(1970, 1, 1)
             seconds_since_epoch = time_since_epoch.total_seconds()
             
             # Update redis with the results
