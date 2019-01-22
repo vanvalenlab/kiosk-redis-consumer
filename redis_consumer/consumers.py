@@ -35,7 +35,6 @@ import os
 import json
 import time
 import logging
-import datetime
 
 import grpc
 import numpy as np
@@ -408,10 +407,7 @@ class ImageFileConsumer(Consumer):
             self.logger.debug('Uploaded output to: "%s"', output_url)
 
             # compute timestamp using Unix epoch
-            # compliant with Python 2.7, since Travis tests that
-            now = datetime.datetime.utcnow()
-            time_since_epoch = now - datetime.datetime(1970, 1, 1)
-            milliseconds_since_epoch = time_since_epoch.total_seconds() * 1000
+            milliseconds_since_epoch = time.time() * 1000
 
             # Update redis with the results
             self.redis.hmset(redis_hash, {
@@ -523,10 +519,7 @@ class ZipFileConsumer(Consumer):
             self.logger.debug('Uploaded output to: "%s"', output_url)
 
             # compute timestamp using Unix epoch
-            # compliant with Python 2.7, since Travis tests that
-            now = datetime.datetime.utcnow()
-            time_since_epoch = now - datetime.datetime(1970, 1, 1)
-            milliseconds_since_epoch = time_since_epoch.total_seconds() * 1000
+            milliseconds_since_epoch = time.time() * 1000
 
             # Update redis with the results
             self.redis.hmset(redis_hash, {
