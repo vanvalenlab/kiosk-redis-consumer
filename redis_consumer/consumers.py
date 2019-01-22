@@ -35,7 +35,6 @@ import os
 import json
 import time
 import logging
-import datetime
 
 import grpc
 import numpy as np
@@ -407,9 +406,12 @@ class ImageFileConsumer(Consumer):
             output_url = self.storage.get_public_url(uploaded_file_path)
             self.logger.debug('Uploaded output to: "%s"', output_url)
 
+            # compute timestamp using Unix epoch
+            milliseconds_since_epoch = time.time() * 1000
+
             # Update redis with the results
             self.redis.hmset(redis_hash, {
-                'timestamp_output': datetime.timestamp() # requires Python3
+                'timestamp_output': milliseconds_since_epoch,
                 'output_url': output_url,
                 'file_name': uploaded_file_path,
                 'status': self.final_status
@@ -516,8 +518,12 @@ class ZipFileConsumer(Consumer):
             output_url = self.storage.get_public_url(uploaded_file_path)
             self.logger.debug('Uploaded output to: "%s"', output_url)
 
+            # compute timestamp using Unix epoch
+            milliseconds_since_epoch = time.time() * 1000
+
             # Update redis with the results
             self.redis.hmset(redis_hash, {
+                'timestamp_output': milliseconds_since_epoch,
                 'output_url': output_url,
                 'status': self.final_status
             })
