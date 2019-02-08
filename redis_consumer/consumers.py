@@ -499,7 +499,7 @@ class ZipFileConsumer(Consumer):
                         # one of our hashes is done!
                         fname = self.redis.hget(h, 'file_name')
                         local_fname = self.storage.download(fname, tempdir)
-                        self.logger.info('saved file: %s', local_fname)
+                        self.logger.info('Saved file: %s', local_fname)
                         self.logger.info(fname)
                         saved_files.add(local_fname)
                         finished_hashes.add(h)
