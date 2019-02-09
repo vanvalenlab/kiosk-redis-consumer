@@ -35,6 +35,7 @@ import os
 import json
 import time
 import logging
+import zipfile
 
 import grpc
 import numpy as np
@@ -382,8 +383,9 @@ class ImageFileConsumer(Consumer):
             image = self.postprocess(image, post_funcs, timeout, streaming)
 
             # Save each result channel as an image file
-            subdir = os.path.dirname(fname.replace(tempdir, ''))
-            name = os.path.splitext(os.path.basename(fname))[0]
+            save_name = hvals.get('original_name', fname)
+            subdir = os.path.dirname(save_name.replace(tempdir, ''))
+            name = os.path.splitext(os.path.basename(save_name))[0]
 
             outpaths = utils.save_numpy_array(
                 image, name=name, subdir=subdir, output_dir=tempdir)
@@ -391,11 +393,8 @@ class ImageFileConsumer(Consumer):
             self.logger.info('Saved data for image in %ss',
                              default_timer() - start)
 
-            if len(outpaths) > 1:
-                # Save each prediction image as zip file
-                zip_file = utils.zip_files(outpaths, tempdir)
-            else:
-                zip_file = outpaths[0]
+            # Save each prediction image as zip file
+            zip_file = utils.zip_files(outpaths, tempdir)
 
             # Upload the zip file to cloud storage bucket
             cleaned = zip_file.replace(tempdir, '')
@@ -454,6 +453,7 @@ class ZipFileConsumer(Consumer):
                 new_hvals = dict()
                 new_hvals.update(hvalues)
                 new_hvals['file_name'] = uploaded_file_path
+                new_hvals['original_name'] = clean_imfile
                 new_hvals['status'] = 'new'
                 self.redis.hmset(new_hash, new_hvals)
                 self.logger.debug('Added new hash `%s`: %s',
@@ -500,8 +500,14 @@ class ZipFileConsumer(Consumer):
                         fname = self.redis.hget(h, 'file_name')
                         local_fname = self.storage.download(fname, tempdir)
                         self.logger.info('Saved file: %s', local_fname)
-                        self.logger.info(fname)
-                        saved_files.add(local_fname)
+                        if zipfile.is_zipfile(local_fname):
+                            image_files = utils.get_image_files_from_dir(
+                                local_fname, tempdir)
+                        else:
+                            image_files = [local_fname]
+
+                        for imfile in image_files:
+                            saved_files.add(imfile)
                         finished_hashes.add(h)
 
             if failed_hashes:
