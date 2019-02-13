@@ -40,6 +40,7 @@ import zipfile
 import grpc
 import numpy as np
 
+from redis_consumer.storage import StorageException
 from redis_consumer.grpc_clients import PredictClient
 from redis_consumer.grpc_clients import ProcessClient
 from redis_consumer import utils
@@ -97,7 +98,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def _consume(self, redis_hash):
         raise NotImplementedError
 
-    def consume(self, status=None, prefix=None):
+    def consume(self, status=None, prefix=None, retries=3):
         """Consume all redis events every `interval` seconds.
 
         Args:
@@ -108,13 +109,20 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         """
         # process each unprocessed hash
         for redis_hash in self.iter_redis_hashes(status, prefix):
-            try:
-                start = default_timer()
-                self._consume(redis_hash)
-                self.logger.debug('Consumed key %s in %ss',
-                                  redis_hash, default_timer() - start)
-            except Exception as err:  # pylint: disable=broad-except
-                self._handle_error(err, redis_hash)
+            retry_count = 0
+            finished = False
+            while retry_count < retries and not finished:
+                try:
+                    start = default_timer()
+                    self._consume(redis_hash)
+                    self.logger.debug('Consumed key %s in %ss',
+                                      redis_hash, default_timer() - start)
+                    finished = True
+                except StorageException:
+                    retry_count = retry_count + 1
+                except Exception as err:  # pylint: disable=broad-except
+                    self._handle_error(err, redis_hash)
+                    finished = True
 
 
 class ImageFileConsumer(Consumer):

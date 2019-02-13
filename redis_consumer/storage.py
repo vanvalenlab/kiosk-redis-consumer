@@ -37,6 +37,11 @@ from redis_consumer import settings
 from redis_consumer.settings import DOWNLOAD_DIR
 
 
+class StorageException(Exception):
+    """Custom Exception for the Storage classes"""
+    pass
+
+
 def get_client(cloud_provider):
     """Returns the Storage Client appropriate for the cloud provider
     # Arguments:
@@ -170,7 +175,7 @@ class GoogleStorage(Storage):
         except Exception as err:
             self.logger.error('Error while uploading image %s: %s',
                               filepath, err)
-            raise err
+            raise StorageException(err)
 
     def download(self, filename, download_dir=None):
         """Download a  file from the cloud storage bucket.
@@ -195,7 +200,7 @@ class GoogleStorage(Storage):
         except Exception as err:
             self.logger.error('Error while downloading image %s: %s',
                               filename, err)
-            raise err
+            raise StorageException(err)
 
 
 class S3Storage(Storage):
@@ -253,7 +258,7 @@ class S3Storage(Storage):
         except Exception as err:
             self.logger.error('Error while uploading image %s: %s',
                               filepath, err)
-            raise err
+            raise StorageException(err)
 
     def download(self, filename, download_dir=None):
         """Download a  file from the cloud storage bucket.
@@ -280,4 +285,4 @@ class S3Storage(Storage):
         except Exception as err:
             self.logger.error('Error while downloading image %s: %s',
                               filename, err)
-            raise err
+            raise StorageException(err)
