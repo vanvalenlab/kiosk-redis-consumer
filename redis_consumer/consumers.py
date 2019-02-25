@@ -1,4 +1,4 @@
-# Copyright 2016-2018 The Van Valen Lab at the California Institute of
+# Copyright 2016-2019 The Van Valen Lab at the California Institute of
 # Technology (Caltech), with support from the Paul Allen Family Foundation,
 # Google, & National Institutes of Health (NIH) under Grant U24CA224309-01.
 # All rights reserved.
@@ -420,6 +420,127 @@ class ImageFileConsumer(Consumer):
 
 class ZipFileConsumer(Consumer):
     """Consumes zip files and uploads the results"""
+
+    def iter_redis_hashes(self, status='new', prefix='predict'):
+        """Iterate over hash values in redis.
+        Only yield hash values for zip files
+
+        Returns:
+            Iterator of all zip hashes with a valid status
+        """
+        keys = super(ZipFileConsumer, self).iter_redis_hashes(status, prefix)
+        for key in keys:
+            fname = str(self.redis.hget(key, 'file_name'))
+            if fname.lower().endswith('.zip'):
+                yield key
+
+    def _upload_archived_images(self, hvalues):
+        """Extract all image files and upload them to storage and redis"""
+        all_hashes = set()
+        with utils.get_tempdir() as tempdir:
+            fname = self.storage.download(hvalues.get('file_name'), tempdir)
+            image_files = utils.get_image_files_from_dir(fname, tempdir)
+            for imfile in image_files:
+                clean_imfile = settings._strip(imfile.replace(tempdir, ''))
+                # Save each result channel as an image file
+                subdir = os.path.dirname(clean_imfile)
+                uploaded_file_path = self.storage.upload(imfile, subdir=subdir)
+                new_hash = '{prefix}_{file}_{hash}'.format(
+                    prefix=settings.HASH_PREFIX,
+                    file=clean_imfile,
+                    hash=md5(str(time.time()).encode('utf-8')).hexdigest())
+
+                new_hvals = dict()
+                new_hvals.update(hvalues)
+                new_hvals['file_name'] = uploaded_file_path
+                new_hvals['original_name'] = clean_imfile
+                new_hvals['status'] = 'new'
+                self.redis.hmset(new_hash, new_hvals)
+                self.logger.debug('Added new hash `%s`: %s',
+                                  new_hash, json.dumps(new_hvals, indent=4))
+                all_hashes.add(new_hash)
+        return all_hashes
+
+    def _consume(self, redis_hash):
+        start = default_timer()
+        hvals = self.redis.hgetall(redis_hash)
+        self.logger.debug('Found hash to process "%s": %s',
+                          redis_hash, json.dumps(hvals, indent=4))
+
+        self.redis.hset(redis_hash, 'status', 'started')
+        all_hashes = self._upload_archived_images(hvals)
+        self.logger.info('Uploaded %s hashes.  Waiting for ImageConsumers.',
+                         len(all_hashes))
+        # Now all images have been uploaded with new redis hashes
+        # Wait for these to be processed by an ImageFileConsumer
+        self.redis.hset(redis_hash, 'status', 'waiting')
+
+        with utils.get_tempdir() as tempdir:
+            finished_hashes = set()
+            failed_hashes = set()
+            saved_files = set()
+            # ping redis until all the sets are finished
+            while all_hashes.symmetric_difference(finished_hashes):
+                for h in all_hashes:
+                    if h in finished_hashes:
+                        continue
+
+                    status = self.redis.hget(h, 'status')
+
+                    if status == 'failed':
+                        reason = self.redis.hget(h, 'reason')
+                        # one of the hashes failed to process
+                        self.logger.error('Failed to process hash `%s`: %s',
+                                          h, reason)
+                        failed_hashes.add(h)
+                        finished_hashes.add(h)
+
+                    elif status == self.final_status:
+                        # one of our hashes is done!
+                        fname = self.redis.hget(h, 'file_name')
+                        local_fname = self.storage.download(fname, tempdir)
+                        self.logger.info('Saved file: %s', local_fname)
+                        if zipfile.is_zipfile(local_fname):
+                            image_files = utils.get_image_files_from_dir(
+                                local_fname, tempdir)
+                        else:
+                            image_files = [local_fname]
+
+                        for imfile in image_files:
+                            saved_files.add(imfile)
+                        finished_hashes.add(h)
+
+            if failed_hashes:
+                self.logger.warning('Failed to process %s hashes',
+                                    len(failed_hashes))
+
+            saved_files = list(saved_files)
+            self.logger.info(saved_files)
+            zip_file = utils.zip_files(saved_files, tempdir)
+
+            # Upload the zip file to cloud storage bucket
+            uploaded_file_path = self.storage.upload(zip_file)
+
+            output_url = self.storage.get_public_url(uploaded_file_path)
+            self.logger.debug('Uploaded output to: "%s"', output_url)
+
+            # compute timestamp using Unix epoch
+            milliseconds_since_epoch = time.time() * 1000
+
+            # Update redis with the results
+            self.redis.hmset(redis_hash, {
+                'timestamp_output': milliseconds_since_epoch,
+                'output_url': output_url,
+                'status': self.final_status
+            })
+
+            self.logger.info('Processed all %s images of zipfile "%s" in %s',
+                             len(all_hashes), hvals['file_name'],
+                             default_timer() - start)
+
+class TrkFileConsumer(Consumer):
+    """Consumes raw files, produces annotations, tracks the annotations across
+       multiple frames and uploads the results"""
 
     def iter_redis_hashes(self, status='new', prefix='predict'):
         """Iterate over hash values in redis.
