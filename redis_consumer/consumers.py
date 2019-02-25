@@ -496,6 +496,7 @@ class ZipFileConsumer(Consumer):
                           redis_hash, json.dumps(hvals, indent=4))
 
         self.redis.hset(redis_hash, 'status', 'started')
+        self.redis.hset(redis_hash, 'hostname', os.getenv('HOSTNAME', ''))
         all_hashes = self._upload_archived_images(hvals)
         self.logger.info('Uploaded %s hashes.  Waiting for ImageConsumers.',
                          len(all_hashes))
