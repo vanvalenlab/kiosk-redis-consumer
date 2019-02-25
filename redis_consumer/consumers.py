@@ -341,6 +341,7 @@ class ImageFileConsumer(Consumer):
                 self.logger.debug('Segmented image with model %s:%s in %ss',
                                   model_name, model_version,
                                   default_timer() - start)
+                retrying = False
                 return prediction['prediction']
             except grpc.RpcError as err:
                 retry_statuses = {
@@ -378,7 +379,7 @@ class ImageFileConsumer(Consumer):
                           redis_hash, json.dumps(hvals, indent=4))
 
         self.redis.hset(redis_hash, 'status', 'started')
-
+        self.redis.hset(redis_hash, 'hostname', os.getenv('HOSTNAME', ''))
         model_name = hvals.get('model_name')
         model_version = hvals.get('model_version')
         cuts = hvals.get('cuts', '0')
