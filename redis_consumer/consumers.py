@@ -168,6 +168,7 @@ class ImageFileConsumer(Consumer):
         # using while loop instead of recursive call for
         # help with memory footprint issue.
         retrying = True
+        count = 0
         while retrying:
             try:
                 key = str(key).lower()
@@ -205,6 +206,10 @@ class ImageFileConsumer(Consumer):
                     grpc.StatusCode.UNAVAILABLE
                 }
                 if err.code() in retry_statuses:  # pylint: disable=E1101
+                    count += 1
+                    update_status = 'processing -- RETRY:{} -- {}'.format(
+                        count, err.code().name)
+                    self.redis.hset(self._redis_hash, 'status', update_status)
                     self.logger.warning(err.details())  # pylint: disable=E1101
                     self.logger.warning('%s during %s %s-processing request: '
                                         '%s', type(err).__name__, key,
@@ -314,45 +319,60 @@ class ImageFileConsumer(Consumer):
         return tf_results
 
     def grpc_image(self, img, model_name, model_version, timeout=30):
+        count = 0
         start = default_timer()
         self.logger.debug('Segmenting image of shape %s with model %s:%s',
                           img.shape, model_name, model_version)
-        try:
-            floatx = settings.TF_TENSOR_DTYPE
-            if 'f16' in model_name:
-                floatx = 'DT_HALF'
-                # TODO: seems like should cast to "half"
-                # but the model rejects the type, wants "int" or "long"
-                img = img.astype('int')
-            hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
-            req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
-                         'in_tensor_dtype': floatx,
-                         'data': np.expand_dims(img, axis=0)}]
-            client = PredictClient(hostname, model_name, int(model_version))
-            prediction = client.predict(req_data, request_timeout=timeout)
-            self.logger.debug('Segmented image with model %s:%s in %ss',
-                              model_name, model_version,
-                              default_timer() - start)
-            return prediction['prediction']
-        except grpc.RpcError as err:
-            retry_statuses = {
-                grpc.StatusCode.DEADLINE_EXCEEDED,
-                grpc.StatusCode.UNAVAILABLE
-            }
-            if err.code() in retry_statuses:  # pylint: disable=E1101
-                self.logger.warning(err.details())  # pylint: disable=E1101
-                self.logger.warning('Encountered %s during tf-serving request '
-                                    'to model %s:%s: %s', type(err).__name__,
-                                    model_name, model_version, err)
-                return self.grpc_image(img, model_name, model_version, timeout)
-            raise err
-        except Exception as err:
-            self.logger.error('Encountered %s during tf-serving request to '
-                              'model %s:%s: %s', type(err).__name__,
-                              model_name, model_version, err)
-            raise err
+        retrying = True
+        while retrying:
+            try:
+                floatx = settings.TF_TENSOR_DTYPE
+                if 'f16' in model_name:
+                    floatx = 'DT_HALF'
+                    # TODO: seems like should cast to "half"
+                    # but the model rejects the type, wants "int" or "long"
+                    img = img.astype('int')
+                hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
+                req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
+                             'in_tensor_dtype': floatx,
+                             'data': np.expand_dims(img, axis=0)}]
+                client = PredictClient(hostname, model_name, int(model_version))
+                prediction = client.predict(req_data, request_timeout=timeout)
+                self.logger.debug('Segmented image with model %s:%s in %ss',
+                                  model_name, model_version,
+                                  default_timer() - start)
+                return prediction['prediction']
+            except grpc.RpcError as err:
+                retry_statuses = {
+                    grpc.StatusCode.DEADLINE_EXCEEDED,
+                    grpc.StatusCode.UNAVAILABLE
+                }
+                if err.code() in retry_statuses:  # pylint: disable=E1101
+                    count += 1
+                    update_status = 'predicting -- RETRY:{} -- {}'.format(
+                        count, err.code().name)
+                    self.redis.hset(self._redis_hash, 'status', update_status)
+                    self.logger.warning(err.details())  # pylint: disable=E1101
+                    self.logger.warning('Encountered %s during tf-serving request '
+                                        'to model %s:%s: %s', type(err).__name__,
+                                        model_name, model_version, err)
+                    sleeptime = np.random.randint(9, 20) + 1
+                    self.logger.debug('Waiting for %s seconds before retrying',
+                                      sleeptime)
+                    time.sleep(sleeptime)  # sleep before retry
+                    retrying = True  # Unneccessary but explicit
+                else:
+                    retrying = False
+                    raise err
+            except Exception as err:
+                retrying = False
+                self.logger.error('Encountered %s during tf-serving request to '
+                                  'model %s:%s: %s', type(err).__name__,
+                                  model_name, model_version, err)
+                raise err
 
     def _consume(self, redis_hash):
+        self._redis_hash = redis_hash
         hvals = self.redis.hgetall(redis_hash)
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
