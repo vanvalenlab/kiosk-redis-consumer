@@ -539,12 +539,12 @@ class ZipFileConsumer(Consumer):
                              default_timer() - start)
 
 class TrkFileConsumer(Consumer):
-    """Consumes raw files, produces annotations, tracks the annotations across
-       multiple frames and uploads the results"""
+    """Consumes raw files with paired annotations, tracks these 
+       annotations across multiple frames, and uploads the results"""
 
-    def iter_redis_hashes(self, status='new', prefix='predict'):
+    def iter_redis_hashes(self, status='new', prefix='track'):
         """Iterate over hash values in redis.
-        Only yield hash values for zip files
+        Only yield hash values for zip files marked for tracking
 
         Returns:
             Iterator of all zip hashes with a valid status
