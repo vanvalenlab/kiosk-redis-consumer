@@ -89,7 +89,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def _handle_error(self, err, redis_hash):
         # Update redis with failed status
         self.redis.hmset(redis_hash, {
-            'reason': '{}: {}'.format(type(err)__name__,err),
+            'reason': '{}: {}'.format(type(err).__name__,err),
             'status': 'failed'
         })
         self.logger.error('Failed to process redis key %s. %s: %s',
