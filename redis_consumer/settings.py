@@ -62,6 +62,7 @@ DP_PORT = config('DP_PORT', default=8080, cast=int)
 
 # gRPC API timeout in seconds (scales with `cuts`)
 GRPC_TIMEOUT = config('GRPC_TIMEOUT', default=30, cast=int)
+REDIS_TIMEOUT = config('REDIS_TIMEOUT', default=3, cast=int)
 
 # Status of hashes marked for prediction
 STATUS = config('STATUS', default='new')
