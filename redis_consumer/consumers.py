@@ -89,7 +89,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def _handle_error(self, err, redis_hash):
         # Update redis with failed status
         self.redis.hmset(redis_hash, {
-            'reason': '{}'.format(err),
+            'reason': '{}: {}'.format(type(err)__name__,err),
             'status': 'failed'
         })
         self.logger.error('Failed to process redis key %s. %s: %s',
@@ -378,8 +378,12 @@ class ImageFileConsumer(Consumer):
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
 
-        self.redis.hset(redis_hash, 'status', 'started')
-        self.redis.hset(redis_hash, 'hostname', os.getenv('HOSTNAME', ''))
+        starting_dict = {
+                "status":"started",
+                "hostname":os.getenv('HOSTNAME')
+                }
+        self.redis.hmset(redis_hash, starting_dict)
+        self.logger.debug("Updated hash with " + str(starting_dict))
         model_name = hvals.get('model_name')
         model_version = hvals.get('model_version')
         cuts = hvals.get('cuts', '0')
@@ -496,8 +500,12 @@ class ZipFileConsumer(Consumer):
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
 
-        self.redis.hset(redis_hash, 'status', 'started')
-        self.redis.hset(redis_hash, 'hostname', os.getenv('HOSTNAME', ''))
+        starting_dict = {
+                "status":"started",
+                "hostname":os.getenv('HOSTNAME')
+                }
+        self.redis.hmset(redis_hash, starting_dict)
+        self.logger.debug("Updated hash with " + str(starting_dict))
         all_hashes = self._upload_archived_images(hvals)
         self.logger.info('Uploaded %s hashes.  Waiting for ImageConsumers.',
                          len(all_hashes))
