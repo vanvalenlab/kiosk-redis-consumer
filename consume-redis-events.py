@@ -50,12 +50,18 @@ def initialize_logger(debug_mode=False):
     console = logging.StreamHandler(stream=sys.stdout)
     console.setFormatter(formatter)
 
+    fh = logging.FileHandler('redis-consumer.log')
+    sh.setFormatter(formatter)
+
     if debug_mode:
         console.setLevel(logging.DEBUG)
+        fh.setLevel(logging.DEBUG)
     else:
         console.setLevel(logging.INFO)
+        fh.setLevel(logging.INFO)
 
     logger.addHandler(console)
+    logger.addHandler(fh)
 
 
 def get_consumer(consumer_type, **kwargs):
