@@ -51,7 +51,7 @@ def initialize_logger(debug_mode=False):
     console.setFormatter(formatter)
 
     fh = logging.FileHandler('redis-consumer.log')
-    sh.setFormatter(formatter)
+    fh.setFormatter(formatter)
 
     if debug_mode:
         console.setLevel(logging.DEBUG)
