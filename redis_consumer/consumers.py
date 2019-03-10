@@ -217,7 +217,7 @@ class ImageFileConsumer(Consumer):
         """
         keys = super(ImageFileConsumer, self).iter_redis_hashes(status, prefix)
         for key in keys:
-            fname = str(self.hget(key, 'file_name'))
+            fname = str(self.hget(key, 'input_file_name'))
             if not fname.lower().endswith('.zip'):
                 yield key
 
@@ -470,7 +470,7 @@ class ImageFileConsumer(Consumer):
         field = hvals.get('field_size', '61')
 
         with utils.get_tempdir() as tempdir:
-            fname = self.storage.download(hvals.get('file_name'), tempdir)
+            fname = self.storage.download(hvals.get('input_file_name'), tempdir)
 
             start = default_timer()
             image = utils.get_image(fname)
@@ -525,7 +525,7 @@ class ImageFileConsumer(Consumer):
             self.hmset(redis_hash, {
                 'timestamp_output': milliseconds_since_epoch,
                 'output_url': output_url,
-                'file_name': uploaded_file_path,
+                'output_file_name': uploaded_file_path,
                 'status': self.final_status
             })
             self.logger.debug('Updated status to %s', self.final_status)
@@ -543,7 +543,7 @@ class ZipFileConsumer(Consumer):
         """
         keys = super(ZipFileConsumer, self).iter_redis_hashes(status, prefix)
         for key in keys:
-            fname = str(self.hget(key, 'file_name'))
+            fname = str(self.hget(key, 'input_file_name'))
             if fname.lower().endswith('.zip'):
                 yield key
 
@@ -551,7 +551,7 @@ class ZipFileConsumer(Consumer):
         """Extract all image files and upload them to storage and redis"""
         all_hashes = set()
         with utils.get_tempdir() as tempdir:
-            fname = self.storage.download(hvalues.get('file_name'), tempdir)
+            fname = self.storage.download(hvalues.get('input_file_name'), tempdir)
             image_files = utils.get_image_files_from_dir(fname, tempdir)
             for imfile in image_files:
                 clean_imfile = settings._strip(imfile.replace(tempdir, ''))
@@ -565,7 +565,7 @@ class ZipFileConsumer(Consumer):
 
                 new_hvals = dict()
                 new_hvals.update(hvalues)
-                new_hvals['file_name'] = uploaded_file_path
+                new_hvals['output_file_name'] = uploaded_file_path
                 new_hvals['original_name'] = clean_imfile
                 new_hvals['status'] = 'new'
                 self.hmset(new_hash, new_hvals)
@@ -615,7 +615,7 @@ class ZipFileConsumer(Consumer):
 
                     elif status == self.final_status:
                         # one of our hashes is done!
-                        fname = self.hget(h, 'file_name')
+                        fname = self.hget(h, 'output_file_name')
                         local_fname = self.storage.download(fname, tempdir)
                         self.logger.info('Saved file: %s', local_fname)
                         if zipfile.is_zipfile(local_fname):
@@ -653,5 +653,5 @@ class ZipFileConsumer(Consumer):
             })
 
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
-                             len(all_hashes), hvals['file_name'],
+                             len(all_hashes), hvals['output_file_name'],
                              default_timer() - start)
