@@ -576,8 +576,8 @@ class ImageFileConsumer(Consumer):
                 'output_url': output_url,
                 'output_file_name': uploaded_file_path,
                 'status': self.final_status,
-                'timestamp_output': output_timestamp
-                'timestamp_last_status_update' = output_timestamp
+                'timestamp_output': output_timestamp,
+                'timestamp_last_status_update': output_timestamp
             }
             self.hmset(redis_hash, output_dict)
             # log status update
@@ -721,7 +721,7 @@ class ZipFileConsumer(Consumer):
                 'output_file_name': uploaded_file_path,
                 'status': self.final_status,
                 'timestamp_output': output_timestamp,
-                'timestamp_last_status_update' = output_timestamp
+                'timestamp_last_status_update': output_timestamp
             }
             self.hmset(redis_hash, output_dict)
             # log status update
