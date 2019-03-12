@@ -78,10 +78,9 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             if self._redis_type(key) == 'hash':
                 # Check if necessary to filter based on prefix
                 if prefix is not None:
-                    # Wrong prefix, skip it.
                     if not key.startswith(str(prefix).lower()):
+                        # Wrong prefix, skip it.
                         continue
-
                 # if status is given, only yield hashes with that status
                 if status is not None:
                     if self.hget(key, 'status') == str(status):
@@ -505,6 +504,7 @@ class ImageFileConsumer(Consumer):
             start = default_timer()
             image = utils.get_image(fname)
 
+            # configure timeout
             streaming = str(cuts).isdigit() and int(cuts) > 0
             timeout = settings.GRPC_TIMEOUT
             timeout = timeout if not streaming else timeout * int(cuts)
@@ -552,6 +552,16 @@ class ImageFileConsumer(Consumer):
             post_funcs = hvals.get('postprocess_function', '').split(',')
             image = self.postprocess(image, post_funcs, timeout, streaming)
 
+            # write update to Redis
+            outputting_time = time.time() * 1000
+            outputting_dict = {
+                'status': 'outputting',
+                'timestamp_outputting': outputting_time,
+                'identity_outputting': self.HOSTNAME,
+                'timestamp_last_status_update': outputting_time
+            }
+            self.hmset(redis_hash, outputting_dict)
+
             # Save each result channel as an image file
             save_name = hvals.get('original_name', fname)
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
@@ -573,15 +583,43 @@ class ImageFileConsumer(Consumer):
             dest, output_url = self.storage.upload(zip_file, subdir=subdir)
             self.logger.debug('Uploaded output to: "%s"', output_url)
 
-            # Update redis with the results
+            # Compute some timings
             output_timestamp = time.time() * 1000
+            hash_values = self.redis_hgetall(redis_hash)
+            upload_time = float(hash_values['timestamp_upload'])
+            start_time = float(hash_values['timestamp_started'])
+            preprocess_time = float(hash_values['timestamp_preprocessing'])
+            predict_time = float(hash_values['timestamp_predicting'])
+            postprocess_time = float(hash_values['timestamp_post-processing'])
+            outputting_time = float(hash_values['timestamp_outputting'])
+            output_time = float(output_timestamp)
+            # compute timing intervals
+            upload_to_start_time = (start_time - upload_time) / 1000
+            start_to_preprocessing_time = (preprocess_time - start_time) / 1000
+            preprocessing_to_predicting_time = \
+                    (predict_time - preprocess_time) / 1000
+            predicting_to_postprocess_time = \
+                    (postprocess_time - predict_time) / 1000
+            postprocess_to_outputting_time = \
+                    (outputting_time - postprocess_time) / 1000
+            outputting_to_output_time = (output_time - outputting_time) / 1000
+            # Update redis with the final results
             output_dict = {
                 'identity_output': self.HOSTNAME,
                 'output_url': output_url,
                 'output_file_name': dest,
                 'status': self.final_status,
                 'timestamp_output': output_timestamp,
-                'timestamp_last_status_update': output_timestamp
+                'timestamp_last_status_update': output_timestamp,
+                'upload_to_start_time': upload_to_start_time,
+                'start_to_preprocessing_time': start_to_preprocessing_time,
+                'preprocessing_to_predicting_time': \
+                        preprocessing_to_predicting_time,
+                'predicting_to_postprocess_time': \
+                        predicting_to_postprocess_time,
+                'postprocess_to_outputting_time': \
+                        postprocess_to_outputting_time,
+                'outputting_to_output_time': outputting_to_output_time
             }
             self.hmset(redis_hash, output_dict)
             # log status update
