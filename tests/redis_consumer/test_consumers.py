@@ -78,6 +78,10 @@ class DummyRedis(object):
             return rhash.split('_')[1]
         elif field == 'file_name':
             return rhash.split('_')[-1]
+        elif field == 'input_file_name':
+            return rhash.split('_')[-1]
+        elif field == 'output_file_name':
+            return rhash.split('_')[-1]
         return False
 
     def hset(self, rhash, status, value):  # pylint: disable=W0613
@@ -91,7 +95,9 @@ class DummyRedis(object):
             'cuts': '0',
             'postprocess_function': '',
             'preprocess_function': '',
-            'file_name': rhash.split('_')[-1]
+            'file_name': rhash.split('_')[-1],
+            'input_file_name': rhash.split('_')[-1],
+            'output_file_name': rhash.split('_')[-1]
         }
 
     def type(self, key):  # pylint: disable=W0613
@@ -117,7 +123,7 @@ class DummyStorage(object):
         return path
 
     def upload(self, zip_path, subdir=None):  # pylint: disable=W0613
-        return True
+        return True, True
 
     def get_public_url(self, zip_path):  # pylint: disable=W0613
         return True
@@ -243,7 +249,9 @@ class TestImageFileConsumer(object):
             'cuts': '2',
             'postprocess_function': '',
             'preprocess_function': '',
-            'file_name': 'test_image.tiff'
+            'file_name': 'test_image.tiff',
+            'input_file_name': 'test_image.tiff',
+            'output_file_name': 'test_image.tiff'
         }
         consumer = consumers.ImageFileConsumer(redis, storage)
         consumer._handle_error = _handle_error
@@ -271,7 +279,7 @@ class TestZipFileConsumer(object):
         redis = DummyRedis(prefix, status)
         storage = DummyStorage(num=N)
         consumer = consumers.ZipFileConsumer(redis, storage)
-        hsh = consumer._upload_archived_images({'file_name': 'test.zip'})
+        hsh = consumer._upload_archived_images({'input_file_name': 'test.zip'})
         assert len(hsh) == N
 
     def test__consume(self):

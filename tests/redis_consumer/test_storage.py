@@ -88,19 +88,19 @@ class TestS3Storage(object):
                 stg._client.upload_file = dummy_upload
 
                 # test succesful upload
-                dest = stg.upload(temp.name)
+                dest, url = stg.upload(temp.name)
                 assert dest == 'output/{}'.format(os.path.basename(temp.name))
 
                 # test succesful upload with subdir
                 subdir = '/abc'
-                dest = stg.upload(temp.name, subdir=subdir)
+                dest, url = stg.upload(temp.name, subdir=subdir)
                 assert dest == 'output{}/{}'.format(
                     subdir, os.path.basename(temp.name))
 
                 # test failed upload
                 with pytest.raises(Exception):
                     # self._client raises, but so does storage.upload
-                    dest = stg.upload('file-does-not-exist')
+                    dest, url = stg.upload('file-does-not-exist')
 
     def test_download(self):
         remote_file = '/test/file.txt'

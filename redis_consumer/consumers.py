@@ -299,7 +299,7 @@ class ImageFileConsumer(Consumer):
                     processing_retry_dict = {
                         'number_of_processing_retries': count,
                         'status': 'processing -- RETRY:{} -- {}'.format(
-                                count, err.code().name),
+                            count, err.code().name),
                         'timestamp_processing_retry': processing_retry_time,
                         'identity_processing_retry': self.HOSTNAME,
                         'timestamp_last_status_update': processing_retry_time
@@ -451,7 +451,7 @@ class ImageFileConsumer(Consumer):
                     processing_retry_dict = {
                         'number_of_processing_retries': count,
                         'status': 'processing -- RETRY:{} -- {}'.format(
-                                count, err.code().name),
+                            count, err.code().name),
                         'timestamp_processing_retry': processing_retry_time,
                         'identity_processing_retry': self.HOSTNAME,
                         'timestamp_last_status_update': processing_retry_time
@@ -570,9 +570,7 @@ class ImageFileConsumer(Consumer):
             cleaned = zip_file.replace(tempdir, '')
             subdir = os.path.dirname(settings._strip(cleaned))
             subdir = subdir if subdir else None
-            uploaded_file_path = self.storage.upload(zip_file, subdir=subdir)
-
-            output_url = self.storage.get_public_url(uploaded_file_path)
+            dest, output_url = self.storage.upload(zip_file, subdir=subdir)
             self.logger.debug('Uploaded output to: "%s"', output_url)
 
             # Update redis with the results
@@ -580,7 +578,7 @@ class ImageFileConsumer(Consumer):
             output_dict = {
                 'identity_output': self.HOSTNAME,
                 'output_url': output_url,
-                'output_file_name': uploaded_file_path,
+                'output_file_name': dest,
                 'status': self.final_status,
                 'timestamp_output': output_timestamp,
                 'timestamp_last_status_update': output_timestamp

@@ -168,10 +168,10 @@ class GoogleStorage(Storage):
             dest = os.path.join('output', dest)
             bucket = self._client.get_bucket(self.bucket)
             blob = bucket.blob(dest)
-            blob.upload_from_filename(filepath)
+            blob.upload_from_filename(filepath, predefined_acl='publicRead')
             self.logger.debug('Successfully uploaded %s to bucket %s in %ss',
                               filepath, self.bucket, default_timer() - start)
-            return dest
+            return dest, blob.public_url
         except Exception as err:
             self.logger.error('Error while uploading image %s: %s',
                               filepath, err)
@@ -254,7 +254,7 @@ class S3Storage(Storage):
             self._client.upload_file(filepath, self.bucket, dest)
             self.logger.debug('Successfully uploaded %s to bucket %s in %ss',
                               filepath, self.bucket, default_timer() - start)
-            return dest
+            return dest, self.get_public_url(dest)
         except Exception as err:
             self.logger.error('Error while uploading image %s: %s',
                               filepath, err)
