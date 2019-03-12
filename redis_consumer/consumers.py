@@ -99,7 +99,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             'identity_failed': self.HOSTNAME,
             'timestamp_last_status_update': failing_time
         }
-        self.hmset(redis_hash, failinging_dict)
+        self.hmset(redis_hash, failing_dict)
         # log update
         self.logger.error('Failed to process redis key %s. %s: %s',
                           redis_hash, type(err).__name__, err)
