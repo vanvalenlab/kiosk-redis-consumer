@@ -41,7 +41,6 @@ import grpc
 import numpy as np
 from redis.exceptions import ConnectionError
 
-from redis_consumer.storage import StorageException
 from redis_consumer.grpc_clients import PredictClient
 from redis_consumer.grpc_clients import ProcessClient
 from redis_consumer import utils
@@ -198,20 +197,13 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         """
         # process each unprocessed hash
         for redis_hash in self.iter_redis_hashes(status, prefix):
-            retry_count = 0
-            finished = False
-            while retry_count < retries and not finished:
-                try:
-                    start = default_timer()
-                    self._consume(redis_hash)
-                    self.logger.debug('Consumed key %s in %ss',
-                                      redis_hash, default_timer() - start)
-                    finished = True
-                except StorageException:
-                    retry_count = retry_count + 1
-                except Exception as err:  # pylint: disable=broad-except
-                    self._handle_error(err, redis_hash)
-                    finished = True
+            try:
+                start = default_timer()
+                self._consume(redis_hash)
+                self.logger.debug('Consumed key %s in %s seconds.',
+                                  redis_hash, default_timer() - start)
+            except Exception as err:  # pylint: disable=broad-except
+                self._handle_error(err, redis_hash)
 
 
 class ImageFileConsumer(Consumer):
