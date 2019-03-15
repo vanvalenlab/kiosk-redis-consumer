@@ -580,13 +580,13 @@ class ImageFileConsumer(Consumer):
 
             # Compute some timings
             output_timestamp = time.time() * 1000
-            hash_values = self.redis_hgetall(redis_hash)
-            upload_time = float(hash_values['timestamp_upload'])
-            start_time = float(hash_values['timestamp_started'])
-            preprocess_time = float(hash_values['timestamp_preprocessing'])
-            predict_time = float(hash_values['timestamp_predicting'])
-            postprocess_time = float(hash_values['timestamp_post-processing'])
-            outputting_time = float(hash_values['timestamp_outputting'])
+            hash_values = self.hgetall(redis_hash)
+            upload_time = float(hash_values.get('timestamp_upload', -1))
+            start_time = float(hash_values.get('timestamp_started', -1))
+            preprocess_time = float(hash_values.get('timestamp_preprocessing', -1))
+            predict_time = float(hash_values.get('timestamp_predicting', -1))
+            postprocess_time = float(hash_values.get('timestamp_post-processing', -1))
+            outputting_time = float(hash_values.get('timestamp_outputting', -1))
             output_time = float(output_timestamp)
             # compute timing intervals
             upload_to_start_time = (start_time - upload_time) / 1000
