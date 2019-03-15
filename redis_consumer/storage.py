@@ -28,10 +28,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from timeit import default_timer
+import time
+import timeit
 
 import os
 import logging
+
+from google.cloud.exceptions import google_exceptions
 
 from redis_consumer import settings
 from redis_consumer.settings import DOWNLOAD_DIR
@@ -71,17 +74,19 @@ class Storage(object):  # pylint: disable=useless-object-inheritance
         download_dir: path to local directory to save downloaded files
     """
 
-    def __init__(self, bucket, download_dir=DOWNLOAD_DIR):
+    def __init__(self, bucket, download_dir=DOWNLOAD_DIR, backoff=1.5):
         self._client = None
         self.bucket = bucket
         self.download_dir = download_dir
+        self.output_dir = 'output'
+        self.backoff = backoff
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
-    def get_download_path(self, filename, download_dir=None):
+    def get_download_path(self, filepath, download_dir=None):
         """Get local filepath for soon-to-be downloaded file.
 
         Args:
-            filename: key of file in cloud storage to download
+            filepath: key of file in cloud storage to download
             download_dir: path to directory to save file
 
         Returns:
@@ -89,17 +94,17 @@ class Storage(object):  # pylint: disable=useless-object-inheritance
         """
         if download_dir is None:
             download_dir = self.download_dir
-        no_upload_dir = os.path.join(*(filename.split(os.path.sep)[1:]))
+        no_upload_dir = os.path.join(*(filepath.split(os.path.sep)[1:]))
         dest = os.path.join(download_dir, no_upload_dir)
         if not os.path.isdir(os.path.dirname(dest)):
             os.makedirs(os.path.dirname(dest))
         return dest
 
-    def download(self, filename, download_dir):
+    def download(self, filepath, download_dir):
         """Download a  file from the cloud storage bucket.
 
         Args:
-            filename: key of file in cloud storage to download
+            filepath: key of file in cloud storage to download
             download_dir: path to directory to save file
 
         Returns:
@@ -157,50 +162,69 @@ class GoogleStorage(Storage):
         Returns:
             dest: key of uploaded file in cloud storage
         """
-        start = default_timer()
+        start = timeit.default_timer()
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
-        try:
-            dest = os.path.basename(filepath)
-            if subdir:
-                if str(subdir).startswith('/'):
-                    subdir = subdir[1:]
-                dest = os.path.join(subdir, dest)
-            dest = os.path.join('output', dest)
-            bucket = self._client.get_bucket(self.bucket)
-            blob = bucket.blob(dest)
-            blob.upload_from_filename(filepath, predefined_acl='publicRead')
-            self.logger.debug('Successfully uploaded %s to bucket %s in %ss',
-                              filepath, self.bucket, default_timer() - start)
-            return dest, blob.public_url
-        except Exception as err:
-            self.logger.error('Error while uploading image %s: %s',
-                              filepath, err)
-            raise StorageException(err)
+        retrying = True
+        while retrying:
+            try:
+                dest = os.path.basename(filepath)
+                if subdir:
+                    if str(subdir).startswith('/'):
+                        subdir = subdir[1:]
+                    dest = os.path.join(subdir, dest)
+                dest = os.path.join(self.output_dir, dest)
+                bucket = self._client.get_bucket(self.bucket)
+                blob = bucket.blob(dest)
+                blob.upload_from_filename(filepath, predefined_acl='publicRead')
+                self.logger.debug('Successfully uploaded %s to bucket %s in '
+                                  '%s seconds.', filepath, self.bucket,
+                                  timeit.default_timer() - start)
+                retrying = False
+                return dest, blob.public_url
+            except google_exceptions.TooManyRequests as err:
+                self.logger.warning('Encountered %s: %s.  Backing off for %s '
+                                    'seconds...', type(err).__name__, err,
+                                    self.backoff)
+                time.sleep(self.backoff)
+                retrying = True  # Unneccessary but explicit
+            except Exception as err:
+                retrying = False
+                self.logger.error('Encountered %s: %s while uploading image '
+                                  '%s.', type(err).__name__, err, filepath)
+                raise err
 
-    def download(self, filename, download_dir=None):
+    def download(self, filepath, download_dir=None):
         """Download a  file from the cloud storage bucket.
 
         Args:
-            filename: key of file in cloud storage to download
+            filepath: key of file in cloud storage to download
             download_dir: path to directory to save file
 
         Returns:
             dest: local path to downloaded file
         """
-        start = default_timer()
-        dest = self.get_download_path(filename, download_dir)
-        self.logger.debug('Downloading %s to %s.', filename, dest)
-        try:
-            blob = self._client.get_bucket(self.bucket).blob(filename)
-            with open(dest, 'wb') as new_file:
-                blob.download_to_file(new_file)
-            self.logger.debug('Downloaded %s in %ss',
-                              dest, default_timer() - start)
-            return dest
-        except Exception as err:
-            self.logger.error('Error while downloading image %s: %s',
-                              filename, err)
-            raise StorageException(err)
+        dest = self.get_download_path(filepath, download_dir)
+        self.logger.debug('Downloading %s to %s.', filepath, dest)
+        retrying = True
+        while retrying:
+            try:
+                start = timeit.default_timer()
+                blob = self._client.get_bucket(self.bucket).blob(filepath)
+                blob.download_to_filename(dest)
+                self.logger.debug('Downloaded %s in %s seconds.',
+                                  dest, timeit.default_timer() - start)
+                return dest
+            except google_exceptions.TooManyRequests as err:
+                self.logger.warning('Encountered %s: %s.  Backing off for %s '
+                                    'seconds and...', type(err).__name__, err,
+                                    self.backoff)
+                time.sleep(self.backoff)
+                retrying = True  # Unneccessary but explicit
+            except Exception as err:
+                retrying = False
+                self.logger.error('Encountered %s: %s while downloading image '
+                                  '%s.', type(err).__name__, err, filepath)
+                raise err
 
 
 class S3Storage(Storage):
@@ -242,47 +266,47 @@ class S3Storage(Storage):
         Returns:
             dest: key of uploaded file in cloud storage
         """
-        start = default_timer()
+        start = timeit.default_timer()
         dest = os.path.basename(filepath)
         if subdir:
             if str(subdir).startswith('/'):
                 subdir = subdir[1:]
             dest = os.path.join(subdir, dest)
-        dest = os.path.join('output', dest)
+        dest = os.path.join(self.output_dir, dest)
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         try:
             self._client.upload_file(filepath, self.bucket, dest)
             self.logger.debug('Successfully uploaded %s to bucket %s in %ss',
-                              filepath, self.bucket, default_timer() - start)
+                              filepath, self.bucket, timeit.default_timer() - start)
             return dest, self.get_public_url(dest)
         except Exception as err:
-            self.logger.error('Error while uploading image %s: %s',
-                              filepath, err)
-            raise StorageException(err)
+            self.logger.error('Encountered %s: %s while uploading image %s.',
+                              type(err).__name__, err, filepath)
+            raise err
 
-    def download(self, filename, download_dir=None):
+    def download(self, filepath, download_dir=None):
         """Download a  file from the cloud storage bucket.
 
         Args:
-            filename: key of file in cloud storage to download
+            filepath: key of file in cloud storage to download
             download_dir: path to directory to save file
 
         Returns:
             dest: local path to downloaded file
         """
-        start = default_timer()
+        start = timeit.default_timer()
         # Bucket keys shouldn't start with "/"
-        if filename.startswith('/'):
-            filename = filename[1:]
+        if filepath.startswith('/'):
+            filepath = filepath[1:]
 
-        dest = self.get_download_path(filename, download_dir)
-        self.logger.debug('Downloading %s to %s.', filename, dest)
+        dest = self.get_download_path(filepath, download_dir)
+        self.logger.debug('Downloading %s to %s.', filepath, dest)
         try:
-            self._client.download_file(self.bucket, filename, dest)
-            self.logger.debug('Downloaded %s in %ss',
-                              dest, default_timer() - start)
+            self._client.download_file(self.bucket, filepath, dest)
+            self.logger.debug('Downloaded %s in %s seconds.',
+                              dest, timeit.default_timer() - start)
             return dest
         except Exception as err:
-            self.logger.error('Error while downloading image %s: %s',
-                              filename, err)
-            raise StorageException(err)
+            self.logger.error('Encountered %s: %s while downloading image %s.',
+                              type(err).__name__, err, filepath)
+            raise err
