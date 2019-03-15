@@ -63,7 +63,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         self.final_status = final_status
         self._redis_retry_timeout = settings.REDIS_TIMEOUT
         self.logger = logging.getLogger(str(self.__class__.__name__))
-        self.HOSTNAME = settings.HOSTNAME
+        self.hostname = settings.HOSTNAME
 
     def iter_redis_hashes(self, status='new', prefix='predict'):
         """Iterate over hash values in redis.
@@ -94,12 +94,12 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             'reason': '{}: {}'.format(type(err).__name__, err),
             'status': 'failed',
             'timestamp_failed': failing_time,
-            'identity_failed': self.HOSTNAME,
+            'identity_failed': self.hostname,
             'timestamp_last_status_update': failing_time
         }
         self.hmset(redis_hash, failing_dict)
         # log update
-        self.logger.error('Failed to process redis key %s. %s: %s',
+        self.logger.error('Failed to process redis key %s due to %s: %s',
                           redis_hash, type(err).__name__, err)
 
     def _consume(self, redis_hash):
@@ -111,8 +111,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 response = self.redis.type(redis_key)
                 break
             except ConnectionError as err:
-                self.logger.warn('Encountered %s: %s when calling redis.type(). '
-                                 'Retrying in %s seconds.',
+                self.logger.warn('Encountered %s: %s when calling redis.type().'
+                                 ' Retrying in %s seconds.',
                                  type(err).__name__, err,
                                  self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
@@ -140,8 +140,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 response = self.redis.hset(rhash, key, value)
                 break
             except ConnectionError as err:
-                self.logger.warn('Encountered %s: %s when calling redis.hset(). '
-                                 'Retrying in %s seconds.',
+                self.logger.warn('Encountered %s: %s when calling redis.hset().'
+                                 ' Retrying in %s seconds.',
                                  type(err).__name__, err,
                                  self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
@@ -153,8 +153,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 response = self.redis.hget(rhash, key)
                 break
             except ConnectionError as err:
-                self.logger.warn('Encountered %s: %s when calling redis.hget(). '
-                                 'Retrying in %s seconds.',
+                self.logger.warn('Encountered %s: %s when calling redis.hget().'
+                                 ' Retrying in %s seconds.',
                                  type(err).__name__, err,
                                  self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
@@ -166,8 +166,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 response = self.redis.hmset(rhash, data)
                 break
             except ConnectionError as err:
-                self.logger.warn('Encountered %s: %s when calling redis.hmset(). '
-                                 'Retrying in %s seconds.',
+                self.logger.warn('Encountered %s: %s when calling redis.hmset().'
+                                 ' Retrying in %s seconds.',
                                  type(err).__name__, err,
                                  self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
@@ -179,8 +179,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 response = self.redis.hgetall(rhash)
                 break
             except ConnectionError as err:
-                self.logger.warn('Encountered %s: %s when calling redis.hgetall(). '
-                                 'Retrying in %s seconds.',
+                self.logger.warn('Encountered %s: %s when calling redis.hgetall().'
+                                 ' Retrying in %s seconds.',
                                  type(err).__name__, err,
                                  self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
@@ -295,7 +295,7 @@ class ImageFileConsumer(Consumer):
                         'status': 'processing -- RETRY:{} -- {}'.format(
                             count, err.code().name),
                         'timestamp_processing_retry': processing_retry_time,
-                        'identity_processing_retry': self.HOSTNAME,
+                        'identity_processing_retry': self.hostname,
                         'timestamp_last_status_update': processing_retry_time
                     }
                     self.hmset(self._redis_hash, processing_retry_dict)
@@ -447,7 +447,7 @@ class ImageFileConsumer(Consumer):
                         'status': 'processing -- RETRY:{} -- {}'.format(
                             count, err.code().name),
                         'timestamp_processing_retry': processing_retry_time,
-                        'identity_processing_retry': self.HOSTNAME,
+                        'identity_processing_retry': self.hostname,
                         'timestamp_last_status_update': processing_retry_time
                     }
                     self.hmset(self._redis_hash, processing_retry_dict)
@@ -482,7 +482,7 @@ class ImageFileConsumer(Consumer):
         starting_dict = {
             'status': 'started',
             'timestamp_started': starting_time,
-            'identity_started': self.HOSTNAME,
+            'identity_started': self.hostname,
             'timestamp_last_status_update': starting_time
         }
         self.hmset(redis_hash, starting_dict)
@@ -509,7 +509,7 @@ class ImageFileConsumer(Consumer):
             preprocessing_dict = {
                 'status': 'pre-processing',
                 'timestamp_preprocessing': preprocessing_time,
-                'identity_preprocessing': self.HOSTNAME,
+                'identity_preprocessing': self.hostname,
                 'timestamp_last_status_update': preprocessing_time
             }
             self.hmset(redis_hash, preprocessing_dict)
@@ -522,7 +522,7 @@ class ImageFileConsumer(Consumer):
             predicting_dict = {
                 'status': 'predicting',
                 'timestamp_predicting': predicting_time,
-                'identity_predicting': self.HOSTNAME,
+                'identity_predicting': self.hostname,
                 'timestamp_last_status_update': predicting_time
             }
             self.hmset(redis_hash, predicting_dict)
@@ -539,7 +539,7 @@ class ImageFileConsumer(Consumer):
             postprocessing_dict = {
                 'status': 'post-processing',
                 'timestamp_post-processing': postprocessing_time,
-                'identity_post-processing': self.HOSTNAME,
+                'identity_post-processing': self.hostname,
                 'timestamp_last_status_update': postprocessing_time
             }
             self.hmset(redis_hash, postprocessing_dict)
@@ -552,7 +552,7 @@ class ImageFileConsumer(Consumer):
             outputting_dict = {
                 'status': 'outputting',
                 'timestamp_outputting': outputting_time,
-                'identity_outputting': self.HOSTNAME,
+                'identity_outputting': self.hostname,
                 'timestamp_last_status_update': outputting_time
             }
             self.hmset(redis_hash, outputting_dict)
@@ -600,7 +600,7 @@ class ImageFileConsumer(Consumer):
             outputting_to_output_time = (output_time - outputting_time) / 1000
             # Update redis with the final results
             output_dict = {
-                'identity_output': self.HOSTNAME,
+                'identity_output': self.hostname,
                 'output_url': output_url,
                 'output_file_name': dest,
                 'status': self.final_status,
@@ -659,7 +659,7 @@ class ZipFileConsumer(Consumer):
                 new_hvals['output_file_name'] = uploaded_file_path
                 new_hvals['original_name'] = clean_imfile
                 new_hvals['status'] = 'new'
-                new_hvals['identity_upload'] = self.HOSTNAME
+                new_hvals['identity_upload'] = self.hostname
                 new_hvals['timestamp_upload'] = output_timestamp
                 new_hvals['timestamp_last_status_update'] = output_timestamp
                 self.hmset(new_hash, new_hvals)
@@ -677,10 +677,10 @@ class ZipFileConsumer(Consumer):
         # write update to Redis
         starting_time = time.time() * 1000
         starting_dict = {
-            'identity_started': self.HOSTNAME,
+            'identity_started': self.hostname,
             'status': 'started',
             'timestamp_started': starting_time,
-            'identity_started': self.HOSTNAME,
+            'identity_started': self.hostname,
             'timestamp_last_status_update': starting_time
         }
         self.hmset(redis_hash, starting_dict)
@@ -693,10 +693,10 @@ class ZipFileConsumer(Consumer):
         # Wait for these to be processed by an ImageFileConsumer
         waiting_time = time.time() * 1000
         waiting_dict = {
-            'identity_waiting': self.HOSTNAME,
+            'identity_waiting': self.hostname,
             'status': 'waiting',
             'timestamp_waiting': waiting_time,
-            'identity_waiting': self.HOSTNAME,
+            'identity_waiting': self.hostname,
             'timestamp_last_status_update': waiting_time
         }
         self.hmset(redis_hash, waiting_dict)
@@ -753,7 +753,7 @@ class ZipFileConsumer(Consumer):
             # Update redis with the results
             output_timestamp = time.time() * 1000
             output_dict = {
-                'identity_output': self.HOSTNAME,
+                'identity_output': self.hostname,
                 'output_url': output_url,
                 'output_file_name': uploaded_file_path,
                 'status': self.final_status,
