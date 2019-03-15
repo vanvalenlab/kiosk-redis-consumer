@@ -591,12 +591,9 @@ class ImageFileConsumer(Consumer):
             # compute timing intervals
             upload_to_start_time = (start_time - upload_time) / 1000
             start_to_preprocessing_time = (preprocess_time - start_time) / 1000
-            preprocessing_to_predicting_time = \
-                    (predict_time - preprocess_time) / 1000
-            predicting_to_postprocess_time = \
-                    (postprocess_time - predict_time) / 1000
-            postprocess_to_outputting_time = \
-                    (outputting_time - postprocess_time) / 1000
+            preprocessing_to_predicting_time = (predict_time - preprocess_time) / 1000
+            predicting_to_postprocess_time = (postprocess_time - predict_time) / 1000
+            postprocess_to_outputting_time = (outputting_time - postprocess_time) / 1000
             outputting_to_output_time = (output_time - outputting_time) / 1000
             # Update redis with the final results
             output_dict = {
@@ -608,16 +605,12 @@ class ImageFileConsumer(Consumer):
                 'timestamp_last_status_update': output_timestamp,
                 'upload_to_start_time': upload_to_start_time,
                 'start_to_preprocessing_time': start_to_preprocessing_time,
-                'preprocessing_to_predicting_time': \
-                        preprocessing_to_predicting_time,
-                'predicting_to_postprocess_time': \
-                        predicting_to_postprocess_time,
-                'postprocess_to_outputting_time': \
-                        postprocess_to_outputting_time,
+                'preprocessing_to_predicting_time': preprocessing_to_predicting_time,
+                'predicting_to_postprocess_time': predicting_to_postprocess_time,
+                'postprocess_to_outputting_time': postprocess_to_outputting_time,
                 'outputting_to_output_time': outputting_to_output_time
             }
             self.hmset(redis_hash, output_dict)
-            # log status update
             self.logger.debug('Updated status to %s', self.final_status)
 
 
