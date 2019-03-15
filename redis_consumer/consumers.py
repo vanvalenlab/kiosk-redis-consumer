@@ -111,10 +111,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 response = self.redis.type(redis_key)
                 break
             except ConnectionError as err:
-                self.logger.warn('Encountered %s: %s when calling redis.type().'
-                                 ' Retrying in %s seconds.',
-                                 type(err).__name__, err,
-                                 self._redis_retry_timeout)
+                self.logger.warning('Encountered %s: %s when calling '
+                                    'redis.type(). Retrying in %s seconds.',
+                                    type(err).__name__, err,
+                                    self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
 
@@ -127,10 +127,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                                   default_timer() - start)
                 break
             except ConnectionError as err:
-                self.logger.warn('Encountered %s: %s when calling redis.keys().'
-                                 ' Retrying in %s seconds.',
-                                 type(err).__name__, err,
-                                 self._redis_retry_timeout)
+                self.logger.warning('Encountered %s: %s when calling '
+                                    'redis.keys(). Retrying in %s seconds.',
+                                    type(err).__name__, err,
+                                    self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
 
@@ -140,10 +140,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 response = self.redis.hset(rhash, key, value)
                 break
             except ConnectionError as err:
-                self.logger.warn('Encountered %s: %s when calling redis.hset().'
-                                 ' Retrying in %s seconds.',
-                                 type(err).__name__, err,
-                                 self._redis_retry_timeout)
+                self.logger.warning('Encountered %s: %s when calling '
+                                    'redis.hset(). Retrying in %s seconds.',
+                                    type(err).__name__, err,
+                                    self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
 
@@ -153,10 +153,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 response = self.redis.hget(rhash, key)
                 break
             except ConnectionError as err:
-                self.logger.warn('Encountered %s: %s when calling redis.hget().'
-                                 ' Retrying in %s seconds.',
-                                 type(err).__name__, err,
-                                 self._redis_retry_timeout)
+                self.logger.warning('Encountered %s: %s when calling '
+                                    'redis.hget(). Retrying in %s seconds.',
+                                    type(err).__name__, err,
+                                    self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
 
@@ -166,10 +166,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 response = self.redis.hmset(rhash, data)
                 break
             except ConnectionError as err:
-                self.logger.warn('Encountered %s: %s when calling redis.hmset().'
-                                 ' Retrying in %s seconds.',
-                                 type(err).__name__, err,
-                                 self._redis_retry_timeout)
+                self.logger.warning('Encountered %s: %s when calling '
+                                    'redis.hmset(). Retrying in %s seconds.',
+                                    type(err).__name__, err,
+                                    self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
 
@@ -179,10 +179,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 response = self.redis.hgetall(rhash)
                 break
             except ConnectionError as err:
-                self.logger.warn('Encountered %s: %s when calling redis.hgetall().'
-                                 ' Retrying in %s seconds.',
-                                 type(err).__name__, err,
-                                 self._redis_retry_timeout)
+                self.logger.warning('Encountered %s: %s when calling '
+                                    'redis.hgetall(). Retrying in %s seconds.',
+                                    type(err).__name__, err,
+                                    self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
 
