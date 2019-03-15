@@ -73,7 +73,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         Returns:
             Iterator of all hashes with a valid status
         """
-        for key in self._keys():
+        for key in self.keys():
             # Check if the key is a hash
             if self._redis_type(key) == 'hash':
                 # Check if necessary to filter based on prefix
