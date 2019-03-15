@@ -72,14 +72,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         Returns:
             Iterator of all hashes with a valid status
         """
-        for key in self.keys():
+        match = '%s*' % str(prefix).lower() if prefix is not None else None
+        for key in self.scan_iter(match=match):
             # Check if the key is a hash
             if self._redis_type(key) == 'hash':
-                # Check if necessary to filter based on prefix
-                if prefix is not None:
-                    if not key.startswith(str(prefix).lower()):
-                        # Wrong prefix, skip it.
-                        continue
                 # if status is given, only yield hashes with that status
                 if status is not None:
                     if self.hget(key, 'status') == str(status):
@@ -113,6 +109,22 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             except ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
                                     'redis.type(). Retrying in %s seconds.',
+                                    type(err).__name__, err,
+                                    self._redis_retry_timeout)
+                time.sleep(self._redis_retry_timeout)
+        return response
+
+    def scan_iter(self, match=None):
+        while True:
+            try:
+                start = default_timer()
+                response = self.redis.scan_iter(match=match)
+                self.logger.debug('Finished SCAN in %s seconds.',
+                                  default_timer() - start)
+                break
+            except ConnectionError as err:
+                self.logger.warning('Encountered %s: %s when calling '
+                                    'SCAN. Retrying in %s seconds.',
                                     type(err).__name__, err,
                                     self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)

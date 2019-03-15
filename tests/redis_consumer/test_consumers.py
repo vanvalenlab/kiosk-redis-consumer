@@ -59,6 +59,14 @@ class DummyRedis(object):
             '{}_{}_{}'.format('other', self.status, 'x.zip'),
         ]
 
+    def scan_iter(self, match=None):
+        for k in self.keys():
+            if match:
+                if k.startswith(match[:-1]):
+                    yield k
+            else:
+                yield k
+
     def expected_keys(self, suffix=None):
         for k in self.keys():
             v = k.split('_')
