@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import logging
 import time
+import timeit
 
 import grpc
 from grpc import RpcError
@@ -70,11 +71,13 @@ class PredictClient(GrpcClient):
 
         t = time.time()
         stub = PredictionServiceStub(channel)
-        self.logger.debug('Creating stub took: %s', time.time() - t)
+        self.logger.debug('Creating PredictionServiceStub took: %s',
+                          time.time() - t)
 
         t = time.time()
         request = PredictRequest()
-        self.logger.debug('Creating request object took: %s', time.time() - t)
+        self.logger.debug('Creating PredictRequest object took: %s',
+                          time.time() - t)
 
         request.model_spec.name = self.model_name  # pylint: disable=E1101
 
@@ -94,12 +97,15 @@ class PredictClient(GrpcClient):
             t = time.time()
             predict_response = stub.Predict(request, timeout=request_timeout)
 
-            self.logger.debug('Actual request took: %ss', time.time() - t)
+            self.logger.debug('Actual request took: %s seconds.',
+                              time.time() - t)
+
+            t = time.time()
 
             predict_response_dict = grpc_response_to_dict(predict_response)
 
             keys = [k for k in predict_response_dict]
-            self.logger.info('Got predict_response with keys: %s', keys)
+            self.logger.info('Got PredictResponse with keys: %s ', keys)
 
             return predict_response_dict
 
@@ -134,11 +140,13 @@ class ProcessClient(GrpcClient):
 
         t = time.time()
         stub = ProcessingServiceStub(channel)
-        self.logger.debug('Creating stub took %ss', time.time() - t)
+        self.logger.debug('Creating ProcessingServiceStub took %s seconds.',
+                          time.time() - t)
 
         t = time.time()
         request = ProcessRequest()
-        self.logger.debug('Creating request object took: %s', time.time() - t)
+        self.logger.debug('Creating ProcessRequest object took: %s',
+                          time.time() - t)
 
         # pylint: disable=E1101
         request.function_spec.name = self.function_name
@@ -151,13 +159,15 @@ class ProcessClient(GrpcClient):
             # pylint: disable=E1101
             request.inputs[d['in_tensor_name']].CopyFrom(tensor_proto)
 
-        self.logger.debug('Making tensor protos took: %s', time.time() - t)
+        self.logger.debug('Making tensor protos took: %s',
+                          time.time() - t)
 
         try:
             t = time.time()
             response = stub.Process(request, timeout=request_timeout)
 
-            self.logger.debug('Actual request took: %ss', time.time() - t)
+            self.logger.debug('Actual ProcessRequest took: %s seconds',
+                              time.time() - t)
 
             response_dict = grpc_response_to_dict(response)
 
@@ -183,7 +193,8 @@ class ProcessClient(GrpcClient):
 
         t = time.time()
         stub = ProcessingServiceStub(channel)
-        self.logger.debug('Creating stub took %ss', time.time() - t)
+        self.logger.debug('Creating stub took %s seconds.',
+                          time.time() - t)
         chunk_size = 64 * 1024  # 64 kB is recommended payload size
 
         def request_iterator(image):
@@ -219,7 +230,7 @@ class ProcessClient(GrpcClient):
                 processed_bytes.append(response.outputs['data'])
 
             npbytes = b''.join(processed_bytes)
-            self.logger.info('Got response stream of %s bytes in %ss',
+            self.logger.info('Got response stream of %s bytes in %s seconds.',
                              len(npbytes), time.time() - t)
 
             processed_image = np.frombuffer(npbytes, dtype=dtype)
