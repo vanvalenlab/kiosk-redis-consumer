@@ -96,7 +96,7 @@ class PredictClient(GrpcClient):
         try:
             t = timeit.default_timer()
             predict_response = stub.Predict(request, timeout=request_timeout)
-            self.logger.debug('Actual request took: %s seconds.',
+            self.logger.debug('Actual PredictRequest took: %s seconds.',
                               timeit.default_timer() - t)
 
             t = timeit.default_timer()
