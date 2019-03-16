@@ -92,14 +92,13 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         """
         # Update redis with failed status
         ts = time.time() * 1000
-        failing_dict = {
+        self.hmset(redis_hash, {
             'reason': '{}: {}'.format(type(err).__name__, err),
             'status': 'failed',
             'timestamp_failed': ts,
             'identity_failed': self.hostname,
             'timestamp_last_status_update': ts
-        }
-        self.hmset(redis_hash, failing_dict)
+        })
         self.logger.error('Failed to process redis key %s due to %s: %s',
                           redis_hash, type(err).__name__, err)
 
@@ -181,6 +180,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         while True:
             try:
                 response = self.redis.hmset(rhash, data)
+                self.logger.debug('Updated hash %s with values: %s.',
+                                  rhash, json.dumps(data, indent=4))
                 break
             except ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
@@ -308,16 +309,14 @@ class ImageFileConsumer(Consumer):
                     count += 1
                     # write update to Redis
                     processing_retry_time = time.time() * 1000
-                    processing_retry_dict = {
+                    self.hmset(self._redis_hash, {
                         'number_of_processing_retries': count,
                         'status': 'processing -- RETRY:{} -- {}'.format(
-                            count, err.code().name),
+                            count, err.code().name),  # pylint: disable=E1101
                         'timestamp_processing_retry': processing_retry_time,
                         'identity_processing_retry': self.hostname,
                         'timestamp_last_status_update': processing_retry_time
-                    }
-                    self.hmset(self._redis_hash, processing_retry_dict)
-                    # log processing retry error
+                    })
                     self.logger.warning(err.details())  # pylint: disable=E1101
                     self.logger.warning('%s during %s %s-processing request: '
                                         '%s', type(err).__name__, key,
@@ -468,15 +467,14 @@ class ImageFileConsumer(Consumer):
                     count += 1
                     # write update to Redis
                     processing_retry_time = time.time() * 1000
-                    processing_retry_dict = {
+                    self.hmset(self._redis_hash, {
                         'number_of_processing_retries': count,
                         'status': 'processing -- RETRY:{} -- {}'.format(
                             count, err.code().name),  # pylint: disable=E1101
                         'timestamp_processing_retry': processing_retry_time,
                         'identity_processing_retry': self.hostname,
                         'timestamp_last_status_update': processing_retry_time
-                    }
-                    self.hmset(self._redis_hash, processing_retry_dict)
+                    })
                     self.logger.warning(err.details())  # pylint: disable=E1101
                     self.logger.warning('Encountered %s  during PredictClient '
                                         'request to model %s:%s: %s.',
@@ -505,15 +503,12 @@ class ImageFileConsumer(Consumer):
 
         # write update to Redis
         starting_time = time.time() * 1000
-        starting_dict = {
+        self.hmset(redis_hash, {
             'status': 'started',
             'timestamp_started': starting_time,
             'identity_started': self.hostname,
             'timestamp_last_status_update': starting_time
-        }
-        self.hmset(redis_hash, starting_dict)
-        # log update
-        self.logger.debug('Updated hash with %s', starting_dict)
+        })
         model_name = hvals.get('model_name')
         model_version = hvals.get('model_version')
         cuts = hvals.get('cuts', '0')
@@ -691,30 +686,26 @@ class ZipFileConsumer(Consumer):
 
         # write update to Redis
         starting_time = time.time() * 1000
-        starting_dict = {
+        self.hmset(redis_hash, {
             'identity_started': self.hostname,
             'status': 'started',
             'timestamp_started': starting_time,
             'identity_started': self.hostname,
             'timestamp_last_status_update': starting_time
-        }
-        self.hmset(redis_hash, starting_dict)
-        # log update
-        self.logger.debug('Updated hash with %s', starting_dict)
+        })
         all_hashes = self._upload_archived_images(hvals)
         self.logger.info('Uploaded %s hashes.  Waiting for ImageConsumers.',
                          len(all_hashes))
         # Now all images have been uploaded with new redis hashes
         # Wait for these to be processed by an ImageFileConsumer
         waiting_time = time.time() * 1000
-        waiting_dict = {
+        self.hmset(redis_hash, {
             'identity_waiting': self.hostname,
             'status': 'waiting',
             'timestamp_waiting': waiting_time,
             'identity_waiting': self.hostname,
             'timestamp_last_status_update': waiting_time
-        }
-        self.hmset(redis_hash, waiting_dict)
+        })
 
         with utils.get_tempdir() as tempdir:
             finished_hashes = set()
@@ -767,16 +758,14 @@ class ZipFileConsumer(Consumer):
 
             # Update redis with the results
             output_timestamp = time.time() * 1000
-            output_dict = {
+            self.hmset(redis_hash, {
                 'identity_output': self.hostname,
                 'output_url': output_url,
                 'output_file_name': uploaded_file_path,
                 'status': self.final_status,
                 'timestamp_output': output_timestamp,
                 'timestamp_last_status_update': output_timestamp
-            }
-            self.hmset(redis_hash, output_dict)
-            # log status update
+            })
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
                              len(all_hashes), hvals['output_file_name'],
                              timeit.default_timer() - start)
