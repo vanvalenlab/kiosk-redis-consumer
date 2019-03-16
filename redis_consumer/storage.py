@@ -176,8 +176,8 @@ class GoogleStorage(Storage):
                 bucket = self._client.get_bucket(self.bucket)
                 blob = bucket.blob(dest)
                 blob.upload_from_filename(filepath, predefined_acl='publicRead')
-                self.logger.debug('Successfully uploaded %s to bucket %s in '
-                                  '%s seconds.', filepath, self.bucket,
+                self.logger.debug('Uploaded %s to bucket %s in %s seconds.',
+                                  filepath, self.bucket,
                                   timeit.default_timer() - start)
                 retrying = False
                 return dest, blob.public_url
@@ -189,8 +189,8 @@ class GoogleStorage(Storage):
                 retrying = True  # Unneccessary but explicit
             except Exception as err:
                 retrying = False
-                self.logger.error('Encountered %s: %s while uploading image '
-                                  '%s.', type(err).__name__, err, filepath)
+                self.logger.error('Encountered %s: %s while uploading %s.',
+                                  type(err).__name__, err, filepath)
                 raise err
 
     def download(self, filepath, download_dir=None):
@@ -222,8 +222,8 @@ class GoogleStorage(Storage):
                 retrying = True  # Unneccessary but explicit
             except Exception as err:
                 retrying = False
-                self.logger.error('Encountered %s: %s while downloading image '
-                                  '%s.', type(err).__name__, err, filepath)
+                self.logger.error('Encountered %s: %s while downloading %s.',
+                                  type(err).__name__, err, filepath)
                 raise err
 
 
@@ -274,11 +274,12 @@ class S3Storage(Storage):
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         try:
             self._client.upload_file(filepath, self.bucket, dest)
-            self.logger.debug('Successfully uploaded %s to bucket %s in %ss',
-                              filepath, self.bucket, timeit.default_timer() - start)
+            self.logger.debug('Uploaded %s to bucket %s in %s seconds.',
+                              filepath, self.bucket,
+                              timeit.default_timer() - start)
             return dest, self.get_public_url(dest)
         except Exception as err:
-            self.logger.error('Encountered %s: %s while uploading image %s.',
+            self.logger.error('Encountered %s: %s while uploading %s.',
                               type(err).__name__, err, filepath)
             raise err
 
@@ -305,6 +306,6 @@ class S3Storage(Storage):
                               dest, timeit.default_timer() - start)
             return dest
         except Exception as err:
-            self.logger.error('Encountered %s: %s while downloading image %s.',
+            self.logger.error('Encountered %s: %s while downloading %s.',
                               type(err).__name__, err, filepath)
             raise err

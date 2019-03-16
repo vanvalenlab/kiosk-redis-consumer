@@ -28,8 +28,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hashlib import md5
-from timeit import default_timer
+import timeit
+import uuid
 
 import os
 import json
@@ -84,17 +84,22 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                     yield key
 
     def _handle_error(self, err, redis_hash):
+        """Update redis with failure information, and log errors.
+
+        Args:
+            err: Exception, uncaught error that will be logged.
+            redis_hash: string, the hash that will be updated to failure.
+        """
         # Update redis with failed status
-        failing_time = time.time() * 1000
+        ts = time.time() * 1000
         failing_dict = {
             'reason': '{}: {}'.format(type(err).__name__, err),
             'status': 'failed',
-            'timestamp_failed': failing_time,
+            'timestamp_failed': ts,
             'identity_failed': self.hostname,
-            'timestamp_last_status_update': failing_time
+            'timestamp_last_status_update': ts
         }
         self.hmset(redis_hash, failing_dict)
-        # log update
         self.logger.error('Failed to process redis key %s due to %s: %s',
                           redis_hash, type(err).__name__, err)
 
@@ -117,10 +122,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def scan_iter(self, match=None):
         while True:
             try:
-                start = default_timer()
+                start = timeit.default_timer()
                 response = self.redis.scan_iter(match=match)
                 self.logger.debug('Finished SCAN in %s seconds.',
-                                  default_timer() - start)
+                                  timeit.default_timer() - start)
                 break
             except ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
@@ -133,10 +138,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def keys(self):
         while True:
             try:
-                start = default_timer()
+                start = timeit.default_timer()
                 response = self.redis.keys()
-                self.logger.debug('Found %s Redis keys in %s.', len(response),
-                                  default_timer() - start)
+                self.logger.debug('KEYS got %s results in %s seconds.',
+                                  len(response), timeit.default_timer() - start)
                 break
             except ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
@@ -210,10 +215,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         # process each unprocessed hash
         for redis_hash in self.iter_redis_hashes(status, prefix):
             try:
-                start = default_timer()
+                start = timeit.default_timer()
                 self._consume(redis_hash)
                 self.logger.debug('Consumed key %s in %s seconds.',
-                                  redis_hash, default_timer() - start)
+                                  redis_hash, timeit.default_timer() - start)
             except Exception as err:  # pylint: disable=broad-except
                 self._handle_error(err, redis_hash)
 
@@ -254,7 +259,6 @@ class ImageFileConsumer(Consumer):
         if not key:
             return image
 
-        start = default_timer()
         self.logger.debug('Starting %s %s-processing image of shape %s',
                           key, process_type, image.shape)
 
@@ -263,6 +267,7 @@ class ImageFileConsumer(Consumer):
         retrying = True
         count = 0
         while retrying:
+            start = timeit.default_timer()
             try:
                 key = str(key).lower()
                 process_type = str(process_type).lower()
@@ -283,8 +288,9 @@ class ImageFileConsumer(Consumer):
                 else:
                     results = client.process(req_data, timeout)
 
-                self.logger.debug('Finished %s %s-processing image in %ss',
-                                  key, process_type, default_timer() - start)
+                self.logger.debug('Finished %s %s-processing (%s retries) in '
+                                  '%s seconds.', key, process_type, count,
+                                  timeit.default_timer() - start)
 
                 results = results['results']
                 # Again, squeeze out batch dimension if unnecessary
@@ -386,7 +392,7 @@ class ImageFileConsumer(Consumer):
         Returns:
             tf_results: single numpy array of predictions on big input image
         """
-        start = default_timer()
+        start = timeit.default_timer()
         cuts = int(cuts)
         field = int(field)
         winx, winy = (field - 1) // 2, (field - 1) // 2
@@ -417,12 +423,12 @@ class ImageFileConsumer(Consumer):
             tf_results[..., a:b, c:d, :] = resp[..., winx:-winx, winy:-winy, :]
 
         self.logger.debug('Segmented image into shape %s in %s s',
-                          tf_results.shape, default_timer() - start)
+                          tf_results.shape, timeit.default_timer() - start)
         return tf_results
 
     def grpc_image(self, img, model_name, model_version, timeout=30):
         count = 0
-        start = default_timer()
+        start = timeit.default_timer()
         self.logger.debug('Segmenting image of shape %s with model %s:%s',
                           img.shape, model_name, model_version)
         retrying = True
@@ -438,13 +444,21 @@ class ImageFileConsumer(Consumer):
                 req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
                              'in_tensor_dtype': floatx,
                              'data': np.expand_dims(img, axis=0)}]
+                t = timeit.default_timer()
                 client = PredictClient(hostname, model_name, int(model_version))
+                self.logger.debug('Created the PredictClient in %s seconds.',
+                                  timeit.default_timer() - t)
+
+                t = timeit.default_timer()
                 prediction = client.predict(req_data, request_timeout=timeout)
-                self.logger.debug('Segmented image with model %s:%s in %ss',
-                                  model_name, model_version,
-                                  default_timer() - start)
+                self.logger.debug('PredictClient.predict took %s seconds.',
+                                  timeit.default_timer() - t)
                 retrying = False
-                return prediction['prediction']
+                results = prediction['prediction']
+                self.logger.debug('Segmented image with model %s:%s in %s '
+                                  'seconds.', model_name, model_version,
+                                  timeit.default_timer() - start)
+                return results
             except grpc.RpcError as err:
                 retry_statuses = {
                     grpc.StatusCode.DEADLINE_EXCEEDED,
@@ -457,21 +471,21 @@ class ImageFileConsumer(Consumer):
                     processing_retry_dict = {
                         'number_of_processing_retries': count,
                         'status': 'processing -- RETRY:{} -- {}'.format(
-                            count, err.code().name),
+                            count, err.code().name),  # pylint: disable=E1101
                         'timestamp_processing_retry': processing_retry_time,
                         'identity_processing_retry': self.hostname,
                         'timestamp_last_status_update': processing_retry_time
                     }
                     self.hmset(self._redis_hash, processing_retry_dict)
-                    # log processing retry error
                     self.logger.warning(err.details())  # pylint: disable=E1101
-                    self.logger.warning('Encountered %s during tf-serving request '
-                                        'to model %s:%s: %s', type(err).__name__,
-                                        model_name, model_version, err)
-                    sleeptime = np.random.randint(9, 20) + 1
+                    self.logger.warning('Encountered %s  during PredictClient '
+                                        'request to model %s:%s: %s.',
+                                        type(err).__name__, model_name,
+                                        model_version, err)
+                    backoff = np.random.randint(9, 20) + 1
                     self.logger.debug('Waiting for %s seconds before retrying',
-                                      sleeptime)
-                    time.sleep(sleeptime)  # sleep before retry
+                                      backoff)
+                    time.sleep(backoff)  # sleep before retry
                     retrying = True  # Unneccessary but explicit
                 else:
                     retrying = False
@@ -508,7 +522,7 @@ class ImageFileConsumer(Consumer):
         with utils.get_tempdir() as tempdir:
             fname = self.storage.download(hvals.get('input_file_name'), tempdir)
 
-            start = default_timer()
+            start = timeit.default_timer()
             image = utils.get_image(fname)
 
             # configure timeout
@@ -516,28 +530,26 @@ class ImageFileConsumer(Consumer):
             timeout = settings.GRPC_TIMEOUT
             timeout = timeout if not streaming else timeout * int(cuts)
 
-            # write update to Redis
+            # Update redis with pre-processing information
             preprocessing_time = time.time() * 1000
-            preprocessing_dict = {
+            self.hmset(redis_hash, {
                 'status': 'pre-processing',
                 'timestamp_preprocessing': preprocessing_time,
                 'identity_preprocessing': self.hostname,
                 'timestamp_last_status_update': preprocessing_time
-            }
-            self.hmset(redis_hash, preprocessing_dict)
+            })
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
             image = self.preprocess(image, pre_funcs, timeout, streaming)
 
-            # write update to Redis
+            # Update redis with prediction information
             predicting_time = time.time() * 1000
-            predicting_dict = {
+            self.hmset(redis_hash, {
                 'status': 'predicting',
                 'timestamp_predicting': predicting_time,
                 'identity_predicting': self.hostname,
                 'timestamp_last_status_update': predicting_time
-            }
-            self.hmset(redis_hash, predicting_dict)
+            })
 
             if streaming:
                 image = self.process_big_image(
@@ -546,28 +558,26 @@ class ImageFileConsumer(Consumer):
                 image = self.grpc_image(
                     image, model_name, model_version, timeout)
 
-            # write update to Redis
+            # Update redis with post-processing information
             postprocessing_time = time.time() * 1000
-            postprocessing_dict = {
+            self.hmset(redis_hash, {
                 'status': 'post-processing',
                 'timestamp_post-processing': postprocessing_time,
                 'identity_post-processing': self.hostname,
                 'timestamp_last_status_update': postprocessing_time
-            }
-            self.hmset(redis_hash, postprocessing_dict)
+            })
 
             post_funcs = hvals.get('postprocess_function', '').split(',')
             image = self.postprocess(image, post_funcs, timeout, streaming)
 
             # write update to Redis
             outputting_time = time.time() * 1000
-            outputting_dict = {
+            self.hmset(redis_hash, {
                 'status': 'outputting',
                 'timestamp_outputting': outputting_time,
                 'identity_outputting': self.hostname,
                 'timestamp_last_status_update': outputting_time
-            }
-            self.hmset(redis_hash, outputting_dict)
+            })
 
             # Save each result channel as an image file
             save_name = hvals.get('original_name', fname)
@@ -578,7 +588,7 @@ class ImageFileConsumer(Consumer):
                 image, name=name, subdir=subdir, output_dir=tempdir)
 
             self.logger.info('Saved data for image in %ss',
-                             default_timer() - start)
+                             timeit.default_timer() - start)
 
             # Save each prediction image as zip file
             zip_file = utils.zip_files(outpaths, tempdir)
@@ -607,8 +617,9 @@ class ImageFileConsumer(Consumer):
             predicting_to_postprocess_time = (postprocess_time - predict_time) / 1000
             postprocess_to_outputting_time = (outputting_time - postprocess_time) / 1000
             outputting_to_output_time = (output_time - outputting_time) / 1000
+
             # Update redis with the final results
-            output_dict = {
+            self.hmset(redis_hash, {
                 'identity_output': self.hostname,
                 'output_url': output_url,
                 'output_file_name': dest,
@@ -621,8 +632,7 @@ class ImageFileConsumer(Consumer):
                 'predicting_to_postprocess_time': predicting_to_postprocess_time,
                 'postprocess_to_outputting_time': postprocess_to_outputting_time,
                 'outputting_to_output_time': outputting_to_output_time
-            }
-            self.hmset(redis_hash, output_dict)
+            })
             self.logger.debug('Updated status to %s', self.final_status)
 
 
@@ -656,7 +666,7 @@ class ZipFileConsumer(Consumer):
                 new_hash = '{prefix}_{file}_{hash}'.format(
                     prefix=settings.HASH_PREFIX,
                     file=clean_imfile,
-                    hash=md5(str(time.time()).encode('utf-8')).hexdigest())
+                    hash=uuid.uuid4().hex)
 
                 output_timestamp = time.time() * 1000
                 new_hvals = dict()
@@ -674,7 +684,7 @@ class ZipFileConsumer(Consumer):
         return all_hashes
 
     def _consume(self, redis_hash):
-        start = default_timer()
+        start = timeit.default_timer()
         hvals = self.hgetall(redis_hash)
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
@@ -769,4 +779,4 @@ class ZipFileConsumer(Consumer):
             # log status update
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
                              len(all_hashes), hvals['output_file_name'],
-                             default_timer() - start)
+                             timeit.default_timer() - start)

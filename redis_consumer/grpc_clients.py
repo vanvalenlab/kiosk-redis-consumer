@@ -4,7 +4,6 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import time
 import timeit
 
 import grpc
@@ -40,13 +39,13 @@ class GrpcClient(object):  # pylint: disable=useless-object-inheritance
         Returns:
             channel: grpc.insecure channel object
         """
-        t = time.time()
+        t = timeit.default_timer()
         channel = grpc.insecure_channel(
             target=self.host,
             options=[(cygrpc.ChannelArgKey.max_send_message_length, -1),
                      (cygrpc.ChannelArgKey.max_receive_message_length, -1)])
         self.logger.debug('Establishing insecure channel took: %s',
-                          time.time() - t)
+                          timeit.default_timer() - t)
         return channel
 
 
@@ -69,15 +68,15 @@ class PredictClient(GrpcClient):
 
         channel = self.insecure_channel()
 
-        t = time.time()
+        t = timeit.default_timer()
         stub = PredictionServiceStub(channel)
         self.logger.debug('Creating PredictionServiceStub took: %s',
-                          time.time() - t)
+                          timeit.default_timer() - t)
 
-        t = time.time()
+        t = timeit.default_timer()
         request = PredictRequest()
         self.logger.debug('Creating PredictRequest object took: %s',
-                          time.time() - t)
+                          timeit.default_timer() - t)
 
         request.model_spec.name = self.model_name  # pylint: disable=E1101
 
@@ -85,24 +84,25 @@ class PredictClient(GrpcClient):
             # pylint: disable=E1101
             request.model_spec.version.value = self.model_version
 
-        t = time.time()
+        t = timeit.default_timer()
         for d in request_data:
             tensor_proto = make_tensor_proto(d['data'], d['in_tensor_dtype'])
             # pylint: disable=E1101
             request.inputs[d['in_tensor_name']].CopyFrom(tensor_proto)
 
-        self.logger.debug('Making tensor protos took: %s', time.time() - t)
+        self.logger.debug('Making tensor protos took: %s',
+                          timeit.default_timer() - t)
 
         try:
-            t = time.time()
+            t = timeit.default_timer()
             predict_response = stub.Predict(request, timeout=request_timeout)
-
             self.logger.debug('Actual request took: %s seconds.',
-                              time.time() - t)
+                              timeit.default_timer() - t)
 
-            t = time.time()
-
+            t = timeit.default_timer()
             predict_response_dict = grpc_response_to_dict(predict_response)
+            self.logger.debug('Converted PredictResponse to dict in %s seconds',
+                              timeit.default_timer() - t)
 
             keys = [k for k in predict_response_dict]
             self.logger.info('Got PredictResponse with keys: %s ', keys)
@@ -138,38 +138,40 @@ class ProcessClient(GrpcClient):
         # Create gRPC client and request
         channel = self.insecure_channel()
 
-        t = time.time()
+        t = timeit.default_timer()
         stub = ProcessingServiceStub(channel)
         self.logger.debug('Creating ProcessingServiceStub took %s seconds.',
-                          time.time() - t)
+                          timeit.default_timer() - t)
 
-        t = time.time()
+        t = timeit.default_timer()
         request = ProcessRequest()
         self.logger.debug('Creating ProcessRequest object took: %s',
-                          time.time() - t)
+                          timeit.default_timer() - t)
 
         # pylint: disable=E1101
         request.function_spec.name = self.function_name
         request.function_spec.type = self.process_type
         # pylint: enable=E1101
 
-        t = time.time()
+        t = timeit.default_timer()
         for d in request_data:
             tensor_proto = make_tensor_proto(d['data'], d['in_tensor_dtype'])
             # pylint: disable=E1101
             request.inputs[d['in_tensor_name']].CopyFrom(tensor_proto)
 
         self.logger.debug('Making tensor protos took: %s',
-                          time.time() - t)
+                          timeit.default_timer() - t)
 
         try:
-            t = time.time()
+            t = timeit.default_timer()
             response = stub.Process(request, timeout=request_timeout)
-
             self.logger.debug('Actual ProcessRequest took: %s seconds',
-                              time.time() - t)
+                              timeit.default_timer() - t)
 
+            t = timeit.default_timer()
             response_dict = grpc_response_to_dict(response)
+            self.logger.debug('Converted ProcessResponse to dict in %s seconds',
+                              timeit.default_timer() - t)
 
             keys = [k for k in response_dict]
             self.logger.debug('Got processing_response with keys: %s', keys)
@@ -191,10 +193,10 @@ class ProcessClient(GrpcClient):
         # Create gRPC client and request
         channel = self.insecure_channel()
 
-        t = time.time()
+        t = timeit.default_timer()
         stub = ProcessingServiceStub(channel)
         self.logger.debug('Creating stub took %s seconds.',
-                          time.time() - t)
+                          timeit.default_timer() - t)
         chunk_size = 64 * 1024  # 64 kB is recommended payload size
 
         def request_iterator(image):
@@ -217,7 +219,7 @@ class ProcessClient(GrpcClient):
                 yield request
 
         try:
-            t = time.time()
+            t = timeit.default_timer()
             req_iter = request_iterator(request_data[0]['data'])
             res_iter = stub.StreamProcess(req_iter, timeout=request_timeout)
 
@@ -231,7 +233,7 @@ class ProcessClient(GrpcClient):
 
             npbytes = b''.join(processed_bytes)
             self.logger.info('Got response stream of %s bytes in %s seconds.',
-                             len(npbytes), time.time() - t)
+                             len(npbytes), timeit.default_timer() - t)
 
             processed_image = np.frombuffer(npbytes, dtype=dtype)
             self.logger.info('Loaded bytes into numpy array of shape %s',
