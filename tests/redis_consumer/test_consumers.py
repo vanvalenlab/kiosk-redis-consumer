@@ -99,12 +99,6 @@ class DummyRedis(object):
             raise redis.exceptions.ConnectionError('thrown on purpose')
         return hvals
 
-    def hset(self, rhash, key, val):  # pylint: disable=W0613
-        if self.fail_count < self.fail_tolerance:
-            self.fail_count += 1
-            raise redis.exceptions.ConnectionError('thrown on purpose')
-        return rhash
-
     def hget(self, rhash, field):
         if self.fail_count < self.fail_tolerance:
             self.fail_count += 1
@@ -229,8 +223,6 @@ class TestConsumer(object):
         consumer = consumers.Consumer(redis_client, None,
                                       redis_retry_timeout=0.01)
         data = consumer.scan_iter(match=prefix)
-        print(redis_client.fail_tolerance)
-        print(data)
         keys = [k for k in data]
         expected = [k for k in redis_client.keys() if k.startswith(prefix)]
         assert consumer.redis.fail_count == redis_client.fail_tolerance
@@ -305,9 +297,9 @@ class TestImageFileConsumer(object):
         img = np.expand_dims(_get_image(300, 300), axis=-1)
         img = np.expand_dims(img, axis=0)
 
-        redis = None
+        redis_client = None
         storage = None
-        consumer = consumers.ImageFileConsumer(redis, storage)
+        consumer = consumers.ImageFileConsumer(redis_client, storage)
 
         consumer.grpc_image = lambda x, y, z: x
         res = consumer.process_big_image(cuts, img, field, name, version)
@@ -316,8 +308,8 @@ class TestImageFileConsumer(object):
     def test_iter_redis_hashes(self):
         prefix = 'prefix'
         status = 'new'
-        redis = DummyRedis(prefix, status)
-        consumer = consumers.ImageFileConsumer(redis, None)
+        redis_client = DummyRedis(prefix, status)
+        consumer = consumers.ImageFileConsumer(redis_client, None)
         keys = [k for k in consumer.iter_redis_hashes(status, prefix)]
         # test filter by prefix and status
         expected = list(consumer.redis.expected_keys(suffix='tiff'))
@@ -326,9 +318,9 @@ class TestImageFileConsumer(object):
     def test__consume(self):
         prefix = 'prefix'
         status = 'new'
-        redis = DummyRedis(prefix, status)
+        redis_client = DummyRedis(prefix, status)
         storage = DummyStorage()
-        consumer = consumers.ImageFileConsumer(redis, storage)
+        consumer = consumers.ImageFileConsumer(redis_client, storage)
 
         def _handle_error(err, rhash):  # pylint: disable=W0613
             raise err
@@ -358,6 +350,7 @@ class TestImageFileConsumer(object):
             'input_file_name': 'test_image.tiff',
             'output_file_name': 'test_image.tiff'
         }
+        redis.hmset = lambda x, y: True
         consumer = consumers.ImageFileConsumer(redis, storage)
         consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image
@@ -369,8 +362,8 @@ class TestZipFileConsumer(object):
     def test_iter_redis_hashes(self):
         prefix = 'prefix'
         status = 'new'
-        redis = DummyRedis(prefix, status)
-        consumer = consumers.ZipFileConsumer(redis, None)
+        redis_client = DummyRedis(prefix, status)
+        consumer = consumers.ZipFileConsumer(redis_client, None)
         keys = [k for k in consumer.iter_redis_hashes(status, prefix)]
         # test filter by prefix and status
         expected = list(consumer.redis.expected_keys(suffix='.zip'))
@@ -380,9 +373,9 @@ class TestZipFileConsumer(object):
         N = 3
         prefix = 'prefix'
         status = 'new'
-        redis = DummyRedis(prefix, status)
+        redis_client = DummyRedis(prefix, status)
         storage = DummyStorage(num=N)
-        consumer = consumers.ZipFileConsumer(redis, storage)
+        consumer = consumers.ZipFileConsumer(redis_client, storage)
         hsh = consumer._upload_archived_images({'input_file_name': 'test.zip'})
         assert len(hsh) == N
 
@@ -391,20 +384,20 @@ class TestZipFileConsumer(object):
         prefix = 'prefix'
         status = 'new'
         _redis = DummyRedis(prefix, status)
-        redis = DummyRedis(prefix, status)
+        redis_client = DummyRedis(prefix, status)
         storage = DummyStorage(num=N)
 
         # test `status` = "done"
         hget = lambda h, k: 'done' if k == 'status' else _redis.hget(h, k)
-        redis.hget = hget
-        consumer = consumers.ZipFileConsumer(redis, storage)
+        redis_client.hget = hget
+        consumer = consumers.ZipFileConsumer(redis_client, storage)
         dummyhash = '{}_test.zip'.format(prefix)
         consumer._consume(dummyhash)
 
         # test `status` = "failed"
         hget = lambda h, k: 'failed' if k == 'status' else _redis.hget(h, k)
-        redis.hget = hget
-        consumer = consumers.ZipFileConsumer(redis, storage)
+        redis_client.hget = hget
+        consumer = consumers.ZipFileConsumer(redis_client, storage)
         dummyhash = '{}_test.zip'.format(prefix)
         consumer._consume(dummyhash)
 
@@ -418,10 +411,9 @@ class TestZipFileConsumer(object):
                 status = 'waiting' if counter % 2 == 0 else 'done'
                 counter += 1
                 return status
-            else:
-                return _redis.hget(h, k)
+            return _redis.hget(h, k)
 
-        redis.hget = hget_wait
-        consumer = consumers.ZipFileConsumer(redis, storage)
+        redis_client.hget = hget_wait
+        consumer = consumers.ZipFileConsumer(redis_client, storage)
         dummyhash = '{}_test.zip'.format(prefix)
         consumer._consume(dummyhash)
