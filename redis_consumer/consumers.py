@@ -56,12 +56,16 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         final_status: Update the status of redis event with this value.
     """
 
-    def __init__(self, redis_client, storage_client, final_status='done'):
+    def __init__(self,
+                 redis_client,
+                 storage_client,
+                 final_status='done',
+                 redis_retry_timeout=settings.REDIS_TIMEOUT):
         self.output_dir = settings.OUTPUT_DIR
         self.redis = redis_client
         self.storage = storage_client
         self.final_status = final_status
-        self._redis_retry_timeout = settings.REDIS_TIMEOUT
+        self._redis_retry_timeout = redis_retry_timeout
         self.logger = logging.getLogger(str(self.__class__.__name__))
         self.hostname = settings.HOSTNAME
 
