@@ -30,6 +30,7 @@ from __future__ import print_function
 
 import os
 
+import redis
 import numpy as np
 from skimage.external import tifffile as tiff
 
@@ -45,11 +46,16 @@ def _get_image(img_h=300, img_w=300):
 
 
 class DummyRedis(object):
-    def __init__(self, prefix='predict', status='new'):
+    def __init__(self, prefix='predict', status='new', fail_tolerance=0):
+        self.fail_count = 0
+        self.fail_tolerance = fail_tolerance
         self.prefix = '/'.join(x for x in prefix.split('/') if x)
         self.status = status
 
     def keys(self):
+        if self.fail_count < self.fail_tolerance:
+            self.fail_count += 1
+            raise redis.exceptions.ConnectionError('thrown on purpose')
         return [
             '{}_{}_{}'.format(self.prefix, self.status, 'x.tiff'),
             '{}_{}_{}'.format(self.prefix, 'other', 'x.zip'),
@@ -60,12 +66,21 @@ class DummyRedis(object):
         ]
 
     def scan_iter(self, match=None):
-        for k in self.keys():
-            if match:
-                if k.startswith(match[:-1]):
-                    yield k
-            else:
-                yield k
+        if self.fail_count < self.fail_tolerance:
+            self.fail_count += 1
+            raise redis.exceptions.ConnectionError('thrown on purpose')
+
+        keys = [
+            '{}_{}_{}'.format(self.prefix, self.status, 'x.tiff'),
+            '{}_{}_{}'.format(self.prefix, 'other', 'x.zip'),
+            '{}_{}_{}'.format('other', self.status, 'x.TIFF'),
+            '{}_{}_{}'.format(self.prefix, self.status, 'x.ZIP'),
+            '{}_{}_{}'.format(self.prefix, 'other', 'x.tiff'),
+            '{}_{}_{}'.format('other', self.status, 'x.zip'),
+        ]
+        if match:
+            return (k for k in keys if k.startswith(match[:-1]))
+        return (k for k in keys)
 
     def expected_keys(self, suffix=None):
         for k in self.keys():
@@ -79,9 +94,21 @@ class DummyRedis(object):
                         yield k
 
     def hmset(self, rhash, hvals):  # pylint: disable=W0613
+        if self.fail_count < self.fail_tolerance:
+            self.fail_count += 1
+            raise redis.exceptions.ConnectionError('thrown on purpose')
         return hvals
 
+    def hset(self, rhash, key, val):  # pylint: disable=W0613
+        if self.fail_count < self.fail_tolerance:
+            self.fail_count += 1
+            raise redis.exceptions.ConnectionError('thrown on purpose')
+        return rhash
+
     def hget(self, rhash, field):
+        if self.fail_count < self.fail_tolerance:
+            self.fail_count += 1
+            raise redis.exceptions.ConnectionError('thrown on purpose')
         if field == 'status':
             return rhash.split('_')[1]
         elif field == 'file_name':
@@ -93,9 +120,15 @@ class DummyRedis(object):
         return False
 
     def hset(self, rhash, status, value):  # pylint: disable=W0613
+        if self.fail_count < self.fail_tolerance:
+            self.fail_count += 1
+            raise redis.exceptions.ConnectionError('thrown on purpose')
         return {status: value}
 
     def hgetall(self, rhash):  # pylint: disable=W0613
+        if self.fail_count < self.fail_tolerance:
+            self.fail_count += 1
+            raise redis.exceptions.ConnectionError('thrown on purpose')
         return {
             'model_name': 'model',
             'model_version': '0',
@@ -109,6 +142,9 @@ class DummyRedis(object):
         }
 
     def type(self, key):  # pylint: disable=W0613
+        if self.fail_count < self.fail_tolerance:
+            self.fail_count += 1
+            raise redis.exceptions.ConnectionError('thrown on purpose')
         return 'hash'
 
 
@@ -139,17 +175,78 @@ class DummyStorage(object):
 
 class TestConsumer(object):
 
+    def test_keys(self):
+        redis_client = DummyRedis(fail_tolerance=2)
+        consumer = consumers.Consumer(redis_client, None,
+                                      redis_retry_timeout=0.01)
+        keys = consumer.keys()
+        assert keys == redis_client.keys()
+        assert consumer.redis.fail_count == redis_client.fail_tolerance
+
+    def test_hgetall(self):
+        redis_client = DummyRedis(fail_tolerance=2)
+        consumer = consumers.Consumer(redis_client, None,
+                                      redis_retry_timeout=0.01)
+
+        data = consumer.hgetall('redis_hash')
+        assert data == redis_client.hgetall('redis_hash')
+        assert consumer.redis.fail_count == redis_client.fail_tolerance
+
+    def test__redis_type(self):
+        redis_client = DummyRedis(fail_tolerance=2)
+        consumer = consumers.Consumer(redis_client, None,
+                                      redis_retry_timeout=0.01)
+
+        data = consumer._redis_type('random_key')
+        assert data == redis_client.type('random_key')
+        assert consumer.redis.fail_count == redis_client.fail_tolerance
+
+    def test_hmset(self):
+        redis_client = DummyRedis(fail_tolerance=2)
+        consumer = consumers.Consumer(redis_client, None,
+                                      redis_retry_timeout=0.01)
+        consumer.hmset('rhash', {'key': 'value'})
+        assert consumer.redis.fail_count == redis_client.fail_tolerance
+
+    def test_hset(self):
+        redis_client = DummyRedis(fail_tolerance=2)
+        consumer = consumers.Consumer(redis_client, None,
+                                      redis_retry_timeout=0.01)
+        consumer.hset('rhash', 'key', 'value')
+        assert consumer.redis.fail_count == redis_client.fail_tolerance
+
+    def test_hget(self):
+        redis_client = DummyRedis(fail_tolerance=2)
+        consumer = consumers.Consumer(redis_client, None,
+                                      redis_retry_timeout=0.01)
+        data = consumer.hget('rhash_new', 'status')
+        assert data == 'new'
+        assert consumer.redis.fail_count == redis_client.fail_tolerance
+
+    def test_scan_iter(self):
+        prefix = 'predict'
+        redis_client = DummyRedis(fail_tolerance=2, prefix=prefix)
+        consumer = consumers.Consumer(redis_client, None,
+                                      redis_retry_timeout=0.01)
+        data = consumer.scan_iter(match=prefix)
+        print(redis_client.fail_tolerance)
+        print(data)
+        keys = [k for k in data]
+        expected = [k for k in redis_client.keys() if k.startswith(prefix)]
+        assert consumer.redis.fail_count == redis_client.fail_tolerance
+        np.testing.assert_array_equal(keys, expected)
+
     def test_iter_redis_hashes(self):
         prefix = 'prefix'
         status = 'new'
-        redis = DummyRedis(prefix, status)
-        consumer = consumers.Consumer(redis, None)
+        redis_client = DummyRedis(prefix, status)
+        consumer = consumers.Consumer(redis_client, None)
         keys = [k for k in consumer.iter_redis_hashes(status, prefix)]
         # test filter by prefix and status
-        assert keys == [k for k in redis.expected_keys()]
+        assert keys == [k for k in redis_client.expected_keys()]
         # test no status check
         keys = [k for k in consumer.iter_redis_hashes(None, prefix)]
-        expected = [k for k in redis.keys() if k.startswith(prefix)]
+        expected = [k for k in redis_client.keys() if k.startswith(prefix)]
         np.testing.assert_array_equal(keys, expected)
 
     def test_handle_error(self):
@@ -274,7 +371,6 @@ class TestZipFileConsumer(object):
         status = 'new'
         redis = DummyRedis(prefix, status)
         consumer = consumers.ZipFileConsumer(redis, None)
-        print(redis.keys())
         keys = [k for k in consumer.iter_redis_hashes(status, prefix)]
         # test filter by prefix and status
         expected = list(consumer.redis.expected_keys(suffix='.zip'))
