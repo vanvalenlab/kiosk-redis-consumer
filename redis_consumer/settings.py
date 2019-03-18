@@ -1,4 +1,4 @@
-# Copyright 2016-2018 The Van Valen Lab at the California Institute of
+# Copyright 2016-2019 The Van Valen Lab at the California Institute of
 # Technology (Caltech), with support from the Paul Allen Family Foundation,
 # Google, & National Institutes of Health (NIH) under Grant U24CA224309-01.
 # All rights reserved.
@@ -62,6 +62,7 @@ DP_PORT = config('DP_PORT', default=8080, cast=int)
 
 # gRPC API timeout in seconds (scales with `cuts`)
 GRPC_TIMEOUT = config('GRPC_TIMEOUT', default=30, cast=int)
+REDIS_TIMEOUT = config('REDIS_TIMEOUT', default=3, cast=int)
 
 # Status of hashes marked for prediction
 STATUS = config('STATUS', default='new')
@@ -89,3 +90,6 @@ AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='specify_me')
 
 # Google Credentials
 GCLOUD_STORAGE_BUCKET = config('GKE_BUCKET', default='default-bucket')
+
+# Pod Meteadta
+HOSTNAME = config('HOSTNAME', default="host-unkonwn")
