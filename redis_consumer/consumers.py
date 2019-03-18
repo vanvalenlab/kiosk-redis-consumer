@@ -575,17 +575,11 @@ class ImageFileConsumer(Consumer):
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
 
-            t = timeit.default_timer()
             outpaths = utils.save_numpy_array(
                 image, name=name, subdir=subdir, output_dir=tempdir)
-            self.logger.debug('Saved data for image in %s seconds.',
-                              timeit.default_timer() - t)
 
             # Save each prediction image as zip file
-            t = timeit.default_timer()
             zip_file = utils.zip_files(outpaths, tempdir)
-            self.logger.debug('Created archive "%s" in %s seconds.',
-                              zip_file, timeit.default_timer() - t)
 
             # Upload the zip file to cloud storage bucket
             cleaned = zip_file.replace(tempdir, '')

@@ -30,6 +30,7 @@ from __future__ import print_function
 
 import os
 import time
+import timeit
 import contextlib
 import hashlib
 import logging
@@ -245,6 +246,7 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
     Returns:
         out_paths: list of all saved image paths
     """
+    start = timeit.default_timer()
     output_dir = output_dir if output_dir is None else output_dir
     if subdir.startswith(os.path.sep):
         subdir = subdir[1:]
@@ -272,6 +274,8 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
             out_paths = []
             logger.error('Could not save channel %s as image: %s',
                          channel, err)
+    logger.debug('Saved %s image files in %s seconds.',
+                 len(out_paths), timeit.default_timer() - start)
     return out_paths
 
 
@@ -285,6 +289,7 @@ def zip_files(files, dest=None, prefix=None):
     Returns:
         zip_filename: filepath to new zip archive
     """
+    start = timeit.default_timer()
     filename = '{prefix}{join}{hash}.zip'.format(
         prefix=prefix if prefix else '',
         join='_' if prefix else '',
@@ -303,4 +308,6 @@ def zip_files(files, dest=None, prefix=None):
     except Exception as err:
         logger.error('Failed to write zipfile: %s', err)
         raise err
+    logger.debug('Zipped %s files into %s in %s seconds.',
+                 len(files), filepath, timeit.default_timer() - start)
     return filepath
