@@ -101,7 +101,7 @@ class PredictClient(GrpcClient):
 
             t = timeit.default_timer()
             predict_response_dict = grpc_response_to_dict(predict_response)
-            self.logger.debug('Converted PredictResponse to dict in %s seconds',
+            self.logger.debug('Converted PredictResponse to dict in %s seconds.',
                               timeit.default_timer() - t)
 
             keys = [k for k in predict_response_dict]
@@ -165,12 +165,12 @@ class ProcessClient(GrpcClient):
         try:
             t = timeit.default_timer()
             response = stub.Process(request, timeout=request_timeout)
-            self.logger.debug('Actual ProcessRequest took: %s seconds',
+            self.logger.debug('Actual ProcessRequest took: %s seconds.',
                               timeit.default_timer() - t)
 
             t = timeit.default_timer()
             response_dict = grpc_response_to_dict(response)
-            self.logger.debug('Converted ProcessResponse to dict in %s seconds',
+            self.logger.debug('Converted ProcessResponse to dict in %s seconds.',
                               timeit.default_timer() - t)
 
             keys = [k for k in response_dict]
