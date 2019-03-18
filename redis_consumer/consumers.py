@@ -204,11 +204,12 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 time.sleep(self._redis_retry_timeout)
         return response
 
-    def consume(self, status=None, prefix=None, retries=3):
+    def consume(self, status=None, prefix=None):
         """Consume all redis events every `interval` seconds.
 
         Args:
-            interval: waits this many seconds between consume calls
+            status: string, only consume hashes where `status` == status.
+            prefix: string, only consume hashes that start with `prefix`.
 
         Returns:
             nothing: this is the consumer main process
