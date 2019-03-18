@@ -181,7 +181,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             try:
                 response = self.redis.hmset(rhash, data)
                 self.logger.debug('Updated hash %s with values: %s.',
-                                  rhash, json.dumps(data, indent=4))
+                                  rhash, data)
                 break
             except ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
@@ -448,10 +448,7 @@ class ImageFileConsumer(Consumer):
                 self.logger.debug('Created the PredictClient in %s seconds.',
                                   timeit.default_timer() - t)
 
-                t = timeit.default_timer()
                 prediction = client.predict(req_data, request_timeout=timeout)
-                self.logger.debug('PredictClient.predict took %s seconds.',
-                                  timeit.default_timer() - t)
                 retrying = False
                 results = prediction['prediction']
                 self.logger.debug('Segmented image with model %s:%s in %s '
