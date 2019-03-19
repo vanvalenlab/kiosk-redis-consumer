@@ -268,12 +268,10 @@ class ImageFileConsumer(Consumer):
         self.logger.debug('Starting %s %s-processing image of shape %s',
                           key, process_type, image.shape)
 
-        # using while loop instead of recursive call for
-        # help with memory footprint issue.
         retrying = True
         count = 0
+        start = timeit.default_timer()
         while retrying:
-            start = timeit.default_timer()
             try:
                 key = str(key).lower()
                 process_type = str(process_type).lower()
