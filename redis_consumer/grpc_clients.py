@@ -262,9 +262,11 @@ class ProcessClient(GrpcClient):
             self.logger.info('Got response stream of %s bytes in %s seconds.',
                              len(npbytes), timeit.default_timer() - t)
 
+            t = timeit.default_timer()
             processed_image = np.frombuffer(npbytes, dtype=dtype)
-            self.logger.info('Loaded bytes into numpy array of shape %s',
-                             processed_image.shape)
+            self.logger.info('Loaded bytes into numpy array of shape %s in %s'
+                             ' seconds.', processed_image.shape,
+                             timeit.default_timer() - t)
 
             results = processed_image.reshape(shape)
             self.logger.info('Reshaped array into shape %s',
@@ -272,8 +274,8 @@ class ProcessClient(GrpcClient):
 
             return {'results': results}
 
-        except RpcError as e:
-            self.logger.error(e)
+        except RpcError as err:
+            self.logger.error(err)
             self.logger.error('Processing failed!')
             raise e
 
