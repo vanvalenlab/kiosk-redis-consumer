@@ -533,7 +533,7 @@ class ImageFileConsumer(Consumer):
             })
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
-            image = self.preprocess(image, pre_funcs, timeout, streaming)
+            image = self.preprocess(image, pre_funcs, timeout, True)
 
             # Update redis with prediction information
             predicting_time = time.time() * 1000
@@ -561,7 +561,7 @@ class ImageFileConsumer(Consumer):
             })
 
             post_funcs = hvals.get('postprocess_function', '').split(',')
-            image = self.postprocess(image, post_funcs, timeout, streaming)
+            image = self.postprocess(image, post_funcs, timeout, True)
 
             # write update to Redis
             outputting_time = time.time() * 1000
