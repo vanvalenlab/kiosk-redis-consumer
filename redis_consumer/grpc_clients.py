@@ -277,6 +277,6 @@ class ProcessClient(GrpcClient):
         except RpcError as err:
             self.logger.error(err)
             self.logger.error('Processing failed!')
-            raise e
+            raise err
 
         return {}
