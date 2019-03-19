@@ -456,8 +456,9 @@ class ImageFileConsumer(Consumer):
                 prediction = client.predict(req_data, request_timeout=timeout)
                 retrying = False
                 results = prediction['prediction']
-                self.logger.debug('Segmented image with model %s:%s in %s '
-                                  'seconds.', model_name, model_version,
+                self.logger.debug('Segmented image with model %s:%s '
+                                  '(%s retries) in %s seconds.',
+                                  model_name, model_version, count,
                                   timeit.default_timer() - start)
                 return results
             except grpc.RpcError as err:
