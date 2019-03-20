@@ -268,12 +268,10 @@ class ImageFileConsumer(Consumer):
         self.logger.debug('Starting %s %s-processing image of shape %s',
                           key, process_type, image.shape)
 
-        # using while loop instead of recursive call for
-        # help with memory footprint issue.
         retrying = True
         count = 0
+        start = timeit.default_timer()
         while retrying:
-            start = timeit.default_timer()
             try:
                 key = str(key).lower()
                 process_type = str(process_type).lower()
@@ -430,7 +428,7 @@ class ImageFileConsumer(Consumer):
                           tf_results.shape, timeit.default_timer() - start)
         return tf_results
 
-    def grpc_image(self, img, model_name, model_version, timeout=30):
+    def grpc_image(self, img, model_name, model_version, timeout=30, backoff=3):
         count = 0
         start = timeit.default_timer()
         self.logger.debug('Segmenting image of shape %s with model %s:%s',
@@ -456,8 +454,9 @@ class ImageFileConsumer(Consumer):
                 prediction = client.predict(req_data, request_timeout=timeout)
                 retrying = False
                 results = prediction['prediction']
-                self.logger.debug('Segmented image with model %s:%s in %s '
-                                  'seconds.', model_name, model_version,
+                self.logger.debug('Segmented image with model %s:%s '
+                                  '(%s retries) in %s seconds.',
+                                  model_name, model_version, count,
                                   timeit.default_timer() - start)
                 return results
             except grpc.RpcError as err:
@@ -477,12 +476,11 @@ class ImageFileConsumer(Consumer):
                         'identity_processing_retry': self.hostname,
                         'timestamp_last_status_update': processing_retry_time
                     })
-                    self.logger.warning(err.details())  # pylint: disable=E1101
                     self.logger.warning('Encountered %s  during PredictClient '
                                         'request to model %s:%s: %s.',
                                         type(err).__name__, model_name,
                                         model_version, err)
-                    backoff = np.random.randint(9, 20) + 1
+
                     self.logger.debug('Waiting for %s seconds before retrying',
                                       backoff)
                     time.sleep(backoff)  # sleep before retry
@@ -535,7 +533,7 @@ class ImageFileConsumer(Consumer):
             })
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
-            image = self.preprocess(image, pre_funcs, timeout, streaming)
+            image = self.preprocess(image, pre_funcs, timeout, True)
 
             # Update redis with prediction information
             predicting_time = time.time() * 1000
@@ -563,7 +561,7 @@ class ImageFileConsumer(Consumer):
             })
 
             post_funcs = hvals.get('postprocess_function', '').split(',')
-            image = self.postprocess(image, post_funcs, timeout, streaming)
+            image = self.postprocess(image, post_funcs, timeout, True)
 
             # write update to Redis
             outputting_time = time.time() * 1000
