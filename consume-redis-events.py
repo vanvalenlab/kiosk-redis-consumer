@@ -1,4 +1,4 @@
-# Copyright 2016-2018 The Van Valen Lab at the California Institute of
+# Copyright 2016-2019 The Van Valen Lab at the California Institute of
 # Technology (Caltech), with support from the Paul Allen Family Foundation,
 # Google, & National Institutes of Health (NIH) under Grant U24CA224309-01.
 # All rights reserved.
@@ -46,16 +46,22 @@ def initialize_logger(debug_mode=False):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
-    formatter = logging.Formatter('[%(levelname)s]:[%(name)s]: %(message)s')
+    formatter = logging.Formatter('[%(asctime)s]:[%(levelname)s]:[%(name)s]: %(message)s')
     console = logging.StreamHandler(stream=sys.stdout)
     console.setFormatter(formatter)
 
+    fh = logging.FileHandler('redis-consumer.log')
+    fh.setFormatter(formatter)
+
     if debug_mode:
         console.setLevel(logging.DEBUG)
+        fh.setLevel(logging.DEBUG)
     else:
         console.setLevel(logging.INFO)
+        fh.setLevel(logging.INFO)
 
     logger.addHandler(console)
+    logger.addHandler(fh)
 
 
 def get_consumer(consumer_type, **kwargs):

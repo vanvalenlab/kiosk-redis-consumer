@@ -1,4 +1,4 @@
-# Copyright 2016-2018 The Van Valen Lab at the California Institute of
+# Copyright 2016-2019 The Van Valen Lab at the California Institute of
 # Technology (Caltech), with support from the Paul Allen Family Foundation,
 # Google, & National Institutes of Health (NIH) under Grant U24CA224309-01.
 # All rights reserved.
@@ -88,19 +88,19 @@ class TestS3Storage(object):
                 stg._client.upload_file = dummy_upload
 
                 # test succesful upload
-                dest = stg.upload(temp.name)
+                dest, url = stg.upload(temp.name)
                 assert dest == 'output/{}'.format(os.path.basename(temp.name))
 
                 # test succesful upload with subdir
                 subdir = '/abc'
-                dest = stg.upload(temp.name, subdir=subdir)
+                dest, url = stg.upload(temp.name, subdir=subdir)
                 assert dest == 'output{}/{}'.format(
                     subdir, os.path.basename(temp.name))
 
                 # test failed upload
                 with pytest.raises(Exception):
                     # self._client raises, but so does storage.upload
-                    dest = stg.upload('file-does-not-exist')
+                    dest, url = stg.upload('file-does-not-exist')
 
     def test_download(self):
         remote_file = '/test/file.txt'
