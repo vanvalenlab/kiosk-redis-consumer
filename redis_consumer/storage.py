@@ -211,8 +211,9 @@ class GoogleStorage(Storage):
                 start = timeit.default_timer()
                 blob = self._client.get_bucket(self.bucket).blob(filepath)
                 blob.download_to_filename(dest)
-                self.logger.debug('Downloaded %s in %s seconds.',
-                                  dest, timeit.default_timer() - start)
+                self.logger.debug('Downloaded %s from bucket %s in %s seconds.',
+                                  dest, self.bucket,
+                                  timeit.default_timer() - start)
                 return dest
             except google_exceptions.TooManyRequests as err:
                 self.logger.warning('Encountered %s: %s.  Backing off for %s '
@@ -302,8 +303,8 @@ class S3Storage(Storage):
         self.logger.debug('Downloading %s to %s.', filepath, dest)
         try:
             self._client.download_file(self.bucket, filepath, dest)
-            self.logger.debug('Downloaded %s in %s seconds.',
-                              dest, timeit.default_timer() - start)
+            self.logger.debug('Downloaded %s from bucket %s in %s seconds.',
+                              dest, self.bucket, timeit.default_timer() - start)
             return dest
         except Exception as err:
             self.logger.error('Encountered %s: %s while downloading %s.',
