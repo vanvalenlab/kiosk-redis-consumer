@@ -223,8 +223,15 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             try:
                 start = timeit.default_timer()
                 self._consume(redis_hash)
-                self.logger.debug('Consumed key %s in %s seconds.',
-                                  redis_hash, timeit.default_timer() - start)
+                hvals = self.hgetall(redis_hash)
+                self.logger.debug('Consumed key %s (model %s:%s, '
+                                  'preprocessing: %s, postprocessing: %s) '
+                                  '(%s retries) in %s seconds.',
+                                  redis_hash, hvals.get('model_name'),
+                                  hvals.get('model_version'),
+                                  hvals.get('preprocess_function'),
+                                  hvals.get('postprocess_function'),
+                                  0, timeit.default_timer() - start)
             except Exception as err:  # pylint: disable=broad-except
                 self._handle_error(err, redis_hash)
 
@@ -292,9 +299,15 @@ class ImageFileConsumer(Consumer):
                 else:
                     results = client.process(req_data, timeout)
 
-                self.logger.debug('Finished %s %s-processing (%s retries) in '
-                                  '%s seconds.', key, process_type, count,
-                                  timeit.default_timer() - start)
+                self.logger.debug('%s-processed key %s (model %s:%s, '
+                                  'preprocessing: %s, postprocessing: %s)'
+                                  ' (%s retries)  in %s seconds.',
+                                  process_type.capitalize(), self._redis_hash,
+                                  self._redis_values.get('model_name'),
+                                  self._redis_values.get('model_version'),
+                                  self._redis_values.get('preprocess_function'),
+                                  self._redis_values.get('postprocess_function'),
+                                  count, timeit.default_timer() - start)
 
                 results = results['results']
                 # Again, squeeze out batch dimension if unnecessary
@@ -314,8 +327,9 @@ class ImageFileConsumer(Consumer):
                     processing_retry_time = time.time() * 1000
                     self.hmset(self._redis_hash, {
                         'number_of_processing_retries': count,
-                        'status': 'processing -- RETRY:{} -- {}'.format(
-                            count, err.code().name),  # pylint: disable=E1101
+                        'status': '{} {}-processing -- RETRY:{} -- {}'.format(
+                            key, process_type, count,
+                            err.code().name),  # pylint: disable=E1101
                         'timestamp_processing_retry': processing_retry_time,
                         'identity_processing_retry': self.hostname,
                         'timestamp_last_status_update': processing_retry_time
@@ -454,10 +468,13 @@ class ImageFileConsumer(Consumer):
                 prediction = client.predict(req_data, request_timeout=timeout)
                 retrying = False
                 results = prediction['prediction']
-                self.logger.debug('Segmented image with model %s:%s '
-                                  '(%s retries) in %s seconds.',
-                                  model_name, model_version, count,
-                                  timeit.default_timer() - start)
+                self.logger.debug('Segmented key %s (model %s:%s, '
+                                  'preprocessing: %s, postprocessing: %s)'
+                                  ' (%s retries) in %s seconds.',
+                                  self._redis_hash, model_name, model_version,
+                                  self._redis_values.get('preprocess_function'),
+                                  self._redis_values.get('postprocess_function'),
+                                  count, timeit.default_timer() - start)
                 return results
             except grpc.RpcError as err:
                 retry_statuses = {
@@ -496,8 +513,10 @@ class ImageFileConsumer(Consumer):
                 raise err
 
     def _consume(self, redis_hash):
-        self._redis_hash = redis_hash
         hvals = self.hgetall(redis_hash)
+        # hold on to the redis hash/values for logging purposes
+        self._redis_hash = redis_hash
+        self._redis_values = hvals
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
 
