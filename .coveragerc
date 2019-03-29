@@ -13,5 +13,6 @@ fail_under = 80
 show_missing = True
 
 omit =
+    **/*_test.py
     redis_consumer/pbs/*
     redis_consumer/grpc_clients.py
