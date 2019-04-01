@@ -38,8 +38,8 @@ import logging
 import zipfile
 
 import grpc
+import redis
 import numpy as np
-from redis.exceptions import ConnectionError
 
 from redis_consumer.grpc_clients import PredictClient
 from redis_consumer.grpc_clients import ProcessClient
@@ -114,7 +114,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             try:
                 response = self.redis.type(redis_key)
                 break
-            except ConnectionError as err:
+            except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
                                     'redis.type(). Retrying in %s seconds.',
                                     type(err).__name__, err,
@@ -130,7 +130,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 self.logger.debug('Finished SCAN in %s seconds.',
                                   timeit.default_timer() - start)
                 break
-            except ConnectionError as err:
+            except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
                                     'SCAN. Retrying in %s seconds.',
                                     type(err).__name__, err,
@@ -146,7 +146,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 self.logger.debug('KEYS got %s results in %s seconds.',
                                   len(response), timeit.default_timer() - start)
                 break
-            except ConnectionError as err:
+            except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
                                     'KEYS. Retrying in %s seconds.',
                                     type(err).__name__, err,
@@ -159,7 +159,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             try:
                 response = self.redis.hset(rhash, key, value)
                 break
-            except ConnectionError as err:
+            except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
                                     'HSET. Retrying in %s seconds.',
                                     type(err).__name__, err,
@@ -172,7 +172,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             try:
                 response = self.redis.hget(rhash, key)
                 break
-            except ConnectionError as err:
+            except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
                                     'redis.hget(). Retrying in %s seconds.',
                                     type(err).__name__, err,
@@ -187,7 +187,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 self.logger.debug('Updated hash %s with values: %s.',
                                   rhash, data)
                 break
-            except ConnectionError as err:
+            except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
                                     'redis.hmset(). Retrying in %s seconds.',
                                     type(err).__name__, err,
@@ -200,7 +200,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             try:
                 response = self.redis.hgetall(rhash)
                 break
-            except ConnectionError as err:
+            except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
                                     'redis.hgetall(). Retrying in %s seconds.',
                                     type(err).__name__, err,
