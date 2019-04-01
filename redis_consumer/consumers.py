@@ -243,7 +243,9 @@ class ImageFileConsumer(Consumer):
         for key in keys:
             fname = str(self.hget(key, 'input_file_name'))
             if not fname.lower().endswith('.zip'):
-                yield key
+                # yield key
+                return [key]
+        return []  # no valid keys, return empty list
 
     def _process(self, image, key, process_type, timeout=30, streaming=False):
         """Apply each processing function to image.
