@@ -33,13 +33,16 @@ import time
 import timeit
 import contextlib
 import hashlib
+import json
 import logging
 import shutil
+import tarfile
 import tempfile
 import zipfile
 import six
 
 import numpy as np
+from io import BytesIO
 from PIL import Image
 from skimage.external import tifffile as tiff
 from keras_preprocessing.image import img_to_array
@@ -48,6 +51,7 @@ from dict_to_protobuf import dict_to_protobuf
 
 from redis_consumer.pbs.types_pb2 import DESCRIPTOR
 from redis_consumer.pbs.tensor_pb2 import TensorProto
+from redis_consumer.pbs.tensor_shape_pb2 import TensorShapeProto
 
 
 logger = logging.getLogger('redis_consumer.utils')
@@ -104,8 +108,13 @@ def grpc_response_to_dict(grpc_response):
     return grpc_response_dict
 
 
-def make_tensor_proto(data, dtype):
-    tensor_proto = TensorProto()
+def make_tensor_proto(data, dtype, shape=None):
+    if shape is None:
+        tensor_proto = TensorProto()
+    else:
+        tensor_shape = TensorShapeProto(dim=[TensorShapeProto.Dim(size=dim)
+                                        for dim in shape])
+        tensor_proto = TensorProto(tensor_shape=tensor_shape)
 
     if isinstance(dtype, six.string_types):
         dtype = dtype_to_number[dtype]
@@ -277,6 +286,49 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
     logger.debug('Saved %s image files in %s seconds.',
                  len(out_paths), timeit.default_timer() - start)
     return out_paths
+
+
+# from deepcell.utils.tracking_utils.load_trks
+def load_trks(filename):
+    """Load a trk/trks file.
+    Args:
+        trks_file: full path to the file including .trk/.trks
+    Returns:
+        A dictionary with raw, tracked, and lineage data
+    """
+    with tarfile.open(filename, 'r') as trks:
+
+        # numpy can't read these from disk...
+        array_file = BytesIO()
+        array_file.write(trks.extractfile('raw.npy').read())
+        array_file.seek(0)
+        raw = np.load(array_file)
+        array_file.close()
+
+        array_file = BytesIO()
+        array_file.write(trks.extractfile('tracked.npy').read())
+        array_file.seek(0)
+        tracked = np.load(array_file)
+        array_file.close()
+
+        # trks.extractfile opens a file in bytes mode, json can't use bytes.
+        __, file_extension = os.path.splitext(filename)
+
+        if file_extension == '.trks':
+            trk_data = trks.getmember('lineages.json')
+            lineages = json.loads(trks.extractfile(trk_data).read().decode())
+            # JSON only allows strings as keys, so convert them back to ints
+            for i, tracks in enumerate(lineages):
+                lineages[i] = {int(k): v for k, v in tracks.items()}
+
+        elif file_extension == '.trk':
+            trk_data = trks.getmember('lineage.json')
+            lineage = json.loads(trks.extractfile(trk_data).read().decode())
+            # JSON only allows strings as keys, so convert them back to ints
+            lineages = []
+            lineages.append({int(k): v for k, v in lineage.items()})
+
+    return {'lineages': lineages, 'X': raw, 'y': tracked}
 
 
 def zip_files(files, dest=None, prefix=None):

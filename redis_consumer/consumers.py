@@ -31,10 +31,11 @@ from __future__ import print_function
 import timeit
 import uuid
 
-import os
 import json
-import time
 import logging
+import os
+import sys
+import time
 import zipfile
 
 import grpc
@@ -43,7 +44,9 @@ from redis.exceptions import ConnectionError
 
 from redis_consumer.grpc_clients import PredictClient
 from redis_consumer.grpc_clients import ProcessClient
+from redis_consumer.grpc_clients import TrackingClient
 from redis_consumer import utils
+from redis_consumer import tracking
 from redis_consumer import settings
 
 
@@ -97,14 +100,14 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         # Update redis with failed status
         ts = time.time() * 1000
         self.hmset(redis_hash, {
-            'reason': '{}: {}'.format(type(err).__name__, err),
+            'reason': logging.Formatter().formatException(sys.exc_info()),
             'status': 'failed',
             'timestamp_failed': ts,
             'identity_failed': self.hostname,
             'timestamp_last_status_update': ts
         })
-        self.logger.error('Failed to process redis key %s due to %s: %s',
-                          redis_hash, type(err).__name__, err)
+        self.logger.exception('Failed to process redis key %s due to %s: %s',
+                              redis_hash, type(err).__name__, err)
 
     def _consume(self, redis_hash):
         raise NotImplementedError
@@ -242,7 +245,9 @@ class ImageFileConsumer(Consumer):
         keys = super(ImageFileConsumer, self).iter_redis_hashes(status, prefix)
         for key in keys:
             fname = str(self.hget(key, 'input_file_name'))
-            if not fname.lower().endswith('.zip'):
+            if not (fname.lower().endswith('.zip') or fname.lower().endswith('.trk')):
+                self.logger.debug('Yielding key %s', fname)
+                self.logger.debug('endswith trk %s', fname.lower().endswith('.trk'))
                 yield key
 
     def _process(self, image, key, process_type, timeout=30, streaming=False):
@@ -764,3 +769,88 @@ class ZipFileConsumer(Consumer):
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
                              len(all_hashes), hvals['output_file_name'],
                              timeit.default_timer() - start)
+
+
+class TrackingConsumer(Consumer):
+    """Consumes some unspecified file format, tracks the images, and uploads the results"""
+
+    def iter_redis_hashes(self, status='new', prefix='predict'):
+        """Iterate over hash values in redis.
+        Only yield hash values for zip files
+
+        Returns:
+            Iterator of all zip hashes with a valid status
+        """
+        keys = super(TrackingConsumer, self).iter_redis_hashes(status, prefix)
+        for key in keys:
+            fname = str(self.hget(key, 'input_file_name'))
+            if fname.lower().endswith('.trk'):
+                yield key
+
+    def _done(self, redis_hash, status, output_url, output_file_name):
+        output_timestamp = time.time() * 1000
+        self.hmset(redis_hash, {
+            'identity_output': self.hostname,
+            'status': status,
+            'output_url': "nonsense",
+            'output_file_name': "nonsense",
+            'timestamp_output': output_timestamp,
+            'timestamp_last_status_update': output_timestamp
+        })
+
+    def _get_model(self):
+        hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
+        model_name = "tracking_neigh=30_in=32"
+        model_version = 0
+
+        t = timeit.default_timer()
+        model = TrackingClient(hostname, model_name, model_version, settings)
+        self.logger.debug('Created the TrackingClient in %s seconds.',
+                          timeit.default_timer() - t)
+        return model
+
+    def _get_tracker(self, raw, segmented):
+        tracking_model = self._get_model()
+
+        features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
+        tracker = tracking.cell_tracker(raw, segmented,
+                                        tracking_model,
+                                        max_distance=50,
+                                        track_length=5,
+                                        division=0.5,
+                                        birth=0.9,
+                                        death=0.9,
+                                        neighborhood_scale_size=30,
+                                        features=features)
+
+        self.logger.debug('Created tracker!')
+        return tracker
+
+    def _consume(self, redis_hash):
+        start = timeit.default_timer()
+        hvalues = self.hgetall(redis_hash)
+        self.logger.debug('Found .trk hash to process "%s": %s',
+                          redis_hash, json.dumps(hvalues, indent=4))
+
+        with utils.get_tempdir() as tempdir:
+            fname = self.storage.download(hvalues.get('input_file_name'), tempdir)
+            trk = utils.load_trks(os.path.join(tempdir, fname))
+
+            self.logger.debug('Got contents .trk file contents.')
+            self.logger.debug('X shape: %s', trk['X'].shape)
+            self.logger.debug('y shape: %s', trk['y'].shape)
+
+            tracker = self._get_tracker(trk["X"], trk["y"])
+            self.logger.debug('Trying to track...')
+
+            tracker._track_cells()
+
+            self.logger.debug('Tracking done!')
+
+            # Save tracking result and upload
+            save_name = os.path.join(tempdir, hvals.get('original_name', fname))
+            tracker.dump(save_name)
+            output_file_name, output_url = self.storage.upload(save_name)
+
+            self._done(redis_hash, self.final_status,
+                       output_url, output_file_name)

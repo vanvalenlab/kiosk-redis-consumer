@@ -29,12 +29,15 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import json
+import numpy as np
+import pytest
+import tarfile
+import tempfile
 import zipfile
 
 from keras_preprocessing.image import array_to_img
 from skimage.external import tifffile as tiff
-import numpy as np
-import pytest
 
 from redis_consumer.pbs.predict_pb2 import PredictResponse
 from redis_consumer.pbs import types_pb2
@@ -57,6 +60,37 @@ def _write_image(filepath, img_w=300, img_h=300):
     else:
         img = array_to_img(imarray, scale=False, data_format='channels_last')
         img.save(filepath)
+
+
+def _write_trks(filepath, X_mean=10, y_mean=5,
+                img_w=300, img_h=300, channels=1, frames=30):
+    raw = X_mean + np.random.rand(frames, img_w, img_h, channels) - 0.5
+    tracked = y_mean + np.random.rand(frames, img_w, img_h, channels) - 0.5
+    if filepath.endswith(".trk"):
+        lineages = {"1": {"label": 1, "frames": [0]}}
+    elif filepath.endswith(".trks"):
+        lineages = [{"1": {"label": 1, "frames": [0]}}]
+
+    with tarfile.open(filepath, 'w') as trks:
+        with tempfile.NamedTemporaryFile('w') as lineages_file:
+            json.dump(lineages, lineages_file, indent=1)
+            lineages_file.flush()
+            if filepath.endswith(".trk"):
+                trks.add(lineages_file.name, 'lineage.json')
+            elif filepath.endswith(".trks"):
+                trks.add(lineages_file.name, 'lineages.json')
+            else:
+                assert False
+
+        with tempfile.NamedTemporaryFile() as raw_file:
+            np.save(raw_file, raw)
+            raw_file.flush()
+            trks.add(raw_file.name, 'raw.npy')
+
+        with tempfile.NamedTemporaryFile() as tracked_file:
+            np.save(tracked_file, tracked)
+            tracked_file.flush()
+            trks.add(tracked_file.name, 'tracked.npy')
 
 
 def test_make_tensor_proto():
@@ -189,6 +223,57 @@ def test_save_numpy_array():
     img = _get_image(h, w, c)
     files = utils.save_numpy_array(img, 'name', '/a/b/', '/does/not/exist/')
     assert len(files) == 0
+
+
+def test_load_trks():
+    with utils.get_tempdir() as temp_dir:
+        for i in range(10):
+            # random boolean
+            if np.random.choice([True, False]):
+                trk_file = '{}.trk'.format(i)
+            else:
+                trk_file = '{}.trks'.format(i)
+
+            w = np.random.randint(low=30, high=100)
+            h = np.random.randint(low=30, high=100)
+            f = np.random.randint(low=2, high=30)
+
+            X_mean = np.random.uniform(0, 10)
+            y_mean = np.random.uniform(0, 10)
+
+            _write_trks(trk_file, X_mean=X_mean, y_mean=y_mean,
+                        img_w=w, img_h=h, channels=1, frames=f)
+
+            trks = utils.load_trks(trk_file)
+
+            assert "lineages" in trks
+            assert "lineage" not in trks
+            assert len(trks["lineages"]) == 1
+
+            assert trks["lineages"] == [{1: {"label": 1, "frames": [0]}}]
+
+            assert "X" in trks
+            assert "y" in trks
+            assert len(trks) == 3
+
+            assert ((X_mean - 0.5 < trks["X"]).all() and
+                    (trks["X"] < X_mean + 0.5).all())
+            assert ((y_mean - 0.5 < trks["y"]).all() and
+                    (trks["y"] < y_mean + 0.5).all())
+
+            assert trks["X"].shape == (f, w, h, 1)
+            assert trks["y"].shape == (f, w, h, 1)
+
+        # test bad extension
+        with pytest.raises(Exception):
+            path = os.path.join(temp_dir, "non.bad_extension")
+            _write_trks(path)
+            trks = utils.load_trks(path)
+
+        # test non-existent file
+        with pytest.raises(Exception):
+            path = os.path.join(temp_dir, "poof.trk")
+            trks = utils.load_trks(path)
 
 
 def test_zip_files():

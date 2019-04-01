@@ -70,6 +70,8 @@ def get_consumer(consumer_type, **kwargs):
         return consumers.ImageFileConsumer(**kwargs)
     if ct == 'zip':
         return consumers.ZipFileConsumer(**kwargs)
+    if ct == 'tracking':
+        return consumers.TrackingConsumer(**kwargs)
     raise ValueError('Invalid `consumer_type`: "{}"'.format(consumer_type))
 
 
