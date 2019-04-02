@@ -792,25 +792,30 @@ class TrackingConsumer(Consumer):
         self.hmset(redis_hash, {
             'identity_output': self.hostname,
             'status': status,
-            'output_url': "nonsense",
-            'output_file_name': "nonsense",
+            'output_url': output_url,
+            'output_file_name': output_file_name,
             'timestamp_output': output_timestamp,
             'timestamp_last_status_update': output_timestamp
         })
 
-    def _get_model(self):
+    def _get_model(self, redis_hash):
         hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
         model_name = "tracking_neigh=30_in=32"
         model_version = 0
 
         t = timeit.default_timer()
-        model = TrackingClient(hostname, model_name, model_version, settings)
+        model = TrackingClient(hostname,
+                               redis_hash,
+                               model_name,
+                               model_version,
+                               progress_callback=self._update_progress)
+
         self.logger.debug('Created the TrackingClient in %s seconds.',
                           timeit.default_timer() - t)
         return model
 
-    def _get_tracker(self, raw, segmented):
-        tracking_model = self._get_model()
+    def _get_tracker(self, redis_hash, raw, segmented):
+        tracking_model = self._get_model(redis_hash)
 
         features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
         tracker = tracking.cell_tracker(raw, segmented,
@@ -826,11 +831,26 @@ class TrackingConsumer(Consumer):
         self.logger.debug('Created tracker!')
         return tracker
 
+    def _update_progress(self, redis_hash, progress):
+        self.hmset(redis_hash, {
+            'progress': progress,
+        })
+
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvalues = self.hgetall(redis_hash)
         self.logger.debug('Found .trk hash to process "%s": %s',
                           redis_hash, json.dumps(hvalues, indent=4))
+
+        # Set status and initial progress
+        starting_time = time.time() * 1000
+        self.hmset(redis_hash, {
+            'status': 'started',
+            'progress': 0,
+            'timestamp_started': starting_time,
+            'identity_started': self.hostname,
+            'timestamp_last_status_update': starting_time
+        })
 
         with utils.get_tempdir() as tempdir:
             fname = self.storage.download(hvalues.get('input_file_name'), tempdir)
@@ -840,7 +860,7 @@ class TrackingConsumer(Consumer):
             self.logger.debug('X shape: %s', trk['X'].shape)
             self.logger.debug('y shape: %s', trk['y'].shape)
 
-            tracker = self._get_tracker(trk["X"], trk["y"])
+            tracker = self._get_tracker(redis_hash, trk["X"], trk["y"])
             self.logger.debug('Trying to track...')
 
             tracker._track_cells()
@@ -848,7 +868,8 @@ class TrackingConsumer(Consumer):
             self.logger.debug('Tracking done!')
 
             # Save tracking result and upload
-            save_name = os.path.join(tempdir, hvals.get('original_name', fname))
+            save_name = os.path.join(tempdir,
+                                     hvalues.get('original_name', fname))
             tracker.dump(save_name)
             output_file_name, output_url = self.storage.upload(save_name)
 

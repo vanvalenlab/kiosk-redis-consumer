@@ -708,6 +708,7 @@ class cell_tracker():
             cost_matrix, predictions = self._get_cost_matrix(frame)
             assignments = self._run_lap(cost_matrix)
             self._update_tracks(assignments, frame, predictions)
+            self.model.progress(frame / self.x.shape[0])
 
     def _track_review_dict(self):
         def process(key, track_item):

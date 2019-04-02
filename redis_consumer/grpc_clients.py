@@ -291,33 +291,25 @@ class TrackingClient(GrpcClient):
         model_name: string, name of model served by tensorflow-serving
         model_version: integer, version of the named model
     """
-    def __init__(self, host, model_name, model_version, settings):
+    def __init__(self, host, redis_hash, model_name, model_version, progress_callback):
         super(TrackingClient, self).__init__(host)
+        self.redis_hash = redis_hash
         self.model_name = model_name
         self.model_version = model_version
-        self.settings = settings
+        self.progress_callback = progress_callback
 
     def _single_request(self, stub, request, request_timeout=100):
         while True:
-            self.logger.info('Single request...')
             try:
                 predict_response = stub.Predict(request, timeout=request_timeout)
                 predict_response_dict = grpc_response_to_dict(predict_response)
                 keys = [k for k in predict_response_dict]
-                # self.logger.info('Got PredictResponse with keys: %s ', keys)
-                # self.logger.info('Prediction type: : %s',
-                #                  type(predict_response_dict['prediction']))
-                # self.logger.info('Prediction data: : %s',
-                #                  predict_response_dict['prediction'])
                 return predict_response_dict['prediction']
 
             except RpcError as err:
                 self.logger.error(err)
-                self.logger.error('Prediction failed! Trying again...')
+                self.logger.error('Single prediction failed! Trying again...')
                 time.sleep(10)
-                # raise err
-
-            return {}
 
     def _predict(self, data, request_timeout=100):
         self.logger.info('Sending tracking prediction to %s model %s:%s.',
@@ -355,3 +347,15 @@ class TrackingClient(GrpcClient):
                          [model_input.shape for model_input in data])
 
         return np.array(self._predict(data))
+
+    def progress(self, progress):
+        """
+        Update the internal state regarding progress
+
+        Arguments:
+            progress: float, the progress in the interval [0, 1]
+        """
+        progress *= 100
+        # clamp to an integer between 0 and 100
+        progress = min(100, max(0, round(progress)))
+        self.progress_callback(self.redis_hash, progress)
