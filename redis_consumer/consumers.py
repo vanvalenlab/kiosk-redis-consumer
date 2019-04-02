@@ -112,7 +112,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def _redis_type(self, redis_key):
         while True:
             try:
+                start = timeit.default_timer()
                 response = self.redis.type(redis_key)
+                self.logger.debug('Finished `TYPE %s` in %s seconds.',
+                                  redis_key, timeit.default_timer() - start)
                 break
             except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
@@ -127,8 +130,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             try:
                 start = timeit.default_timer()
                 response = self.redis.scan_iter(match=match)
-                self.logger.debug('Finished SCAN in %s seconds.',
-                                  timeit.default_timer() - start)
+                self.logger.debug('Finished `SCAN %s` in %s seconds.',
+                                  match, timeit.default_timer() - start)
                 break
             except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
@@ -157,7 +160,11 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def hset(self, rhash, key, value):
         while True:
             try:
+                start = timeit.default_timer()
                 response = self.redis.hset(rhash, key, value)
+                self.logger.debug('Finished `HSET %s %s %s` in %s seconds.',
+                                  rhash, key, value,
+                                  timeit.default_timer() - start)
                 break
             except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
@@ -170,7 +177,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def hget(self, rhash, key):
         while True:
             try:
+                # start = timeit.default_timer()
                 response = self.redis.hget(rhash, key)
+                # self.logger.debug('Finished `HGET %s %s` in %s seconds.',
+                #                   rhash, key, timeit.default_timer() - start)
                 break
             except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
@@ -183,9 +193,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def hmset(self, rhash, data):
         while True:
             try:
+                start = timeit.default_timer()
                 response = self.redis.hmset(rhash, data)
-                self.logger.debug('Updated hash %s with values: %s.',
-                                  rhash, data)
+                self.logger.debug('`HMSET %s %s` finished in %s seconds.',
+                                  rhash, data, timeit.default_timer() - start)
                 break
             except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
@@ -198,7 +209,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def hgetall(self, rhash):
         while True:
             try:
+                start = timeit.default_timer()
                 response = self.redis.hgetall(rhash)
+                self.logger.debug('Finished `HGETALL %s` in %s seconds.',
+                                  rhash, timeit.default_timer() - start)
                 break
             except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
@@ -243,9 +257,9 @@ class ImageFileConsumer(Consumer):
         for key in keys:
             fname = str(self.hget(key, 'input_file_name'))
             if not fname.lower().endswith('.zip'):
-                # yield key
-                return [key]
-        return []  # no valid keys, return empty list
+                yield key
+                # return [key]
+        # return []  # no valid keys, return empty list
 
     def _process(self, image, key, process_type, timeout=30, streaming=False):
         """Apply each processing function to image.
