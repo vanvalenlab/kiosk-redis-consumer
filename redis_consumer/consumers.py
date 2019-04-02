@@ -41,7 +41,7 @@ import grpc
 import redis
 import numpy as np
 
-from pympler import asizeof
+from pympler import tracker
 
 from redis_consumer.grpc_clients import PredictClient
 from redis_consumer.grpc_clients import ProcessClient
@@ -234,14 +234,15 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         Returns:
             nothing: this is the consumer main process
         """
+        tr = tracker.SummaryTracker()
         # process each unprocessed hash
         for redis_hash in self.iter_redis_hashes(status, prefix):
             try:
                 start = timeit.default_timer()
                 self._consume(redis_hash)
-                self.logger.debug('Consumed key %s in %s seconds. (%s)',
-                                  redis_hash, timeit.default_timer() - start,
-                                  asizeof.asizeof(self.redis))
+                self.logger.debug('Consumed key %s in %s seconds.',
+                                  redis_hash, timeit.default_timer() - start)
+                self.logger.debug('MEMORY: %s', tr.diff())
             except Exception as err:  # pylint: disable=broad-except
                 self._handle_error(err, redis_hash)
 
