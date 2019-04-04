@@ -321,7 +321,8 @@ class ImageFileConsumer(Consumer):
                     grpc.StatusCode.DEADLINE_EXCEEDED,
                     grpc.StatusCode.UNAVAILABLE
                 }
-                if err.code() in retry_statuses:  # pylint: disable=E1101
+                # pylint: disable=E1101
+                if err.code() in retry_statuses:
                     count += 1
                     # write update to Redis
                     processing_retry_time = time.time() * 1000
@@ -329,17 +330,19 @@ class ImageFileConsumer(Consumer):
                         'number_of_processing_retries': count,
                         'status': '{} {}-processing -- RETRY:{} -- {}'.format(
                             key, process_type, count,
-                            err.code().name),  # pylint: disable=E1101
+                            err.code().name),
                         'timestamp_processing_retry': processing_retry_time,
                         'identity_processing_retry': self.hostname,
                         'timestamp_last_status_update': processing_retry_time
                     })
-                    self.logger.warning(err.details())  # pylint: disable=E1101
-                    self.logger.warning('%s during %s %s-processing request: '
-                                        '%s', type(err).__name__, key,
-                                        process_type, err)
                     sleeptime = np.random.randint(24, 44)
                     sleeptime = 1 + sleeptime * int(streaming)
+                    self.logger.warning('%sException `%s: %s` during %s '
+                                        '%s-processing request.  Waiting %s '
+                                        'seconds before retrying.',
+                                        type(err).__name__, err.code().name,
+                                        err.details(), key, process_type,
+                                        sleeptime)
                     self.logger.debug('Waiting for %s seconds before retrying',
                                       sleeptime)
                     time.sleep(sleeptime)  # sleep before retry
@@ -477,22 +480,30 @@ class ImageFileConsumer(Consumer):
                                   count, timeit.default_timer() - start)
                 return results
             except grpc.RpcError as err:
+                # pylint: disable=E1101
                 retry_statuses = {
                     grpc.StatusCode.DEADLINE_EXCEEDED,
                     grpc.StatusCode.UNAVAILABLE
                 }
-                if err.code() in retry_statuses:  # pylint: disable=E1101
+                if err.code() in retry_statuses:
                     count += 1
                     # write update to Redis
                     processing_retry_time = time.time() * 1000
                     self.hmset(self._redis_hash, {
                         'number_of_processing_retries': count,
                         'status': 'processing -- RETRY:{} -- {}'.format(
-                            count, err.code().name),  # pylint: disable=E1101
+                            count, err.code().name),
                         'timestamp_processing_retry': processing_retry_time,
                         'identity_processing_retry': self.hostname,
                         'timestamp_last_status_update': processing_retry_time
                     })
+
+                    self.logger.warning('%sException `%s: %s` during '
+                                        'PredictClient request to model %s:%s.'
+                                        'Waiting %s seconds before retrying.',
+                                        type(err).__name__, err.code().name,
+                                        err.details(), model_name,
+                                        model_version, backoff)
                     self.logger.warning('Encountered %s  during PredictClient '
                                         'request to model %s:%s: %s.',
                                         type(err).__name__, model_name,
