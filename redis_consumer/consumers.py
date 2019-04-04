@@ -116,8 +116,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 break
             except ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
-                                    'redis.type(). Retrying in %s seconds.',
-                                    type(err).__name__, err,
+                                    '`TYPE %s`. Retrying in %s seconds.',
+                                    type(err).__name__, err, redis_key,
                                     self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
@@ -161,8 +161,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 break
             except ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
-                                    'HSET. Retrying in %s seconds.',
-                                    type(err).__name__, err,
+                                    '`HSET %s %s %s`. Retrying in %s seconds.',
+                                    type(err).__name__, err, rhash, key, value,
                                     self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
@@ -174,8 +174,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 break
             except ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
-                                    'redis.hget(). Retrying in %s seconds.',
-                                    type(err).__name__, err,
+                                    '`HGET %s %s`. Retrying in %s seconds.',
+                                    type(err).__name__, err, rhash, key,
                                     self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
@@ -189,8 +189,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 break
             except ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
-                                    'redis.hmset(). Retrying in %s seconds.',
-                                    type(err).__name__, err,
+                                    '`HMSET %s %s`. Retrying in %s seconds.',
+                                    type(err).__name__, err, rhash, data,
                                     self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
@@ -202,8 +202,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 break
             except ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
-                                    'redis.hgetall(). Retrying in %s seconds.',
-                                    type(err).__name__, err,
+                                    '`HGETALL %s`. Retrying in %s seconds.',
+                                    type(err).__name__, err, rhash,
                                     self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
