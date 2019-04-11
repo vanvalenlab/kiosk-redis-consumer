@@ -119,8 +119,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 break
             except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
-                                    'redis.type(). Retrying in %s seconds.',
-                                    type(err).__name__, err,
+                                    '`TYPE %s`. Retrying in %s seconds.',
+                                    type(err).__name__, err, redis_key,
                                     self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
@@ -168,8 +168,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 break
             except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
-                                    'HSET. Retrying in %s seconds.',
-                                    type(err).__name__, err,
+                                    '`HSET %s %s %s`. Retrying in %s seconds.',
+                                    type(err).__name__, err, rhash, key, value,
                                     self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
@@ -184,8 +184,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 break
             except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
-                                    'redis.hget(). Retrying in %s seconds.',
-                                    type(err).__name__, err,
+                                    '`HGET %s %s`. Retrying in %s seconds.',
+                                    type(err).__name__, err, rhash, key,
                                     self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
@@ -200,8 +200,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 break
             except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
-                                    'redis.hmset(). Retrying in %s seconds.',
-                                    type(err).__name__, err,
+                                    '`HMSET %s %s`. Retrying in %s seconds.',
+                                    type(err).__name__, err, rhash, data,
                                     self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
@@ -216,8 +216,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 break
             except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
-                                    'redis.hgetall(). Retrying in %s seconds.',
-                                    type(err).__name__, err,
+                                    '`HGETALL %s`. Retrying in %s seconds.',
+                                    type(err).__name__, err, rhash,
                                     self._redis_retry_timeout)
                 time.sleep(self._redis_retry_timeout)
         return response
@@ -237,8 +237,15 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             try:
                 start = timeit.default_timer()
                 self._consume(redis_hash)
-                self.logger.debug('Consumed key %s in %s seconds.',
-                                  redis_hash, timeit.default_timer() - start)
+                hvals = self.hgetall(redis_hash)
+                self.logger.debug('Consumed key %s (model %s:%s, '
+                                  'preprocessing: %s, postprocessing: %s) '
+                                  '(%s retries) in %s seconds.',
+                                  redis_hash, hvals.get('model_name'),
+                                  hvals.get('model_version'),
+                                  hvals.get('preprocess_function'),
+                                  hvals.get('postprocess_function'),
+                                  0, timeit.default_timer() - start)
             except Exception as err:  # pylint: disable=broad-except
                 self._handle_error(err, redis_hash)
 
@@ -306,9 +313,15 @@ class ImageFileConsumer(Consumer):
                 else:
                     results = client.process(req_data, timeout)
 
-                self.logger.debug('Finished %s %s-processing (%s retries) in '
-                                  '%s seconds.', key, process_type, count,
-                                  timeit.default_timer() - start)
+                self.logger.debug('%s-processed key %s (model %s:%s, '
+                                  'preprocessing: %s, postprocessing: %s)'
+                                  ' (%s retries)  in %s seconds.',
+                                  process_type.capitalize(), self._redis_hash,
+                                  self._redis_values.get('model_name'),
+                                  self._redis_values.get('model_version'),
+                                  self._redis_values.get('preprocess_function'),
+                                  self._redis_values.get('postprocess_function'),
+                                  count, timeit.default_timer() - start)
 
                 results = results['results']
                 # Again, squeeze out batch dimension if unnecessary
@@ -322,24 +335,28 @@ class ImageFileConsumer(Consumer):
                     grpc.StatusCode.DEADLINE_EXCEEDED,
                     grpc.StatusCode.UNAVAILABLE
                 }
-                if err.code() in retry_statuses:  # pylint: disable=E1101
+                # pylint: disable=E1101
+                if err.code() in retry_statuses:
                     count += 1
                     # write update to Redis
                     processing_retry_time = time.time() * 1000
                     self.hmset(self._redis_hash, {
                         'number_of_processing_retries': count,
-                        'status': 'processing -- RETRY:{} -- {}'.format(
-                            count, err.code().name),  # pylint: disable=E1101
+                        'status': '{} {}-processing -- RETRY:{} -- {}'.format(
+                            key, process_type, count,
+                            err.code().name),
                         'timestamp_processing_retry': processing_retry_time,
                         'identity_processing_retry': self.hostname,
                         'timestamp_last_status_update': processing_retry_time
                     })
-                    self.logger.warning(err.details())  # pylint: disable=E1101
-                    self.logger.warning('%s during %s %s-processing request: '
-                                        '%s', type(err).__name__, key,
-                                        process_type, err)
                     sleeptime = np.random.randint(24, 44)
                     sleeptime = 1 + sleeptime * int(streaming)
+                    self.logger.warning('%sException `%s: %s` during %s '
+                                        '%s-processing request.  Waiting %s '
+                                        'seconds before retrying.',
+                                        type(err).__name__, err.code().name,
+                                        err.details(), key, process_type,
+                                        sleeptime)
                     self.logger.debug('Waiting for %s seconds before retrying',
                                       sleeptime)
                     time.sleep(sleeptime)  # sleep before retry
@@ -468,28 +485,39 @@ class ImageFileConsumer(Consumer):
                 prediction = client.predict(req_data, request_timeout=timeout)
                 retrying = False
                 results = prediction['prediction']
-                self.logger.debug('Segmented image with model %s:%s '
-                                  '(%s retries) in %s seconds.',
-                                  model_name, model_version, count,
-                                  timeit.default_timer() - start)
+                self.logger.debug('Segmented key %s (model %s:%s, '
+                                  'preprocessing: %s, postprocessing: %s)'
+                                  ' (%s retries) in %s seconds.',
+                                  self._redis_hash, model_name, model_version,
+                                  self._redis_values.get('preprocess_function'),
+                                  self._redis_values.get('postprocess_function'),
+                                  count, timeit.default_timer() - start)
                 return results
             except grpc.RpcError as err:
+                # pylint: disable=E1101
                 retry_statuses = {
                     grpc.StatusCode.DEADLINE_EXCEEDED,
                     grpc.StatusCode.UNAVAILABLE
                 }
-                if err.code() in retry_statuses:  # pylint: disable=E1101
+                if err.code() in retry_statuses:
                     count += 1
                     # write update to Redis
                     processing_retry_time = time.time() * 1000
                     self.hmset(self._redis_hash, {
                         'number_of_processing_retries': count,
                         'status': 'processing -- RETRY:{} -- {}'.format(
-                            count, err.code().name),  # pylint: disable=E1101
+                            count, err.code().name),
                         'timestamp_processing_retry': processing_retry_time,
                         'identity_processing_retry': self.hostname,
                         'timestamp_last_status_update': processing_retry_time
                     })
+
+                    self.logger.warning('%sException `%s: %s` during '
+                                        'PredictClient request to model %s:%s.'
+                                        'Waiting %s seconds before retrying.',
+                                        type(err).__name__, err.code().name,
+                                        err.details(), model_name,
+                                        model_version, backoff)
                     self.logger.warning('Encountered %s  during PredictClient '
                                         'request to model %s:%s: %s.',
                                         type(err).__name__, model_name,
@@ -510,8 +538,10 @@ class ImageFileConsumer(Consumer):
                 raise err
 
     def _consume(self, redis_hash):
-        self._redis_hash = redis_hash
         hvals = self.hgetall(redis_hash)
+        # hold on to the redis hash/values for logging purposes
+        self._redis_hash = redis_hash
+        self._redis_values = hvals
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
 
