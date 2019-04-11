@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-FROM python:2.7
+FROM python:3.6
 
 WORKDIR /kiosk/consumer
 
