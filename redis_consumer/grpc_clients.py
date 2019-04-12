@@ -97,13 +97,13 @@ class PredictClient(GrpcClient):
 
         t = timeit.default_timer()
         stub = PredictionServiceStub(channel)
-        self.logger.debug('Creating PredictionServiceStub took: %s',
+        self.logger.debug('Created TensorFlowServingServiceStub in %s seconds.',
                           timeit.default_timer() - t)
 
         t = timeit.default_timer()
         request = PredictRequest()
-        self.logger.debug('Creating PredictRequest object took: %s',
-                          timeit.default_timer() - t)
+        self.logger.debug('Created TensorFlowServingRequest object in %s '
+                          'seconds.', timeit.default_timer() - t)
 
         request.model_spec.name = self.model_name  # pylint: disable=E1101
 
@@ -117,22 +117,23 @@ class PredictClient(GrpcClient):
             # pylint: disable=E1101
             request.inputs[d['in_tensor_name']].CopyFrom(tensor_proto)
 
-        self.logger.debug('Making tensor protos took: %s',
+        self.logger.debug('Made tensor protos in %s seconds.',
                           timeit.default_timer() - t)
 
         try:
             t = timeit.default_timer()
             predict_response = stub.Predict(request, timeout=request_timeout)
-            self.logger.debug('Actual PredictRequest took: %s seconds.',
-                              timeit.default_timer() - t)
+            self.logger.debug('gRPC TensorFlowServingRequest finished in %s '
+                              'seconds.', timeit.default_timer() - t)
 
             t = timeit.default_timer()
             predict_response_dict = grpc_response_to_dict(predict_response)
-            self.logger.debug('Converted PredictResponse to dict in %s seconds.',
-                              timeit.default_timer() - t)
+            self.logger.debug('gRPC TensorFlowServingProtobufConversion took '
+                              '%s seconds.', timeit.default_timer() - t)
 
             keys = [k for k in predict_response_dict]
-            self.logger.info('Got PredictResponse with keys: %s ', keys)
+            self.logger.info('Got TensorFlowServingResponse with keys: %s ',
+                             keys)
 
             return predict_response_dict
 
@@ -167,12 +168,12 @@ class ProcessClient(GrpcClient):
 
         t = timeit.default_timer()
         stub = ProcessingServiceStub(channel)
-        self.logger.debug('Creating ProcessingServiceStub took %s seconds.',
-                          timeit.default_timer() - t)
+        self.logger.debug('Created DataProcessingProcessingServiceStub in %s '
+                          'seconds.', timeit.default_timer() - t)
 
         t = timeit.default_timer()
         request = ProcessRequest()
-        self.logger.debug('Creating ProcessRequest object took: %s',
+        self.logger.debug('Created DataProcessingRequest object in %s seconds.',
                           timeit.default_timer() - t)
 
         # pylint: disable=E1101
@@ -186,19 +187,19 @@ class ProcessClient(GrpcClient):
             # pylint: disable=E1101
             request.inputs[d['in_tensor_name']].CopyFrom(tensor_proto)
 
-        self.logger.debug('Making tensor protos took: %s',
+        self.logger.debug('Made tensor protos in %s seconds.',
                           timeit.default_timer() - t)
 
         try:
             t = timeit.default_timer()
             response = stub.Process(request, timeout=request_timeout)
-            self.logger.debug('Actual ProcessRequest took: %s seconds.',
-                              timeit.default_timer() - t)
+            self.logger.debug('gRPC DataProcessingRequest finished in %s '
+                              'seconds.', timeit.default_timer() - t)
 
             t = timeit.default_timer()
             response_dict = grpc_response_to_dict(response)
-            self.logger.debug('Converted ProcessResponse to dict in %s seconds.',
-                              timeit.default_timer() - t)
+            self.logger.debug('gRPC DataProcessingProtobufConversion took %s '
+                              'seconds.', timeit.default_timer() - t)
 
             keys = [k for k in response_dict]
             self.logger.debug('Got processing_response with keys: %s', keys)
@@ -222,7 +223,7 @@ class ProcessClient(GrpcClient):
 
         t = timeit.default_timer()
         stub = ProcessingServiceStub(channel)
-        self.logger.debug('Creating stub took %s seconds.',
+        self.logger.debug('Created stub in %s seconds.',
                           timeit.default_timer() - t)
         chunk_size = 64 * 1024  # 64 kB is recommended payload size
 
@@ -259,18 +260,18 @@ class ProcessClient(GrpcClient):
                 processed_bytes.append(response.outputs['data'])
 
             npbytes = b''.join(processed_bytes)
-            self.logger.info('Got response stream of %s bytes in %s seconds.',
-                             len(npbytes), timeit.default_timer() - t)
+            # Got response stream of %s bytes in %s seconds.
+            self.logger.info('gRPC DataProcessingStreamRequest of %s bytes '
+                             'finished in %s seconds.', len(npbytes),
+                             timeit.default_timer() - t)
 
             t = timeit.default_timer()
             processed_image = np.frombuffer(npbytes, dtype=dtype)
-            self.logger.info('Loaded bytes into numpy array of shape %s in %s'
-                             ' seconds.', processed_image.shape,
-                             timeit.default_timer() - t)
-
             results = processed_image.reshape(shape)
-            self.logger.info('Reshaped array into shape %s',
-                             results.shape)
+            self.logger.info('gRPC DataProcessingStreamConversion from %s bytes'
+                             ' to a numpy array of shape %s in %s seconds.',
+                             len(npbytes), results.shape,
+                             timeit.default_timer() - t)
 
             return {'results': results}
 
