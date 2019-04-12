@@ -112,10 +112,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def _redis_type(self, redis_key):
         while True:
             try:
-                # start = timeit.default_timer()
                 response = self.redis.type(redis_key)
-                # self.logger.debug('Finished `TYPE %s` in %s seconds.',
-                #                   redis_key, timeit.default_timer() - start)
                 break
             except redis.exceptions.ConnectionError as err:
                 self.logger.warning('Encountered %s: %s when calling '
