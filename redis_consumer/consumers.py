@@ -138,22 +138,6 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 time.sleep(self._redis_retry_timeout)
         return response
 
-    def keys(self):
-        while True:
-            try:
-                start = timeit.default_timer()
-                response = self.redis.keys()
-                self.logger.debug('KEYS got %s results in %s seconds.',
-                                  len(response), timeit.default_timer() - start)
-                break
-            except redis.exceptions.ConnectionError as err:
-                self.logger.warning('Encountered %s: %s when calling '
-                                    'KEYS. Retrying in %s seconds.',
-                                    type(err).__name__, err,
-                                    self._redis_retry_timeout)
-                time.sleep(self._redis_retry_timeout)
-        return response
-
     def hset(self, rhash, key, value):
         while True:
             try:
