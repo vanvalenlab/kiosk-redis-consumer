@@ -77,7 +77,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             Iterator of all hashes with a valid status
         """
         match = '%s*' % str(prefix).lower() if prefix is not None else None
-        for key in self.scan_iter(match=match):
+        for key in self.scan_iter(match=match, count=1000):
             # Check if the key is a hash
             if self._redis_type(key) == 'hash':
                 # if status is given, only yield hashes with that status
@@ -122,11 +122,11 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 time.sleep(self._redis_retry_timeout)
         return response
 
-    def scan_iter(self, match=None):
+    def scan_iter(self, match=None, count=None):
         while True:
             try:
                 start = timeit.default_timer()
-                response = self.redis.scan_iter(match=match)
+                response = self.redis.scan_iter(match=match, count=count)
                 self.logger.debug('Finished `SCAN %s` in %s seconds.',
                                   match, timeit.default_timer() - start)
                 break

@@ -65,7 +65,7 @@ class DummyRedis(object):
             '{}_{}_{}'.format('other', self.status, 'x.zip'),
         ]
 
-    def scan_iter(self, match=None):
+    def scan_iter(self, match=None, count=None):
         if self.fail_count < self.fail_tolerance:
             self.fail_count += 1
             raise redis.exceptions.ConnectionError('thrown on purpose')
