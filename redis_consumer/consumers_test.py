@@ -65,7 +65,7 @@ class DummyRedis(object):
             '{}_{}_{}'.format('other', self.status, 'x.zip'),
         ]
 
-    def scan_iter(self, match=None):
+    def scan_iter(self, match=None, count=None):
         if self.fail_count < self.fail_tolerance:
             self.fail_count += 1
             raise redis.exceptions.ConnectionError('thrown on purpose')
@@ -168,14 +168,6 @@ class DummyStorage(object):
 
 
 class TestConsumer(object):
-
-    def test_keys(self):
-        redis_client = DummyRedis(fail_tolerance=2)
-        consumer = consumers.Consumer(redis_client, None,
-                                      redis_retry_timeout=0.01)
-        keys = consumer.keys()
-        assert keys == redis_client.keys()
-        assert consumer.redis.fail_count == redis_client.fail_tolerance
 
     def test_hgetall(self):
         redis_client = DummyRedis(fail_tolerance=2)
