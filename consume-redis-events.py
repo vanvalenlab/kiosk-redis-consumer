@@ -93,7 +93,8 @@ if __name__ == '__main__':
     kwargs = {
         'redis_client': redis,
         'storage_client': storage_client,
-        'final_status': 'done'
+        'final_status': 'done',
+        'queue': settings.QUEUE,
     }
 
     consumer = get_consumer(settings.CONSUMER_TYPE, **kwargs)
