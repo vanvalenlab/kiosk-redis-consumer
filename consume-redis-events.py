@@ -101,7 +101,6 @@ if __name__ == '__main__':
     while True:
         try:
             consumer.consume(settings.STATUS, settings.HASH_PREFIX)
-            time.sleep(settings.INTERVAL)
         except Exception as err:  # pylint: disable=broad-except
             _logger.critical('Fatal Error: %s: %s', type(err).__name__, err)
             sys.exit(1)
