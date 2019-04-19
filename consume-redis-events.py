@@ -32,7 +32,7 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
-import time
+import traceback
 import logging
 import logging.handlers
 
@@ -103,5 +103,7 @@ if __name__ == '__main__':
         try:
             consumer.consume(settings.STATUS, settings.HASH_PREFIX)
         except Exception as err:  # pylint: disable=broad-except
-            _logger.critical('Fatal Error: %s: %s', type(err).__name__, err)
+            _logger.critical('Fatal Error: %s: %s\n%s',
+                             type(err).__name__, err, traceback.format_exc())
+
             sys.exit(1)
