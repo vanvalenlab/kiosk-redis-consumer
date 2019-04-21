@@ -31,6 +31,7 @@ from __future__ import print_function
 import random
 
 import redis
+import pytest
 
 from redis_consumer import redis as redis_wrapper
 
@@ -40,11 +41,11 @@ class DummyRedis(object):  # pylint: disable=useless-object-inheritance
         self.fail_count = 0
         self.fail_tolerance = fail_tolerance
 
-    def test_function(self):
+    def get_fail_count(self):
         if self.fail_count < self.fail_tolerance:
             self.fail_count += 1
             raise redis.exceptions.ConnectionError('thrown on purpose')
-        return True
+        return self.fail_count
 
 
 class TestRedis(object):  # pylint: disable=useless-object-inheritance
@@ -60,5 +61,7 @@ class TestRedis(object):  # pylint: disable=useless-object-inheritance
         Redis._get_redis_client = _get_redis_client
 
         client = Redis(host='host', port='port', backoff=0)
-        client.test_function()
-        assert client._redis.fail_count == fails
+        assert client.get_fail_count() == fails
+
+        with pytest.raises(AttributeError):
+            client.unknown_function()
