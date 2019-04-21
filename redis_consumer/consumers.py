@@ -28,8 +28,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import timeit
 import uuid
+import timeit
+import datetime
 
 import os
 import json
@@ -59,6 +60,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def __init__(self,
                  redis_client,
                  storage_client,
+                 queue,
+                 processing_queue='processing',
                  final_status='done',
                  redis_retry_timeout=settings.REDIS_TIMEOUT):
         self.output_dir = settings.OUTPUT_DIR
@@ -68,6 +71,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         self._redis_retry_timeout = redis_retry_timeout
         self.logger = logging.getLogger(str(self.__class__.__name__))
         self.hostname = settings.HOSTNAME
+        self.queue = queue
+        self.processing_queue = processing_queue
 
     def iter_redis_hashes(self, status='new', prefix='predict'):
         """Iterate over hash values in redis.
@@ -87,6 +92,23 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                 else:  # no need to check the status
                     yield key
 
+    def get_redis_hash(self):
+        while True:
+            redis_hash = self.redis.rpoplpush(self.queue, self.processing_queue)
+
+            # if queue is empty, return None
+            if redis_hash is None:
+                return redis_hash
+
+            # if hash is found and valid, return the hash
+            if self.is_valid_hash(redis_hash):
+                return redis_hash
+
+            # this invalid hash should not be processed by this consumer.
+            # remove it from processing, and push it back to the work queue.
+            self.redis.lrem(self.processing_queue, 1, redis_hash)
+            self.redis.lpush(redis_hash)
+
     def _handle_error(self, err, redis_hash):
         """Update redis with failure information, and log errors.
 
@@ -105,6 +127,10 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         })
         self.logger.error('Failed to process redis key %s due to %s: %s',
                           redis_hash, type(err).__name__, err)
+
+    def is_valid_hash(self, redis_hash):  # pylint: disable=unused-argument
+        """Returns True if the consumer should work on the item"""
+        return True
 
     def _consume(self, redis_hash):
         raise NotImplementedError
@@ -213,12 +239,13 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         Returns:
             nothing: this is the consumer main process
         """
-        # process each unprocessed hash
-        for redis_hash in self.iter_redis_hashes(status, prefix):
+        start = timeit.default_timer()
+        redis_hash = self.get_redis_hash()
+
+        if redis_hash is not None:  # popped something off the queue
             try:
-                start = timeit.default_timer()
                 self._consume(redis_hash)
-                hvals = self.hgetall(redis_hash)
+                hvals = self.redis.hgetall(redis_hash)
                 self.logger.debug('Consumed key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s) '
                                   '(%s retries) in %s seconds.',
@@ -227,6 +254,9 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                                   hvals.get('preprocess_function'),
                                   hvals.get('postprocess_function'),
                                   0, timeit.default_timer() - start)
+
+                # remove the key from the processing queue
+                self.redis.lrem(self.processing_queue, 1, redis_hash)
             except Exception as err:  # pylint: disable=broad-except
                 self._handle_error(err, redis_hash)
 
@@ -234,18 +264,12 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
 class ImageFileConsumer(Consumer):
     """Consumes image files and uploads the results"""
 
-    def iter_redis_hashes(self, status='new', prefix='predict'):
-        """Iterate over hash values in redis.
-        Only yield hash values for valid image files
-
-        Returns:
-            Iterator of all hashes with a valid status
-        """
-        keys = super(ImageFileConsumer, self).iter_redis_hashes(status, prefix)
-        for key in keys:
-            fname = str(self.hget(key, 'input_file_name'))
-            if not fname.lower().endswith('.zip'):
-                yield key
+    def is_valid_hash(self, redis_hash):
+        if redis_hash is None:
+            return False
+        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
+        is_valid = not fname.lower().endswith('.zip')
+        return is_valid
 
     def _process(self, image, key, process_type, timeout=30, streaming=False):
         """Apply each processing function to image.
@@ -653,18 +677,12 @@ class ImageFileConsumer(Consumer):
 class ZipFileConsumer(Consumer):
     """Consumes zip files and uploads the results"""
 
-    def iter_redis_hashes(self, status='new', prefix='predict'):
-        """Iterate over hash values in redis.
-        Only yield hash values for zip files
-
-        Returns:
-            Iterator of all zip hashes with a valid status
-        """
-        keys = super(ZipFileConsumer, self).iter_redis_hashes(status, prefix)
-        for key in keys:
-            fname = str(self.hget(key, 'input_file_name'))
-            if fname.lower().endswith('.zip'):
-                yield key
+    def is_valid_hash(self, redis_hash):
+        if redis_hash is None:
+            return False
+        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
+        is_valid = fname.lower().endswith('.zip')
+        return is_valid
 
     def _upload_archived_images(self, hvalues):
         """Extract all image files and upload them to storage and redis"""

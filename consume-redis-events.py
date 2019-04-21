@@ -36,9 +36,8 @@ import traceback
 import logging
 import logging.handlers
 
-from redis import StrictRedis
-
 from redis_consumer import consumers
+from redis_consumer import redis as redis_wrapper
 from redis_consumer import settings
 from redis_consumer import storage
 
@@ -82,11 +81,7 @@ if __name__ == '__main__':
 
     _logger = logging.getLogger(__file__)
 
-    redis = StrictRedis(
-        host=settings.REDIS_HOST,
-        port=settings.REDIS_PORT,
-        decode_responses=True,
-        charset='utf-8')
+    redis = redis_wrapper.Redis(settings.REDIS_HOST, settings.REDIS_PORT)
 
     storage_client = storage.get_client(settings.CLOUD_PROVIDER)
 
