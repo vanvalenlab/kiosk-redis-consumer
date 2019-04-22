@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Fault tolerant Redis client wrapper class"""
+"""Fault tolerant RedisClient wrapper class"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -34,7 +34,7 @@ import logging
 import redis
 
 
-class Redis(object):  # pylint: disable=useless-object-inheritance
+class RedisClient(object):  # pylint: disable=useless-object-inheritance
 
     def __init__(self, host, port, backoff=1):
         self.logger = logging.getLogger(str(self.__class__.__name__))
