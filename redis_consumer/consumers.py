@@ -37,7 +37,6 @@ import time
 import logging
 import zipfile
 
-import pytz
 import grpc
 import numpy as np
 
@@ -112,7 +111,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         return True
 
     def update_status(self, redis_hash, status, data=None,
-                      fmt='%a %b %d %H:%M:%S', tz=pytz.UTC):
+                      fmt='%b %d, %Y %H:%M:%S.%f'):
         """Update the status of a the given hash.
 
         Args:
@@ -128,8 +127,8 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         data = {} if data is None else data
         data.update({
             'status': status,
-            'last_updated': datetime.datetime.strftime(
-                datetime.datetime.now(tz=tz), fmt),
+            'last_updated':
+                datetime.datetime.now(datetime.timezone.utc).strftime(fmt),
         })
         self.redis.hmset(redis_hash, data)
 
