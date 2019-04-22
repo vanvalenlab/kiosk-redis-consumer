@@ -34,6 +34,7 @@ from __future__ import print_function
 import sys
 import time
 import logging
+import logging.handlers
 
 from redis import StrictRedis
 
@@ -50,7 +51,10 @@ def initialize_logger(debug_mode=False):
     console = logging.StreamHandler(stream=sys.stdout)
     console.setFormatter(formatter)
 
-    fh = logging.FileHandler('redis-consumer.log')
+    fh = logging.handlers.RotatingFileHandler(
+        filename='redis-consumer.log',
+        maxBytes=10000000,
+        backupCount=10)
     fh.setFormatter(formatter)
 
     if debug_mode:
