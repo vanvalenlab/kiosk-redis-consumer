@@ -136,7 +136,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def _consume(self, redis_hash):
         raise NotImplementedError
 
-    def consume(self, status=None, prefix=None):
+    def consume(self):
         """Consume all redis events every `interval` seconds.
 
         Args:
