@@ -116,10 +116,9 @@ class Consumer(object):
             status: string, the new status value
             data: dict, optional data to include in the hmset call
         """
-        if data is not None:
-            if not isinstance(data, dict):
-                raise ValueError('`data` must be a dictionary, got {}.'.format(
-                    type(data).__name__))
+        if data is not None and not isinstance(data, dict):
+            raise ValueError('`data` must be a dictionary, got {}.'.format(
+                type(data).__name__))
 
         data = {} if data is None else data
         data.update({
