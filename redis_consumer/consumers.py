@@ -156,11 +156,12 @@ class Consumer(object):
                                   hvals.get('preprocess_function'),
                                   hvals.get('postprocess_function'),
                                   0, timeit.default_timer() - start)
-
-                # remove the key from the processing queue
-                self.redis.lrem(self.processing_queue, 1, redis_hash)
             except Exception as err:  # pylint: disable=broad-except
+                # log the error and update redis with details
                 self._handle_error(err, redis_hash)
+
+            # remove the key from the processing queue
+            self.redis.lrem(self.processing_queue, 1, redis_hash)
 
 
 class ImageFileConsumer(Consumer):
