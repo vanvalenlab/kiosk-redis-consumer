@@ -36,7 +36,7 @@ import pytest
 import redis_consumer
 
 
-class DummyRedis(object):  # pylint: disable=useless-object-inheritance
+class DummyRedis(object):
     def __init__(self, fail_tolerance=0, hard_fail=False):
         self.fail_count = 0
         self.fail_tolerance = fail_tolerance
@@ -51,7 +51,7 @@ class DummyRedis(object):  # pylint: disable=useless-object-inheritance
         return self.fail_count
 
 
-class TestRedis(object):  # pylint: disable=useless-object-inheritance
+class TestRedis(object):
 
     def test_redis_client(self):  # pylint: disable=R0201
         fails = random.randint(1, 3)

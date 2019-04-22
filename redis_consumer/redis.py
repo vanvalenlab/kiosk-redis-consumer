@@ -34,7 +34,7 @@ import logging
 import redis
 
 
-class RedisClient(object):  # pylint: disable=useless-object-inheritance
+class RedisClient(object):
 
     def __init__(self, host, port, backoff=1):
         self.logger = logging.getLogger(str(self.__class__.__name__))

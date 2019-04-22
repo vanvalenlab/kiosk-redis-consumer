@@ -148,7 +148,7 @@ class DummyStorage(object):
         return True
 
 
-class TestConsumer(object):  # pylint: disable=useless-object-inheritance
+class TestConsumer(object):
 
     def test_get_redis_hash(self):
         # test emtpy queue
@@ -175,7 +175,7 @@ class TestConsumer(object):  # pylint: disable=useless-object-inheritance
         global _redis_values
         _redis_values = None
 
-        class _DummyRedis(object):  # pylint: disable=useless-object-inheritance
+        class _DummyRedis(object):
             def hmset(self, _, hvals):
                 global _redis_values
                 _redis_values = hvals

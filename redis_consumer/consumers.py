@@ -46,7 +46,7 @@ from redis_consumer import utils
 from redis_consumer import settings
 
 
-class Consumer(object):  # pylint: disable=useless-object-inheritance
+class Consumer(object):
     """Base class for all redis event consumer classes.
 
     Args:

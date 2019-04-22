@@ -67,7 +67,7 @@ def get_client(cloud_provider):
     return storage_client
 
 
-class Storage(object):  # pylint: disable=useless-object-inheritance
+class Storage(object):
     """General class to interact with cloud storage buckets.
     Supported cloud stroage provider will have child class implementations.
 
