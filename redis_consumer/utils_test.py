@@ -66,22 +66,7 @@ def _write_trks(filepath, X_mean=10, y_mean=5,
                 img_w=300, img_h=300, channels=1, frames=30):
     raw = X_mean + np.random.rand(frames, img_w, img_h, channels) - 0.5
     tracked = y_mean + np.random.rand(frames, img_w, img_h, channels) - 0.5
-    if filepath.endswith(".trk"):
-        lineages = {"1": {"label": 1, "frames": [0]}}
-    elif filepath.endswith(".trks"):
-        lineages = [{"1": {"label": 1, "frames": [0]}}]
-
     with tarfile.open(filepath, 'w') as trks:
-        with tempfile.NamedTemporaryFile('w') as lineages_file:
-            json.dump(lineages, lineages_file, indent=1)
-            lineages_file.flush()
-            if filepath.endswith(".trk"):
-                trks.add(lineages_file.name, 'lineage.json')
-            elif filepath.endswith(".trks"):
-                trks.add(lineages_file.name, 'lineages.json')
-            else:
-                assert False
-
         with tempfile.NamedTemporaryFile() as raw_file:
             np.save(raw_file, raw)
             raw_file.flush()
@@ -225,7 +210,7 @@ def test_save_numpy_array():
     assert len(files) == 0
 
 
-def test_load_trks():
+def test_load_track_file():
     with utils.get_tempdir() as temp_dir:
         for i in range(10):
             # random boolean
@@ -244,17 +229,11 @@ def test_load_trks():
             _write_trks(trk_file, X_mean=X_mean, y_mean=y_mean,
                         img_w=w, img_h=h, channels=1, frames=f)
 
-            trks = utils.load_trks(trk_file)
-
-            assert "lineages" in trks
-            assert "lineage" not in trks
-            assert len(trks["lineages"]) == 1
-
-            assert trks["lineages"] == [{1: {"label": 1, "frames": [0]}}]
+            trks = utils.load_track_file(trk_file)
 
             assert "X" in trks
             assert "y" in trks
-            assert len(trks) == 3
+            assert len(trks) == 2
 
             assert ((X_mean - 0.5 < trks["X"]).all() and
                     (trks["X"] < X_mean + 0.5).all())
@@ -268,12 +247,12 @@ def test_load_trks():
         with pytest.raises(Exception):
             path = os.path.join(temp_dir, "non.bad_extension")
             _write_trks(path)
-            trks = utils.load_trks(path)
+            trks = utils.load_track_file(path)
 
         # test non-existent file
         with pytest.raises(Exception):
             path = os.path.join(temp_dir, "poof.trk")
-            trks = utils.load_trks(path)
+            trks = utils.load_track_file(path)
 
 
 def test_zip_files():

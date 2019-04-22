@@ -668,7 +668,8 @@ class ZipFileConsumer(Consumer):
         keys = super(ZipFileConsumer, self).iter_redis_hashes(status, prefix)
         for key in keys:
             fname = str(self.hget(key, 'input_file_name'))
-            if fname.lower().endswith('.zip'):
+            # ZipFileConsumer should not touch tracking jobs
+            if fname.lower().endswith('.zip') and not key.startswith("predict_track_"):
                 yield key
 
     def _upload_archived_images(self, hvalues):
