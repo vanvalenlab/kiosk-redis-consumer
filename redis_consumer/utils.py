@@ -289,46 +289,49 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
 
 
 # from deepcell.utils.tracking_utils.load_trks
-def load_trks(filename):
+def load_track_file(filename):
     """Load a trk/trks file.
     Args:
         trks_file: full path to the file including .trk/.trks
     Returns:
         A dictionary with raw, tracked, and lineage data
     """
-    with tarfile.open(filename, 'r') as trks:
+    if filename.endswith(".trk") or filename.endswith(".trks"):
+        with tarfile.open(filename, 'r') as trks:
 
-        # numpy can't read these from disk...
-        array_file = BytesIO()
-        array_file.write(trks.extractfile('raw.npy').read())
-        array_file.seek(0)
-        raw = np.load(array_file)
-        array_file.close()
+            # numpy can't read these from disk...
+            array_file = BytesIO()
+            array_file.write(trks.extractfile('raw.npy').read())
+            array_file.seek(0)
+            raw = np.load(array_file)
+            array_file.close()
 
-        array_file = BytesIO()
-        array_file.write(trks.extractfile('tracked.npy').read())
-        array_file.seek(0)
-        tracked = np.load(array_file)
-        array_file.close()
+            array_file = BytesIO()
+            array_file.write(trks.extractfile('tracked.npy').read())
+            array_file.seek(0)
+            tracked = np.load(array_file)
+            array_file.close()
 
-        # trks.extractfile opens a file in bytes mode, json can't use bytes.
-        __, file_extension = os.path.splitext(filename)
+        return {'X': raw, 'y': tracked}
 
-        if file_extension == '.trks':
-            trk_data = trks.getmember('lineages.json')
-            lineages = json.loads(trks.extractfile(trk_data).read().decode())
-            # JSON only allows strings as keys, so convert them back to ints
-            for i, tracks in enumerate(lineages):
-                lineages[i] = {int(k): v for k, v in tracks.items()}
+    if filename.endswith(".zip"):
+        with zipfile.ZipFile(filename, 'r') as zip_file:
+            names = zip_file.namelist()
+            images = {}
 
-        elif file_extension == '.trk':
-            trk_data = trks.getmember('lineage.json')
-            lineage = json.loads(trks.extractfile(trk_data).read().decode())
-            # JSON only allows strings as keys, so convert them back to ints
-            lineages = []
-            lineages.append({int(k): v for k, v in lineage.items()})
+            for name in names:
+                if name.endswith(".tiff") or name.endswith(".tif"):
+                    img = np.float32(tiff.TiffFile(filepath).asarray())
+                    img = np.expand_dims(img, axis=-1)
 
-    return {'lineages': lineages, 'X': raw, 'y': tracked}
+                if name.startswith("raw."):
+                    images["X"] = img
+                elif name.startswith("annotated."):
+                    images["y"] = img
+
+            return images
+
+    raise Exception("track file must end with .zip or .trk/.trks")
 
 
 def zip_files(files, dest=None, prefix=None):

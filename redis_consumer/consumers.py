@@ -774,7 +774,7 @@ class ZipFileConsumer(Consumer):
 class TrackingConsumer(Consumer):
     """Consumes some unspecified file format, tracks the images, and uploads the results"""
 
-    def iter_redis_hashes(self, status='new', prefix='predict'):
+    def iter_redis_hashes(self, status='new', prefix='predict_track_'):
         """Iterate over hash values in redis.
         Only yield hash values for zip files
 
@@ -783,8 +783,7 @@ class TrackingConsumer(Consumer):
         """
         keys = super(TrackingConsumer, self).iter_redis_hashes(status, prefix)
         for key in keys:
-            fname = str(self.hget(key, 'input_file_name'))
-            if fname.lower().endswith('.trk'):
+            if key.startswith("predict_track_"):
                 yield key
 
     def _done(self, redis_hash, status, output_url, output_file_name):
@@ -839,7 +838,7 @@ class TrackingConsumer(Consumer):
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvalues = self.hgetall(redis_hash)
-        self.logger.debug('Found .trk hash to process "%s": %s',
+        self.logger.debug('Found track_* hash to process "%s": %s',
                           redis_hash, json.dumps(hvalues, indent=4))
 
         # Set status and initial progress
@@ -854,9 +853,9 @@ class TrackingConsumer(Consumer):
 
         with utils.get_tempdir() as tempdir:
             fname = self.storage.download(hvalues.get('input_file_name'), tempdir)
-            trk = utils.load_trks(os.path.join(tempdir, fname))
+            trk = utils.load_track_file(os.path.join(tempdir, fname))
 
-            self.logger.debug('Got contents .trk file contents.')
+            self.logger.debug('Got contents tracking file contents.')
             self.logger.debug('X shape: %s', trk['X'].shape)
             self.logger.debug('y shape: %s', trk['y'].shape)
 
