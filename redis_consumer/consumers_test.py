@@ -29,6 +29,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import copy
 
 import redis
 import numpy as np
@@ -46,17 +47,12 @@ def _get_image(img_h=300, img_w=300):
 
 
 class DummyRedis(object):
-    def __init__(self, prefix='predict', status='new', fail_tolerance=0):
-        self.fail_count = 0
-        self.fail_tolerance = fail_tolerance
+    def __init__(self, items=[], prefix='predict', status='new'):
+        self.work_queue = copy.copy(items)
+        self.processing_queue = []
         self.prefix = '/'.join(x for x in prefix.split('/') if x)
         self.status = status
-
-    def keys(self):
-        if self.fail_count < self.fail_tolerance:
-            self.fail_count += 1
-            raise redis.exceptions.ConnectionError('thrown on purpose')
-        return [
+        self.keys = [
             '{}_{}_{}'.format(self.prefix, self.status, 'x.tiff'),
             '{}_{}_{}'.format(self.prefix, 'other', 'x.zip'),
             '{}_{}_{}'.format('other', self.status, 'x.TIFF'),
@@ -65,43 +61,28 @@ class DummyRedis(object):
             '{}_{}_{}'.format('other', self.status, 'x.zip'),
         ]
 
-    def rpoplpush(self, src, dest):
-        if self.fail_count < self.fail_tolerance:
-            self.fail_count += 1
-            raise redis.exceptions.ConnectionError('thrown on purpose')
-        return 'redis_hash'
+    def rpoplpush(self, src, dst):
+        try:
+            x = self.work_queue.pop()
+            self.processing_queue.insert(0, x)
+            return x
+        except IndexError:
+            return None
 
-    def lpush(self, key, *values):
-        if self.fail_count < self.fail_tolerance:
-            self.fail_count += 1
-            raise redis.exceptions.ConnectionError('thrown on purpose')
+    def lpush(self, name, *values):
+        self.work_queue = list(values) + self.work_queue
         return len(values)
 
-    def lrem(self, key, count, value):
-        if self.fail_count < self.fail_tolerance:
-            self.fail_count += 1
-            raise redis.exceptions.ConnectionError('thrown on purpose')
-        return count
+    def lrem(self, name, count, value):
+        self.processing_queue.remove(value)
 
     def scan_iter(self, match=None, count=None):
-        if self.fail_count < self.fail_tolerance:
-            self.fail_count += 1
-            raise redis.exceptions.ConnectionError('thrown on purpose')
-
-        keys = [
-            '{}_{}_{}'.format(self.prefix, self.status, 'x.tiff'),
-            '{}_{}_{}'.format(self.prefix, 'other', 'x.zip'),
-            '{}_{}_{}'.format('other', self.status, 'x.TIFF'),
-            '{}_{}_{}'.format(self.prefix, self.status, 'x.ZIP'),
-            '{}_{}_{}'.format(self.prefix, 'other', 'x.tiff'),
-            '{}_{}_{}'.format('other', self.status, 'x.zip'),
-        ]
         if match:
-            return (k for k in keys if k.startswith(match[:-1]))
-        return (k for k in keys)
+            return (k for k in self.keys if k.startswith(match[:-1]))
+        return (k for k in self.keys)
 
     def expected_keys(self, suffix=None):
-        for k in self.keys():
+        for k in self.keys:
             v = k.split('_')
             if v[0] == self.prefix:
                 if v[1] == self.status:
@@ -112,15 +93,9 @@ class DummyRedis(object):
                         yield k
 
     def hmset(self, rhash, hvals):  # pylint: disable=W0613
-        if self.fail_count < self.fail_tolerance:
-            self.fail_count += 1
-            raise redis.exceptions.ConnectionError('thrown on purpose')
         return hvals
 
     def hget(self, rhash, field):
-        if self.fail_count < self.fail_tolerance:
-            self.fail_count += 1
-            raise redis.exceptions.ConnectionError('thrown on purpose')
         if field == 'status':
             return rhash.split('_')[1]
         elif field == 'file_name':
@@ -132,15 +107,9 @@ class DummyRedis(object):
         return False
 
     def hset(self, rhash, status, value):  # pylint: disable=W0613
-        if self.fail_count < self.fail_tolerance:
-            self.fail_count += 1
-            raise redis.exceptions.ConnectionError('thrown on purpose')
         return {status: value}
 
     def hgetall(self, rhash):  # pylint: disable=W0613
-        if self.fail_count < self.fail_tolerance:
-            self.fail_count += 1
-            raise redis.exceptions.ConnectionError('thrown on purpose')
         return {
             'model_name': 'model',
             'model_version': '0',
@@ -152,12 +121,6 @@ class DummyRedis(object):
             'input_file_name': rhash.split('_')[-1],
             'output_file_name': rhash.split('_')[-1]
         }
-
-    def type(self, key):  # pylint: disable=W0613
-        if self.fail_count < self.fail_tolerance:
-            self.fail_count += 1
-            raise redis.exceptions.ConnectionError('thrown on purpose')
-        return 'hash'
 
 
 class DummyStorage(object):
@@ -185,19 +148,39 @@ class DummyStorage(object):
         return True
 
 
-class TestConsumer(object):
+class TestConsumer(object):  # pylint: disable=useless-object-inheritance
+
+    def test_get_redis_hash(self):
+        # test emtpy queue
+        items = []
+        redis_client = DummyRedis(items)
+        consumer = consumers.Consumer(redis_client, None, 'q')
+        rhash = consumer.get_redis_hash()
+        assert rhash is None
+
+        # test some valid/invalid items
+        items = ['item%s' % x for x in range(1, 4)]
+        redis_client = DummyRedis(items)
+
+        consumer = consumers.Consumer(redis_client, None, 'q')
+        consumer.is_valid_hash = lambda x: x == 'item1'
+
+        rhash = consumer.get_redis_hash()
+
+        assert rhash == items[0]
+        assert redis_client.work_queue == items[1:]
+        assert redis_client.processing_queue == items[0:1]
 
     def test_handle_error(self):
         global _redis_values
         _redis_values = None
 
-        class _DummyRedis(object):
-            def hmset(self, hash, hvals):
+        class _DummyRedis(object):  # pylint: disable=useless-object-inheritance
+            def hmset(self, _, hvals):
                 global _redis_values
                 _redis_values = hvals
 
-        redis = _DummyRedis()
-        consumer = consumers.Consumer(redis, None, 'q')
+        consumer = consumers.Consumer(_DummyRedis(), None, 'q')
         err = Exception('test exception')
         consumer._handle_error(err, 'redis-hash')
         assert isinstance(_redis_values, dict)
@@ -205,26 +188,27 @@ class TestConsumer(object):
         assert _redis_values.get('status') == 'failed'
 
     def test_consume(self):
+        items = ['item%s' % x for x in range(1, 4)]
         N = 1  # using a queue, only one key is processed per consume()
-        status = 'new'
-        prefix = 'prefix'
-        consumer = consumers.Consumer(DummyRedis(), DummyStorage(), 'q')
-        mock_hashes = lambda s, p: ['{}/{}'.format(p, i) for i in range(N)]
-        consumer.iter_redis_hashes = mock_hashes
+        consumer = consumers.Consumer(DummyRedis(items), DummyStorage(), 'q')
+
         # test that _consume is called on each hash
         global _processed
         _processed = 0
 
-        def F(x):
+        def F(*_):
             global _processed
             _processed += 1
 
         consumer._consume = F
-        consumer.consume(status, prefix)
+        consumer.consume()
         assert _processed == N
-        # error inside _consume does not raise
+
+        # error inside _consume calls _handle_error
         consumer._consume = lambda x: 1 / 0
-        consumer.consume(status, prefix)
+        consumer._handle_error = F
+        consumer.consume()
+        assert _processed == N + 1
 
     def test__consume(self):
         with np.testing.assert_raises(NotImplementedError):
@@ -233,6 +217,18 @@ class TestConsumer(object):
 
 
 class TestImageFileConsumer(object):
+
+    def test_is_valid_hash(self):
+        items = ['item%s' % x for x in range(1, 4)]
+
+        storage = DummyStorage()
+        redis_client = DummyRedis(items)
+        redis_client.hget = lambda *x: x[0]
+
+        consumer = consumers.ImageFileConsumer(redis_client, storage, 'q')
+        assert consumer.is_valid_hash(None) is False
+        assert consumer.is_valid_hash('file.ZIp') is False
+        assert consumer.is_valid_hash('Anything else') is True
 
     def test_process_big_image(self):
         name = 'model'
@@ -247,19 +243,10 @@ class TestImageFileConsumer(object):
         storage = None
         consumer = consumers.ImageFileConsumer(redis_client, storage, 'q')
 
+        # image should be chopped into cuts**2 pieces and reassembled
         consumer.grpc_image = lambda x, y, z: x
         res = consumer.process_big_image(cuts, img, field, name, version)
         np.testing.assert_equal(res, img)
-
-    def test_iter_redis_hashes(self):
-        prefix = 'prefix'
-        status = 'new'
-        redis_client = DummyRedis(prefix, status)
-        consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
-        keys = [k for k in consumer.iter_redis_hashes(status, prefix)]
-        # test filter by prefix and status
-        expected = list(consumer.redis.expected_keys(suffix='tiff'))
-        np.testing.assert_array_equal(keys, expected)
 
     def test__consume(self):
         prefix = 'prefix'
@@ -305,15 +292,17 @@ class TestImageFileConsumer(object):
 
 class TestZipFileConsumer(object):
 
-    def test_iter_redis_hashes(self):
-        prefix = 'prefix'
-        status = 'new'
-        redis_client = DummyRedis(prefix, status)
-        consumer = consumers.ZipFileConsumer(redis_client, None, 'q')
-        keys = [k for k in consumer.iter_redis_hashes(status, prefix)]
-        # test filter by prefix and status
-        expected = list(consumer.redis.expected_keys(suffix='.zip'))
-        assert keys == [k for k in expected]
+    def test_is_valid_hash(self):
+        items = ['item%s' % x for x in range(1, 4)]
+
+        storage = DummyStorage()
+        redis_client = DummyRedis(items)
+        redis_client.hget = lambda *x: x[0]
+
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        assert consumer.is_valid_hash(None) is False
+        assert consumer.is_valid_hash('file.ZIp') is True
+        assert consumer.is_valid_hash('Anything else') is False
 
     def test___upload_archived_images(self):
         N = 3

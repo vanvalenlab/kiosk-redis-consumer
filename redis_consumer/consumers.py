@@ -73,24 +73,6 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         self.queue = queue
         self.processing_queue = processing_queue
 
-    def iter_redis_hashes(self, status='new', prefix='predict'):
-        """Iterate over hash values in redis.
-        Yield each with the given status value.
-
-        Returns:
-            Iterator of all hashes with a valid status
-        """
-        match = '%s*' % str(prefix).lower() if prefix is not None else None
-        for key in self.redis.scan_iter(match=match, count=1000):
-            # Check if the key is a hash
-            if self.redis.type(key) == 'hash':
-                # if status is given, only yield hashes with that status
-                if status is not None:
-                    if self.redis.hget(key, 'status') == str(status):
-                        yield key
-                else:  # no need to check the status
-                    yield key
-
     def get_redis_hash(self):
         while True:
             redis_hash = self.redis.rpoplpush(self.queue, self.processing_queue)
