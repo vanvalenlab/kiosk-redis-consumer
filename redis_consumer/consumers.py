@@ -94,11 +94,8 @@ class Consumer(object):
             redis_hash: string, the hash that will be updated to failure.
         """
         # Update redis with failed status
-        self.redis.hmset(redis_hash, {
+        self.update_status(redis_hash, 'failed', {
             'reason': '{}: {}'.format(type(err).__name__, err),
-            'status': 'failed',
-            'last_updated': datetime.datetime.strftime(
-                datetime.datetime.now(), '%a %b %d %H:%M:%S'),
         })
         self.logger.error('Failed to process redis key %s due to %s: %s',
                           redis_hash, type(err).__name__, err)
@@ -626,13 +623,10 @@ class ZipFileConsumer(Consumer):
             self.logger.debug('Uploaded output to: `%s`', output_url)
 
             # Update redis with the results
-            self.redis.hmset(redis_hash, {
+            self.update_status(redis_hash, self.final_status, {
                 'identity_output': self.hostname,
                 'output_url': output_url,
-                'output_file_name': uploaded_file_path,
-                'status': self.final_status,
-                'last_updated': datetime.datetime.strftime(
-                    datetime.datetime.now(), '%a %b %d %H:%M:%S'),
+                'output_file_name': uploaded_file_path
             })
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
                              len(all_hashes), hvals['output_file_name'],
