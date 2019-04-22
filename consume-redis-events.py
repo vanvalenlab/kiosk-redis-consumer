@@ -36,8 +36,7 @@ import traceback
 import logging
 import logging.handlers
 
-from redis_consumer import consumers
-from redis_consumer import redis as redis_wrapper
+import redis_consumer
 from redis_consumer import settings
 from redis_consumer import storage
 
@@ -70,9 +69,9 @@ def initialize_logger(debug_mode=False):
 def get_consumer(consumer_type, **kwargs):
     ct = str(consumer_type).lower()
     if ct == 'image':
-        return consumers.ImageFileConsumer(**kwargs)
+        return redis_consumer.consumers.ImageFileConsumer(**kwargs)
     if ct == 'zip':
-        return consumers.ZipFileConsumer(**kwargs)
+        return redis_consumer.consumers.ZipFileConsumer(**kwargs)
     raise ValueError('Invalid `consumer_type`: "{}"'.format(consumer_type))
 
 
@@ -81,9 +80,12 @@ if __name__ == '__main__':
 
     _logger = logging.getLogger(__file__)
 
-    redis = redis_wrapper.Redis(settings.REDIS_HOST, settings.REDIS_PORT)
+    redis = redis_consumer.redis.RedisClient(
+        host=settings.REDIS_HOST,
+        port=settings.REDIS_PORT,
+        backoff=settings.REDIS_TIMEOUT)
 
-    storage_client = storage.get_client(settings.CLOUD_PROVIDER)
+    storage_client = redis_consumer.storage.get_client(settings.CLOUD_PROVIDER)
 
     kwargs = {
         'redis_client': redis,
