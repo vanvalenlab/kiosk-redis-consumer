@@ -59,18 +59,15 @@ class Consumer(object):
                  redis_client,
                  storage_client,
                  queue,
-                 processing_queue='processing',
-                 final_status='done',
-                 redis_retry_timeout=settings.REDIS_TIMEOUT):
+                 final_status='done'):
         self.output_dir = settings.OUTPUT_DIR
+        self.hostname = settings.HOSTNAME
         self.redis = redis_client
         self.storage = storage_client
+        self.queue = str(queue).lower()
+        self.processing_queue = 'processing-{}'.format(self.queue)
         self.final_status = final_status
-        self._redis_retry_timeout = redis_retry_timeout
         self.logger = logging.getLogger(str(self.__class__.__name__))
-        self.hostname = settings.HOSTNAME
-        self.queue = queue
-        self.processing_queue = processing_queue
 
     def get_redis_hash(self):
         while True:
