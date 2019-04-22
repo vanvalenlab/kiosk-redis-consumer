@@ -106,7 +106,7 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             # this invalid hash should not be processed by this consumer.
             # remove it from processing, and push it back to the work queue.
             self.redis.lrem(self.processing_queue, 1, redis_hash)
-            self.redis.lpush(redis_hash)
+            self.redis.lpush(self.queue, redis_hash)
 
     def _handle_error(self, err, redis_hash):
         """Update redis with failure information, and log errors.
