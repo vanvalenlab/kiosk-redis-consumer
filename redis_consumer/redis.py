@@ -51,16 +51,21 @@ class Redis(object):  # pylint: disable=useless-object-inheritance
         redis_function = getattr(self._redis, name)
 
         def wrapper(*args, **kwargs):
+            values = list(args) + list(kwargs.values())
             while True:
                 try:
                     return redis_function(*args, **kwargs)
                 except redis.exceptions.ConnectionError as err:
-                    values = list(args) + list(kwargs.values())
                     self.logger.warning('Encountered %s: %s when calling '
                                         '`%s %s`. Retrying in %s seconds.',
                                         type(err).__name__, err,
                                         str(name).upper(),
                                         ' '.join(values), self.backoff)
                     time.sleep(self.backoff)
+                except Exception as err:
+                    self.logger.error('Unexpected %s: %s when calling `%s %s`.',
+                                      type(err).__name__, err,
+                                      str(name).upper(), ' '.join(values))
+                    raise err
 
         return wrapper

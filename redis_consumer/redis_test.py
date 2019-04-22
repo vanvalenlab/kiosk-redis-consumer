@@ -37,11 +37,14 @@ from redis_consumer import redis as redis_wrapper
 
 
 class DummyRedis(object):  # pylint: disable=useless-object-inheritance
-    def __init__(self, fail_tolerance=0):
+    def __init__(self, fail_tolerance=0, hard_fail=False):
         self.fail_count = 0
         self.fail_tolerance = fail_tolerance
+        self.hard_fail = hard_fail
 
     def get_fail_count(self):
+        if self.hard_fail:
+            raise AssertionError('thrown on purpose')
         if self.fail_count < self.fail_tolerance:
             self.fail_count += 1
             raise redis.exceptions.ConnectionError('thrown on purpose')
@@ -65,3 +68,13 @@ class TestRedis(object):  # pylint: disable=useless-object-inheritance
 
         with pytest.raises(AttributeError):
             client.unknown_function()
+
+        # test that other exceptions will raise.
+        def _get_redis_client_bad(*args, **kwargs):  # pylint: disable=W0613
+            return DummyRedis(fail_tolerance=fails, hard_fail=True)
+
+        Redis._get_redis_client = _get_redis_client_bad
+
+        client = Redis(host='host', port='port', backoff=0)
+        with pytest.raises(AssertionError):
+            client.get_fail_count()
