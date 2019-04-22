@@ -31,13 +31,13 @@ from __future__ import print_function
 import uuid
 import timeit
 import datetime
-
 import os
 import json
 import time
 import logging
 import zipfile
 
+import pytz
 import grpc
 import numpy as np
 
@@ -110,6 +110,28 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def is_valid_hash(self, redis_hash):  # pylint: disable=unused-argument
         """Returns True if the consumer should work on the item"""
         return True
+
+    def update_status(self, redis_hash, status, data=None,
+                      fmt='%a %b %d %H:%M:%S', tz=pytz.UTC):
+        """Update the status of a the given hash.
+
+        Args:
+            redis_hash: string, the hash that will be updated
+            status: string, the new status value
+            data: dict, optional data to include in the hmset call
+        """
+        if data is not None:
+            if not isinstance(data, dict):
+                raise ValueError('`data` must be a dictionary, got {}.'.format(
+                    type(data).__name__))
+
+        data = {} if data is None else data
+        data.update({
+            'status': status,
+            'last_updated': datetime.datetime.strftime(
+                datetime.datetime.now(tz=tz), fmt),
+        })
+        self.redis.hmset(redis_hash, data)
 
     def _consume(self, redis_hash):
         raise NotImplementedError
@@ -435,12 +457,8 @@ class ImageFileConsumer(Consumer):
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
 
-        # write update to Redis
-        self.redis.hmset(redis_hash, {
-            'status': 'started',
-            'last_updated': datetime.datetime.strftime(
-                datetime.datetime.now(), '%a %b %d %H:%M:%S'),
-        })
+        self.update_status(redis_hash, 'started')
+
         model_name = hvals.get('model_name')
         model_version = hvals.get('model_version')
         cuts = hvals.get('cuts', '0')
@@ -455,22 +473,14 @@ class ImageFileConsumer(Consumer):
             timeout = settings.GRPC_TIMEOUT
             timeout = timeout if not streaming else timeout * int(cuts)
 
-            # Update redis with pre-processing information
-            self.redis.hmset(redis_hash, {
-                'status': 'pre-processing',
-                'last_updated': datetime.datetime.strftime(
-                    datetime.datetime.now(), '%a %b %d %H:%M:%S'),
-            })
+            # Pre-process data before sending to the model
+            self.update_status(redis_hash, 'pre-processing')
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
             image = self.preprocess(image, pre_funcs, timeout, True)
 
-            # Update redis with prediction information
-            self.redis.hmset(redis_hash, {
-                'status': 'predicting',
-                'last_updated': datetime.datetime.strftime(
-                    datetime.datetime.now(), '%a %b %d %H:%M:%S'),
-            })
+            # Send data to the model
+            self.update_status(redis_hash, 'predicting')
 
             if streaming:
                 image = self.process_big_image(
@@ -479,22 +489,14 @@ class ImageFileConsumer(Consumer):
                 image = self.grpc_image(
                     image, model_name, model_version, timeout)
 
-            # Update redis with post-processing information
-            self.redis.hmset(redis_hash, {
-                'status': 'post-processing',
-                'last_updated': datetime.datetime.strftime(
-                    datetime.datetime.now(), '%a %b %d %H:%M:%S'),
-            })
+            # Post-process model results
+            self.update_status(redis_hash, 'post-processing')
 
             post_funcs = hvals.get('postprocess_function', '').split(',')
             image = self.postprocess(image, post_funcs, timeout, True)
 
-            # write update to Redis
-            self.redis.hmset(redis_hash, {
-                'status': 'saving-results',
-                'last_updated': datetime.datetime.strftime(
-                    datetime.datetime.now(), '%a %b %d %H:%M:%S'),
-            })
+            # Save the post-processed results to a file
+            self.update_status(redis_hash, 'saving-results')
 
             # Save each result channel as an image file
             save_name = hvals.get('original_name', fname)
@@ -514,15 +516,11 @@ class ImageFileConsumer(Consumer):
             dest, output_url = self.storage.upload(zip_file, subdir=subdir)
 
             # Update redis with the final results
-            self.redis.hmset(redis_hash, {
-                'identity_output': self.hostname,
+            self.update_status(redis_hash, self.final_status, {
                 'output_url': output_url,
                 'output_file_name': dest,
-                'status': self.final_status,
-                'last_updated': datetime.datetime.strftime(
-                    datetime.datetime.now(), '%a %b %d %H:%M:%S'),
+                'status': self.final_status
             })
-            self.logger.debug('Updated status to %s', self.final_status)
 
 
 class ZipFileConsumer(Consumer):
@@ -572,23 +570,15 @@ class ZipFileConsumer(Consumer):
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
 
-        # write update to Redis
-        self.redis.hmset(redis_hash, {
-            'status': 'started',
-            'last_updated': datetime.datetime.strftime(
-                datetime.datetime.now(), '%a %b %d %H:%M:%S'),
-        })
+        self.update_status(redis_hash, 'started')
+
         all_hashes = self._upload_archived_images(hvals)
         self.logger.info('Uploaded %s hashes.  Waiting for ImageConsumers.',
                          len(all_hashes))
 
         # Now all images have been uploaded with new redis hashes
         # Wait for these to be processed by an ImageFileConsumer
-        self.redis.hmset(redis_hash, {
-            'status': 'waiting',
-            'last_updated': datetime.datetime.strftime(
-                datetime.datetime.now(), '%a %b %d %H:%M:%S'),
-        })
+        self.update_status(redis_hash, 'waiting')
 
         with utils.get_tempdir() as tempdir:
             finished_hashes = set()
