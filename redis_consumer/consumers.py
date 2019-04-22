@@ -120,7 +120,7 @@ class Consumer(object):
         data = {} if data is None else data
         data.update({
             'status': status,
-            'last_updated':
+            'updated_at':
                 datetime.datetime.now(datetime.timezone.utc).strftime(fmt),
         })
         self.redis.hmset(redis_hash, data)
