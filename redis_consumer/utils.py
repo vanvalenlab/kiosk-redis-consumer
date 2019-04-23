@@ -41,7 +41,7 @@ import six
 
 import numpy as np
 import skimage
-import keras_preprocessing
+import keras_preprocessing.image
 import dict_to_protobuf
 import PIL
 
