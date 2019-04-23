@@ -105,6 +105,10 @@ class Consumer(object):
         """Returns True if the consumer should work on the item"""
         return True
 
+    def get_current_timestamp(self):
+        """Helper function, returns ISO formatted UTC timestamp"""
+        return datetime.datetime.now(pytz.UTC).isoformat()
+
     def update_status(self, redis_hash, status, data=None):
         """Update the status of a the given hash.
 
@@ -120,7 +124,7 @@ class Consumer(object):
         data = {} if data is None else data
         data.update({
             'status': status,
-            'updated_at': datetime.datetime.now(pytz.UTC).isoformat()
+            'updated_at': self.get_current_timestamp()
         })
         self.redis.hmset(redis_hash, data)
 
@@ -242,18 +246,12 @@ class ImageFileConsumer(Consumer):
                 # pylint: disable=E1101
                 if err.code() in retry_statuses:
                     count += 1
-                    # write update to Redis
-                    processing_retry_time = time.time() * 1000
-                    self.redis.hmset(self._redis_hash, {
-                        'number_of_processing_retries': count,
-                        'status': '{} {}-processing -- RETRY:{} -- {}'.format(
-                            key, process_type, count,
-                            err.code().name),
-                        'timestamp_processing_retry': processing_retry_time,
-                        'identity_processing_retry': self.hostname,
-                        'timestamp_last_status_update': processing_retry_time
+                    temp_status = 'retry-processing - {} - {}'.format(
+                        count, err.code().name)
+                    self.update_status(self._redis_hash, temp_status, {
+                        'process_retries': count,
                     })
-                    sleeptime = np.random.randint(24, 44)
+                    sleeptime = np.random.randint(1, 20)
                     sleeptime = 1 + sleeptime * int(streaming)
                     self.logger.warning('%sException `%s: %s` during %s '
                                         '%s-processing request.  Waiting %s '
@@ -406,27 +404,17 @@ class ImageFileConsumer(Consumer):
                 if err.code() in retry_statuses:
                     count += 1
                     # write update to Redis
-                    processing_retry_time = time.time() * 1000
-                    self.redis.hmset(self._redis_hash, {
-                        'number_of_processing_retries': count,
-                        'status': 'processing -- RETRY:{} -- {}'.format(
-                            count, err.code().name),
-                        'timestamp_processing_retry': processing_retry_time,
-                        'identity_processing_retry': self.hostname,
-                        'timestamp_last_status_update': processing_retry_time
+                    temp_status = 'retry-predicting - {} - {}'.format(
+                        count, err.code().name)
+                    self.update_status(self._redis_hash, temp_status, {
+                        'predict_retries': count,
                     })
-
                     self.logger.warning('%sException `%s: %s` during '
                                         'PredictClient request to model %s:%s.'
                                         'Waiting %s seconds before retrying.',
                                         type(err).__name__, err.code().name,
                                         err.details(), model_name,
                                         model_version, backoff)
-                    self.logger.warning('Encountered %s  during PredictClient '
-                                        'request to model %s:%s: %s.',
-                                        type(err).__name__, model_name,
-                                        model_version, err)
-
                     self.logger.debug('Waiting for %s seconds before retrying',
                                       backoff)
                     time.sleep(backoff)  # sleep before retry
@@ -543,15 +531,15 @@ class ZipFileConsumer(Consumer):
                     file=clean_imfile,
                     hash=uuid.uuid4().hex)
 
-                output_timestamp = time.time() * 1000
+                current_timestamp = self.get_current_timestamp()
                 new_hvals = dict()
                 new_hvals.update(hvalues)
                 new_hvals['output_file_name'] = uploaded_file_path
                 new_hvals['original_name'] = clean_imfile
                 new_hvals['status'] = 'new'
                 new_hvals['identity_upload'] = self.hostname
-                new_hvals['timestamp_upload'] = output_timestamp
-                new_hvals['timestamp_last_status_update'] = output_timestamp
+                new_hvals['created_at'] = current_timestamp
+                new_hvals['updated_at'] = current_timestamp
                 self.redis.hmset(new_hash, new_hvals)
                 self.logger.debug('Added new hash `%s`: %s',
                                   new_hash, json.dumps(new_hvals, indent=4))
@@ -561,7 +549,7 @@ class ZipFileConsumer(Consumer):
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
-        self.logger.debug('Found hash to process "%s": %s',
+        self.logger.debug('Found hash to process `%s`: %s',
                           redis_hash, json.dumps(hvals, indent=4))
 
         self.update_status(redis_hash, 'started')
