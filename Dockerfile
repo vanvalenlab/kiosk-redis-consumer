@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-FROM python:3.6-alpine
+FROM python:3.6
 
 WORKDIR /usr/src/app
 
