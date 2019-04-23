@@ -37,6 +37,7 @@ import time
 import logging
 import zipfile
 
+import pytz
 import grpc
 import numpy as np
 
@@ -119,7 +120,7 @@ class Consumer(object):
         data = {} if data is None else data
         data.update({
             'status': status,
-            'updated_at': datetime.datetime.utcnow().isoformat()
+            'updated_at': datetime.datetime.now(pytz.UTC).isoformat()
         })
         self.redis.hmset(redis_hash, data)
 
