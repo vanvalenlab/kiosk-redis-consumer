@@ -501,7 +501,7 @@ class ImageFileConsumer(Consumer):
             self.update_status(redis_hash, self.final_status, {
                 'output_url': output_url,
                 'output_file_name': dest,
-                'status': self.final_status
+                'finished_at': self.get_current_timestamp(),
             })
 
 
@@ -614,6 +614,7 @@ class ZipFileConsumer(Consumer):
             # Update redis with the results
             self.update_status(redis_hash, self.final_status, {
                 'identity_output': self.hostname,
+                'finished_at': self.get_current_timestamp(),
                 'output_url': output_url,
                 'output_file_name': uploaded_file_path
             })
