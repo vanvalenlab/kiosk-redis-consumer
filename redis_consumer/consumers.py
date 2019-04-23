@@ -448,7 +448,9 @@ class ImageFileConsumer(Consumer):
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
 
-        self.update_status(redis_hash, 'started')
+        self.update_status(redis_hash, 'started', {
+            'identity_started': self.hostname,
+        })
 
         model_name = hvals.get('model_name')
         model_version = hvals.get('model_version')
