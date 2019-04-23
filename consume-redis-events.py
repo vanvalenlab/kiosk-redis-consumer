@@ -41,7 +41,7 @@ from redis_consumer import settings
 from redis_consumer import storage
 
 
-def initialize_logger(debug_mode=False):
+def initialize_logger(debug_mode=True):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
@@ -57,10 +57,9 @@ def initialize_logger(debug_mode=False):
 
     if debug_mode:
         console.setLevel(logging.DEBUG)
-        fh.setLevel(logging.DEBUG)
     else:
         console.setLevel(logging.INFO)
-        fh.setLevel(logging.INFO)
+    fh.setLevel(logging.DEBUG)
 
     logger.addHandler(console)
     logger.addHandler(fh)
