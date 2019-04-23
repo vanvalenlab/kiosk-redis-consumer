@@ -104,8 +104,7 @@ class Consumer(object):
         """Returns True if the consumer should work on the item"""
         return True
 
-    def update_status(self, redis_hash, status, data=None,
-                      fmt='%b %d, %Y %H:%M:%S.%f'):
+    def update_status(self, redis_hash, status, data=None):
         """Update the status of a the given hash.
 
         Args:
@@ -120,8 +119,7 @@ class Consumer(object):
         data = {} if data is None else data
         data.update({
             'status': status,
-            'updated_at':
-                datetime.datetime.now(datetime.timezone.utc).strftime(fmt),
+            'updated_at': datetime.datetime.utcnow().isoformat()
         })
         self.redis.hmset(redis_hash, data)
 
