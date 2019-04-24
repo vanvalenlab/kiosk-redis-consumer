@@ -77,12 +77,15 @@ class Storage(object):
     """
 
     def __init__(self, bucket, download_dir=DOWNLOAD_DIR, backoff=1.5):
-        self._client = None
         self.bucket = bucket
         self.download_dir = download_dir
         self.output_dir = 'output'
         self.backoff = backoff
         self.logger = logging.getLogger(str(self.__class__.__name__))
+
+    def get_storage_client(self):
+        """Returns the storage API client"""
+        raise NotImplementedError
 
     def get_download_path(self, filepath, download_dir=None):
         """Get local filepath for soon-to-be downloaded file.
@@ -134,10 +137,13 @@ class GoogleStorage(Storage):
         download_dir: path to local directory to save downloaded files
     """
 
-    def __init__(self, bucket, download_dir=DOWNLOAD_DIR):
-        super(GoogleStorage, self).__init__(bucket, download_dir)
-        self._client = google_storage.Client()
+    def __init__(self, bucket, download_dir=DOWNLOAD_DIR, backoff=1.5):
+        super(GoogleStorage, self).__init__(bucket, download_dir, backoff)
         self.bucket_url = 'www.googleapis.com/storage/v1/b/{}/o'.format(bucket)
+
+    def get_storage_client(self):
+        """Returns the storage API client"""
+        return google_storage.Client()
 
     def get_public_url(self, filepath):
         """Get the public URL to download the file.
@@ -148,7 +154,8 @@ class GoogleStorage(Storage):
         Returns:
             url: Public URL to download the file
         """
-        bucket = self._client.get_bucket(self.bucket)
+        client = self.get_storage_client()
+        bucket = client.get_bucket(self.bucket)
         blob = bucket.blob(filepath)
         blob.make_public()
         return blob.public_url
@@ -163,6 +170,7 @@ class GoogleStorage(Storage):
             dest: key of uploaded file in cloud storage
         """
         start = timeit.default_timer()
+        client = self.get_storage_client()
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         retrying = True
         while retrying:
@@ -173,7 +181,7 @@ class GoogleStorage(Storage):
                         subdir = subdir[1:]
                     dest = os.path.join(subdir, dest)
                 dest = os.path.join(self.output_dir, dest)
-                bucket = self._client.get_bucket(self.bucket)
+                bucket = client.get_bucket(self.bucket)
                 blob = bucket.blob(dest)
                 blob.upload_from_filename(filepath, predefined_acl='publicRead')
                 self.logger.debug('Uploaded %s to bucket %s in %s seconds.',
@@ -203,13 +211,14 @@ class GoogleStorage(Storage):
         Returns:
             dest: local path to downloaded file
         """
+        client = self.get_storage_client()
         dest = self.get_download_path(filepath, download_dir)
         self.logger.debug('Downloading %s to %s.', filepath, dest)
         retrying = True
         while retrying:
             try:
                 start = timeit.default_timer()
-                blob = self._client.get_bucket(self.bucket).blob(filepath)
+                blob = client.get_bucket(self.bucket).blob(filepath)
                 blob.download_to_filename(dest)
                 self.logger.debug('Downloaded %s from bucket %s in %s seconds.',
                                   dest, self.bucket,
@@ -236,14 +245,17 @@ class S3Storage(Storage):
         download_dir: path to local directory to save downloaded files
     """
 
-    def __init__(self, bucket, download_dir=DOWNLOAD_DIR):
-        super(S3Storage, self).__init__(bucket, download_dir)
-        self._client = boto3.client(
+    def __init__(self, bucket, download_dir=DOWNLOAD_DIR, backoff=1.5):
+        super(S3Storage, self).__init__(bucket, download_dir, backoff)
+        self.bucket_url = 's3.amazonaws.com/{}'.format(bucket)
+
+    def get_storage_client(self):
+        """Returns the storage API client"""
+        return boto3.client(
             's3',
             region_name=settings.AWS_REGION,
             aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY)
-        self.bucket_url = 's3.amazonaws.com/{}'.format(bucket)
 
     def get_public_url(self, filepath):
         """Get the public URL to download the file.
@@ -266,6 +278,7 @@ class S3Storage(Storage):
             dest: key of uploaded file in cloud storage
         """
         start = timeit.default_timer()
+        client = self.get_storage_client()
         dest = os.path.basename(filepath)
         if subdir:
             if str(subdir).startswith('/'):
@@ -274,7 +287,7 @@ class S3Storage(Storage):
         dest = os.path.join(self.output_dir, dest)
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         try:
-            self._client.upload_file(filepath, self.bucket, dest)
+            client.upload_file(filepath, self.bucket, dest)
             self.logger.debug('Uploaded %s to bucket %s in %s seconds.',
                               filepath, self.bucket,
                               timeit.default_timer() - start)
@@ -295,6 +308,7 @@ class S3Storage(Storage):
             dest: local path to downloaded file
         """
         start = timeit.default_timer()
+        client = self.get_storage_client()
         # Bucket keys shouldn't start with "/"
         if filepath.startswith('/'):
             filepath = filepath[1:]
@@ -302,7 +316,7 @@ class S3Storage(Storage):
         dest = self.get_download_path(filepath, download_dir)
         self.logger.debug('Downloading %s to %s.', filepath, dest)
         try:
-            self._client.download_file(self.bucket, filepath, dest)
+            client.download_file(self.bucket, filepath, dest)
             self.logger.debug('Downloaded %s from bucket %s in %s seconds.',
                               dest, self.bucket, timeit.default_timer() - start)
             return dest
