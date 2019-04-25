@@ -40,11 +40,10 @@ import zipfile
 import six
 
 import numpy as np
-from PIL import Image
-from skimage.external import tifffile as tiff
-from keras_preprocessing.image import img_to_array
-from dict_to_protobuf import dict_to_protobuf
-# from dict_to_protobuf import protobuf_to_dict
+import skimage
+import keras_preprocessing.image
+import dict_to_protobuf
+import PIL
 
 from redis_consumer.pbs.types_pb2 import DESCRIPTOR
 from redis_consumer.pbs.tensor_pb2 import TensorProto
@@ -77,7 +76,7 @@ number_to_dtype_value = {
 
 def grpc_response_to_dict(grpc_response):
     # TODO: 'unicode' object has no attribute 'ListFields'
-    # response_dict = protobuf_to_dict(grpc_response)
+    # response_dict = dict_to_protobuf.protobuf_to_dict(grpc_response)
     # return response_dict
     grpc_response_dict = dict()
 
@@ -125,7 +124,7 @@ def make_tensor_proto(data, dtype):
         number_to_dtype_value[dtype]: values
     }
 
-    dict_to_protobuf(tensor_proto_dict, tensor_proto)
+    dict_to_protobuf.dict_to_protobuf(tensor_proto_dict, tensor_proto)
 
     return tensor_proto
 
@@ -199,15 +198,15 @@ def get_image(filepath):
     """
     logger.debug('Loading %s into numpy array', filepath)
     if os.path.splitext(filepath)[-1].lower() in {'.tif', '.tiff'}:
-        img = np.float32(tiff.TiffFile(filepath).asarray())
+        img = skimage.external.tifffile.TiffFile(filepath).asarray()
         # tiff files should not have a channel dim
         img = np.expand_dims(img, axis=-1)
     else:
-        img = img_to_array(Image.open(filepath))
+        img = keras_preprocessing.image.img_to_array(PIL.Image.open(filepath))
 
     logger.debug('Loaded %s into numpy array with shape %s',
                  filepath, img.shape)
-    return img
+    return img.astype('float32')
 
 
 def pad_image(image, field):
@@ -235,7 +234,7 @@ def pad_image(image, field):
 
 
 def save_numpy_array(arr, name='', subdir='', output_dir=None):
-    """Split tensor into channels and save each as a tiff.
+    """Split tensor into channels and save each as a tiff file.
 
     Args:
         arr: numpy array of image data
@@ -267,7 +266,7 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
             if not os.path.isdir(os.path.dirname(path)):
                 os.makedirs(os.path.dirname(path))
 
-            tiff.imsave(path, img)
+            skimage.external.tifffile.imsave(path, img)
             logger.debug('Saved channel %s to %s', channel, path)
             out_paths.append(path)
         except Exception as err:  # pylint: disable=broad-except

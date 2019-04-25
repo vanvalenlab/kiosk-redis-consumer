@@ -92,4 +92,7 @@ AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='specify_me')
 GCLOUD_STORAGE_BUCKET = config('GKE_BUCKET', default='default-bucket')
 
 # Pod Meteadta
-HOSTNAME = config('HOSTNAME', default="host-unkonwn")
+HOSTNAME = config('HOSTNAME', default='host-unkonwn')
+
+# Redis queue
+QUEUE = config('QUEUE', default='predict')

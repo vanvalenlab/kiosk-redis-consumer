@@ -50,7 +50,7 @@ from redis_consumer.utils import grpc_response_to_dict
 from redis_consumer.utils import make_tensor_proto
 
 
-class GrpcClient(object):  # pylint: disable=useless-object-inheritance
+class GrpcClient(object):
     """Abstract class for all gRPC clients.
 
     Arguments:
