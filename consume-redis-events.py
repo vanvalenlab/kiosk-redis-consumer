@@ -32,18 +32,16 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
-import time
+import traceback
 import logging
 import logging.handlers
 
-from redis import StrictRedis
-
-from redis_consumer import consumers
+import redis_consumer
 from redis_consumer import settings
 from redis_consumer import storage
 
 
-def initialize_logger(debug_mode=False):
+def initialize_logger(debug_mode=True):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
@@ -59,10 +57,9 @@ def initialize_logger(debug_mode=False):
 
     if debug_mode:
         console.setLevel(logging.DEBUG)
-        fh.setLevel(logging.DEBUG)
     else:
         console.setLevel(logging.INFO)
-        fh.setLevel(logging.INFO)
+    fh.setLevel(logging.DEBUG)
 
     logger.addHandler(console)
     logger.addHandler(fh)
@@ -71,11 +68,11 @@ def initialize_logger(debug_mode=False):
 def get_consumer(consumer_type, **kwargs):
     ct = str(consumer_type).lower()
     if ct == 'image':
-        return consumers.ImageFileConsumer(**kwargs)
+        return redis_consumer.consumers.ImageFileConsumer(**kwargs)
     if ct == 'zip':
-        return consumers.ZipFileConsumer(**kwargs)
+        return redis_consumer.consumers.ZipFileConsumer(**kwargs)
     if ct == 'tracking':
-        return consumers.TrackingConsumer(**kwargs)
+        return redis_consumer.consumers.TrackingConsumer(**kwargs)
     raise ValueError('Invalid `consumer_type`: "{}"'.format(consumer_type))
 
 
@@ -84,26 +81,27 @@ if __name__ == '__main__':
 
     _logger = logging.getLogger(__file__)
 
-    redis = StrictRedis(
+    redis = redis_consumer.redis.RedisClient(
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
-        decode_responses=True,
-        charset='utf-8')
+        backoff=settings.REDIS_TIMEOUT)
 
-    storage_client = storage.get_client(settings.CLOUD_PROVIDER)
+    storage_client = redis_consumer.storage.get_client(settings.CLOUD_PROVIDER)
 
     kwargs = {
         'redis_client': redis,
         'storage_client': storage_client,
-        'final_status': 'done'
+        'final_status': 'done',
+        'queue': settings.QUEUE,
     }
 
     consumer = get_consumer(settings.CONSUMER_TYPE, **kwargs)
 
     while True:
         try:
-            consumer.consume(settings.STATUS, settings.HASH_PREFIX)
-            time.sleep(settings.INTERVAL)
+            consumer.consume()
         except Exception as err:  # pylint: disable=broad-except
-            _logger.critical('Fatal Error: %s: %s', type(err).__name__, err)
+            _logger.critical('Fatal Error: %s: %s\n%s',
+                             type(err).__name__, err, traceback.format_exc())
+
             sys.exit(1)

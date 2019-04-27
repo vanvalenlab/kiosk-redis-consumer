@@ -25,7 +25,7 @@
 # ============================================================================
 FROM python:3.6
 
-WORKDIR /kiosk/consumer
+WORKDIR /usr/src/app
 
 COPY requirements.txt .
 

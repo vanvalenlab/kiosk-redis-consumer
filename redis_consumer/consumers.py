@@ -28,18 +28,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import timeit
-import uuid
-
+import datetime
 import json
 import logging
 import os
 import sys
 import time
+import timeit
+import uuid
 import zipfile
 
+import pytz
 import grpc
-import redis
 import numpy as np
 
 from redis_consumer.grpc_clients import PredictClient
@@ -50,7 +50,7 @@ from redis_consumer import tracking
 from redis_consumer import settings
 
 
-class Consumer(object):  # pylint: disable=useless-object-inheritance
+class Consumer(object):
     """Base class for all redis event consumer classes.
 
     Args:
@@ -62,33 +62,33 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
     def __init__(self,
                  redis_client,
                  storage_client,
-                 final_status='done',
-                 redis_retry_timeout=settings.REDIS_TIMEOUT):
+                 queue,
+                 final_status='done'):
         self.output_dir = settings.OUTPUT_DIR
+        self.hostname = settings.HOSTNAME
         self.redis = redis_client
         self.storage = storage_client
+        self.queue = str(queue).lower()
+        self.processing_queue = 'processing-{}'.format(self.queue)
         self.final_status = final_status
-        self._redis_retry_timeout = redis_retry_timeout
         self.logger = logging.getLogger(str(self.__class__.__name__))
-        self.hostname = settings.HOSTNAME
 
-    def iter_redis_hashes(self, status='new', prefix='predict'):
-        """Iterate over hash values in redis.
-        Yield each with the given status value.
+    def get_redis_hash(self):
+        while True:
+            redis_hash = self.redis.rpoplpush(self.queue, self.processing_queue)
 
-        Returns:
-            Iterator of all hashes with a valid status
-        """
-        match = '%s*' % str(prefix).lower() if prefix is not None else None
-        for key in self.scan_iter(match=match, count=1000):
-            # Check if the key is a hash
-            if self._redis_type(key) == 'hash':
-                # if status is given, only yield hashes with that status
-                if status is not None:
-                    if self.hget(key, 'status') == str(status):
-                        yield key
-                else:  # no need to check the status
-                    yield key
+            # if queue is empty, return None
+            if redis_hash is None:
+                return redis_hash
+
+            # if hash is found and valid, return the hash
+            if self.is_valid_hash(redis_hash):
+                return redis_hash
+
+            # this invalid hash should not be processed by this consumer.
+            # remove it from processing, and push it back to the work queue.
+            self.redis.lrem(self.processing_queue, 1, redis_hash)
+            self.redis.lpush(self.queue, redis_hash)
 
     def _handle_error(self, err, redis_hash):
         """Update redis with failure information, and log errors.
@@ -98,115 +98,43 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
             redis_hash: string, the hash that will be updated to failure.
         """
         # Update redis with failed status
-        ts = time.time() * 1000
-        self.hmset(redis_hash, {
+        self.update_status(redis_hash, 'failed', {
             'reason': logging.Formatter().formatException(sys.exc_info()),
-            'status': 'failed',
-            'timestamp_failed': ts,
-            'identity_failed': self.hostname,
-            'timestamp_last_status_update': ts
         })
         self.logger.exception('Failed to process redis key %s due to %s: %s',
                               redis_hash, type(err).__name__, err)
 
+    def is_valid_hash(self, redis_hash):  # pylint: disable=unused-argument
+        """Returns True if the consumer should work on the item"""
+        return True
+
+    def get_current_timestamp(self):
+        """Helper function, returns ISO formatted UTC timestamp"""
+        return datetime.datetime.now(pytz.UTC).isoformat()
+
+    def update_status(self, redis_hash, status, data=None):
+        """Update the status of a the given hash.
+
+        Args:
+            redis_hash: string, the hash that will be updated
+            status: string, the new status value
+            data: dict, optional data to include in the hmset call
+        """
+        if data is not None and not isinstance(data, dict):
+            raise ValueError('`data` must be a dictionary, got {}.'.format(
+                type(data).__name__))
+
+        data = {} if data is None else data
+        data.update({
+            'status': status,
+            'updated_at': self.get_current_timestamp()
+        })
+        self.redis.hmset(redis_hash, data)
+
     def _consume(self, redis_hash):
         raise NotImplementedError
 
-    def _redis_type(self, redis_key):
-        while True:
-            try:
-                response = self.redis.type(redis_key)
-                break
-            except redis.exceptions.ConnectionError as err:
-                self.logger.warning('Encountered %s: %s when calling '
-                                    '`TYPE %s`. Retrying in %s seconds.',
-                                    type(err).__name__, err, redis_key,
-                                    self._redis_retry_timeout)
-                time.sleep(self._redis_retry_timeout)
-        return response
-
-    def scan_iter(self, match=None, count=None):
-        while True:
-            try:
-                start = timeit.default_timer()
-                response = self.redis.scan_iter(match=match, count=count)
-                self.logger.debug('Finished `SCAN %s` in %s seconds.',
-                                  match, timeit.default_timer() - start)
-                break
-            except redis.exceptions.ConnectionError as err:
-                self.logger.warning('Encountered %s: %s when calling '
-                                    'SCAN. Retrying in %s seconds.',
-                                    type(err).__name__, err,
-                                    self._redis_retry_timeout)
-                time.sleep(self._redis_retry_timeout)
-        return response
-
-    def hset(self, rhash, key, value):
-        while True:
-            try:
-                start = timeit.default_timer()
-                response = self.redis.hset(rhash, key, value)
-                self.logger.debug('Finished `HSET %s %s %s` in %s seconds.',
-                                  rhash, key, value,
-                                  timeit.default_timer() - start)
-                break
-            except redis.exceptions.ConnectionError as err:
-                self.logger.warning('Encountered %s: %s when calling '
-                                    '`HSET %s %s %s`. Retrying in %s seconds.',
-                                    type(err).__name__, err, rhash, key, value,
-                                    self._redis_retry_timeout)
-                time.sleep(self._redis_retry_timeout)
-        return response
-
-    def hget(self, rhash, key):
-        while True:
-            try:
-                # start = timeit.default_timer()
-                response = self.redis.hget(rhash, key)
-                # self.logger.debug('Finished `HGET %s %s` in %s seconds.',
-                #                   rhash, key, timeit.default_timer() - start)
-                break
-            except redis.exceptions.ConnectionError as err:
-                self.logger.warning('Encountered %s: %s when calling '
-                                    '`HGET %s %s`. Retrying in %s seconds.',
-                                    type(err).__name__, err, rhash, key,
-                                    self._redis_retry_timeout)
-                time.sleep(self._redis_retry_timeout)
-        return response
-
-    def hmset(self, rhash, data):
-        while True:
-            try:
-                start = timeit.default_timer()
-                response = self.redis.hmset(rhash, data)
-                self.logger.debug('`HMSET %s %s` finished in %s seconds.',
-                                  rhash, data, timeit.default_timer() - start)
-                break
-            except redis.exceptions.ConnectionError as err:
-                self.logger.warning('Encountered %s: %s when calling '
-                                    '`HMSET %s %s`. Retrying in %s seconds.',
-                                    type(err).__name__, err, rhash, data,
-                                    self._redis_retry_timeout)
-                time.sleep(self._redis_retry_timeout)
-        return response
-
-    def hgetall(self, rhash):
-        while True:
-            try:
-                start = timeit.default_timer()
-                response = self.redis.hgetall(rhash)
-                self.logger.debug('Finished `HGETALL %s` in %s seconds.',
-                                  rhash, timeit.default_timer() - start)
-                break
-            except redis.exceptions.ConnectionError as err:
-                self.logger.warning('Encountered %s: %s when calling '
-                                    '`HGETALL %s`. Retrying in %s seconds.',
-                                    type(err).__name__, err, rhash,
-                                    self._redis_retry_timeout)
-                time.sleep(self._redis_retry_timeout)
-        return response
-
-    def consume(self, status=None, prefix=None):
+    def consume(self):
         """Consume all redis events every `interval` seconds.
 
         Args:
@@ -216,12 +144,13 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
         Returns:
             nothing: this is the consumer main process
         """
-        # process each unprocessed hash
-        for redis_hash in self.iter_redis_hashes(status, prefix):
+        start = timeit.default_timer()
+        redis_hash = self.get_redis_hash()
+
+        if redis_hash is not None:  # popped something off the queue
             try:
-                start = timeit.default_timer()
                 self._consume(redis_hash)
-                hvals = self.hgetall(redis_hash)
+                hvals = self.redis.hgetall(redis_hash)
                 self.logger.debug('Consumed key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s) '
                                   '(%s retries) in %s seconds.',
@@ -231,26 +160,31 @@ class Consumer(object):  # pylint: disable=useless-object-inheritance
                                   hvals.get('postprocess_function'),
                                   0, timeit.default_timer() - start)
             except Exception as err:  # pylint: disable=broad-except
+                # log the error and update redis with details
                 self._handle_error(err, redis_hash)
+
+            # remove the key from the processing queue
+            self.redis.lrem(self.processing_queue, 1, redis_hash)
 
 
 class ImageFileConsumer(Consumer):
     """Consumes image files and uploads the results"""
 
-    def iter_redis_hashes(self, status='new', prefix='predict'):
-        """Iterate over hash values in redis.
-        Only yield hash values for valid image files
+    def is_valid_hash(self, redis_hash):
+        if redis_hash is None:
+            return False
+        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
+        valid_prefix = redis_hash.startswith("predict_")
 
-        Returns:
-            Iterator of all hashes with a valid status
-        """
-        keys = super(ImageFileConsumer, self).iter_redis_hashes(status, prefix)
-        for key in keys:
-            fname = str(self.hget(key, 'input_file_name'))
-            if not fname.lower().endswith('.zip') and key.startswith("predict_"):
-                self.logger.debug('Yielding key %s', fname)
-                self.logger.debug('endswith trk %s', fname.lower().endswith('.trk'))
-                yield key
+        # TODO(enricozb): `valid_file` should be a positive match not a
+        # negative one. It seems fragile. With a positive match, adding new
+        # files won't break this.
+        valid_file = not fname.lower().endswith('.zip')
+
+        self.logger.debug('ImageFileConsumer: Got key {} and decided {}'.format(
+            redis_hash, valid_prefix and valid_file))
+
+        return valid_prefix and valid_file
 
     def _process(self, image, key, process_type, timeout=30, streaming=False):
         """Apply each processing function to image.
@@ -324,18 +258,12 @@ class ImageFileConsumer(Consumer):
                 # pylint: disable=E1101
                 if err.code() in retry_statuses:
                     count += 1
-                    # write update to Redis
-                    processing_retry_time = time.time() * 1000
-                    self.hmset(self._redis_hash, {
-                        'number_of_processing_retries': count,
-                        'status': '{} {}-processing -- RETRY:{} -- {}'.format(
-                            key, process_type, count,
-                            err.code().name),
-                        'timestamp_processing_retry': processing_retry_time,
-                        'identity_processing_retry': self.hostname,
-                        'timestamp_last_status_update': processing_retry_time
+                    temp_status = 'retry-processing - {} - {}'.format(
+                        count, err.code().name)
+                    self.update_status(self._redis_hash, temp_status, {
+                        'process_retries': count,
                     })
-                    sleeptime = np.random.randint(24, 44)
+                    sleeptime = np.random.randint(1, 20)
                     sleeptime = 1 + sleeptime * int(streaming)
                     self.logger.warning('%sException `%s: %s` during %s '
                                         '%s-processing request.  Waiting %s '
@@ -488,27 +416,17 @@ class ImageFileConsumer(Consumer):
                 if err.code() in retry_statuses:
                     count += 1
                     # write update to Redis
-                    processing_retry_time = time.time() * 1000
-                    self.hmset(self._redis_hash, {
-                        'number_of_processing_retries': count,
-                        'status': 'processing -- RETRY:{} -- {}'.format(
-                            count, err.code().name),
-                        'timestamp_processing_retry': processing_retry_time,
-                        'identity_processing_retry': self.hostname,
-                        'timestamp_last_status_update': processing_retry_time
+                    temp_status = 'retry-predicting - {} - {}'.format(
+                        count, err.code().name)
+                    self.update_status(self._redis_hash, temp_status, {
+                        'predict_retries': count,
                     })
-
                     self.logger.warning('%sException `%s: %s` during '
                                         'PredictClient request to model %s:%s.'
                                         'Waiting %s seconds before retrying.',
                                         type(err).__name__, err.code().name,
                                         err.details(), model_name,
                                         model_version, backoff)
-                    self.logger.warning('Encountered %s  during PredictClient '
-                                        'request to model %s:%s: %s.',
-                                        type(err).__name__, model_name,
-                                        model_version, err)
-
                     self.logger.debug('Waiting for %s seconds before retrying',
                                       backoff)
                     time.sleep(backoff)  # sleep before retry
@@ -524,21 +442,17 @@ class ImageFileConsumer(Consumer):
                 raise err
 
     def _consume(self, redis_hash):
-        hvals = self.hgetall(redis_hash)
+        hvals = self.redis.hgetall(redis_hash)
         # hold on to the redis hash/values for logging purposes
         self._redis_hash = redis_hash
         self._redis_values = hvals
         self.logger.debug('Found hash to process "%s": %s',
                           redis_hash, json.dumps(hvals, indent=4))
 
-        # write update to Redis
-        starting_time = time.time() * 1000
-        self.hmset(redis_hash, {
-            'status': 'started',
-            'timestamp_started': starting_time,
+        self.update_status(redis_hash, 'started', {
             'identity_started': self.hostname,
-            'timestamp_last_status_update': starting_time
         })
+
         model_name = hvals.get('model_name')
         model_version = hvals.get('model_version')
         cuts = hvals.get('cuts', '0')
@@ -553,26 +467,14 @@ class ImageFileConsumer(Consumer):
             timeout = settings.GRPC_TIMEOUT
             timeout = timeout if not streaming else timeout * int(cuts)
 
-            # Update redis with pre-processing information
-            preprocessing_time = time.time() * 1000
-            self.hmset(redis_hash, {
-                'status': 'pre-processing',
-                'timestamp_preprocessing': preprocessing_time,
-                'identity_preprocessing': self.hostname,
-                'timestamp_last_status_update': preprocessing_time
-            })
+            # Pre-process data before sending to the model
+            self.update_status(redis_hash, 'pre-processing')
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
             image = self.preprocess(image, pre_funcs, timeout, True)
 
-            # Update redis with prediction information
-            predicting_time = time.time() * 1000
-            self.hmset(redis_hash, {
-                'status': 'predicting',
-                'timestamp_predicting': predicting_time,
-                'identity_predicting': self.hostname,
-                'timestamp_last_status_update': predicting_time
-            })
+            # Send data to the model
+            self.update_status(redis_hash, 'predicting')
 
             if streaming:
                 image = self.process_big_image(
@@ -581,26 +483,14 @@ class ImageFileConsumer(Consumer):
                 image = self.grpc_image(
                     image, model_name, model_version, timeout)
 
-            # Update redis with post-processing information
-            postprocessing_time = time.time() * 1000
-            self.hmset(redis_hash, {
-                'status': 'post-processing',
-                'timestamp_post-processing': postprocessing_time,
-                'identity_post-processing': self.hostname,
-                'timestamp_last_status_update': postprocessing_time
-            })
+            # Post-process model results
+            self.update_status(redis_hash, 'post-processing')
 
             post_funcs = hvals.get('postprocess_function', '').split(',')
             image = self.postprocess(image, post_funcs, timeout, True)
 
-            # write update to Redis
-            outputting_time = time.time() * 1000
-            self.hmset(redis_hash, {
-                'status': 'outputting',
-                'timestamp_outputting': outputting_time,
-                'identity_outputting': self.hostname,
-                'timestamp_last_status_update': outputting_time
-            })
+            # Save the post-processed results to a file
+            self.update_status(redis_hash, 'saving-results')
 
             # Save each result channel as an image file
             save_name = hvals.get('original_name', fname)
@@ -619,58 +509,28 @@ class ImageFileConsumer(Consumer):
             subdir = subdir if subdir else None
             dest, output_url = self.storage.upload(zip_file, subdir=subdir)
 
-            # Compute some timings
-            output_timestamp = time.time() * 1000
-            hash_values = self.hgetall(redis_hash)
-            upload_time = float(hash_values.get('timestamp_upload', -1))
-            start_time = float(hash_values.get('timestamp_started', -1))
-            preprocess_time = float(hash_values.get('timestamp_preprocessing', -1))
-            predict_time = float(hash_values.get('timestamp_predicting', -1))
-            postprocess_time = float(hash_values.get('timestamp_post-processing', -1))
-            outputting_time = float(hash_values.get('timestamp_outputting', -1))
-            output_time = float(output_timestamp)
-            # compute timing intervals
-            upload_to_start_time = (start_time - upload_time) / 1000
-            start_to_preprocessing_time = (preprocess_time - start_time) / 1000
-            preprocessing_to_predicting_time = (predict_time - preprocess_time) / 1000
-            predicting_to_postprocess_time = (postprocess_time - predict_time) / 1000
-            postprocess_to_outputting_time = (outputting_time - postprocess_time) / 1000
-            outputting_to_output_time = (output_time - outputting_time) / 1000
-
             # Update redis with the final results
-            self.hmset(redis_hash, {
-                'identity_output': self.hostname,
+            self.update_status(redis_hash, self.final_status, {
                 'output_url': output_url,
                 'output_file_name': dest,
-                'status': self.final_status,
-                'timestamp_output': output_timestamp,
-                'timestamp_last_status_update': output_timestamp,
-                'upload_to_start_time': upload_to_start_time,
-                'start_to_preprocessing_time': start_to_preprocessing_time,
-                'preprocessing_to_predicting_time': preprocessing_to_predicting_time,
-                'predicting_to_postprocess_time': predicting_to_postprocess_time,
-                'postprocess_to_outputting_time': postprocess_to_outputting_time,
-                'outputting_to_output_time': outputting_to_output_time
+                'finished_at': self.get_current_timestamp(),
             })
-            self.logger.debug('Updated status to %s', self.final_status)
 
 
 class ZipFileConsumer(Consumer):
     """Consumes zip files and uploads the results"""
 
-    def iter_redis_hashes(self, status='new', prefix='predict'):
-        """Iterate over hash values in redis.
-        Only yield hash values for zip files
+    def is_valid_hash(self, redis_hash):
+        if redis_hash is None:
+            return False
+        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
+        valid_prefix = redis_hash.startswith("predict_")
+        valid_file = fname.lower().endswith('.zip')
 
-        Returns:
-            Iterator of all zip hashes with a valid status
-        """
-        keys = super(ZipFileConsumer, self).iter_redis_hashes(status, prefix)
-        for key in keys:
-            fname = str(self.hget(key, 'input_file_name'))
-            # ZipFileConsumer should not touch tracking jobs
-            if fname.lower().endswith('.zip') and key.startswith("predict_"):
-                yield key
+        self.logger.debug('ZipFileConsumer: Got key {} and decided {}'.format(
+            redis_hash, valid_prefix and valid_file))
+
+        return valid_prefix and valid_file
 
     def _upload_archived_images(self, hvalues):
         """Extract all image files and upload them to storage and redis"""
@@ -688,16 +548,16 @@ class ZipFileConsumer(Consumer):
                     file=clean_imfile,
                     hash=uuid.uuid4().hex)
 
-                output_timestamp = time.time() * 1000
+                current_timestamp = self.get_current_timestamp()
                 new_hvals = dict()
                 new_hvals.update(hvalues)
                 new_hvals['output_file_name'] = uploaded_file_path
                 new_hvals['original_name'] = clean_imfile
                 new_hvals['status'] = 'new'
                 new_hvals['identity_upload'] = self.hostname
-                new_hvals['timestamp_upload'] = output_timestamp
-                new_hvals['timestamp_last_status_update'] = output_timestamp
-                self.hmset(new_hash, new_hvals)
+                new_hvals['created_at'] = current_timestamp
+                new_hvals['updated_at'] = current_timestamp
+                self.redis.hmset(new_hash, new_hvals)
                 self.logger.debug('Added new hash `%s`: %s',
                                   new_hash, json.dumps(new_hvals, indent=4))
                 all_hashes.add(new_hash)
@@ -705,32 +565,19 @@ class ZipFileConsumer(Consumer):
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
-        hvals = self.hgetall(redis_hash)
-        self.logger.debug('Found hash to process "%s": %s',
+        hvals = self.redis.hgetall(redis_hash)
+        self.logger.debug('Found hash to process `%s`: %s',
                           redis_hash, json.dumps(hvals, indent=4))
 
-        # write update to Redis
-        starting_time = time.time() * 1000
-        self.hmset(redis_hash, {
-            'identity_started': self.hostname,
-            'status': 'started',
-            'timestamp_started': starting_time,
-            'identity_started': self.hostname,
-            'timestamp_last_status_update': starting_time
-        })
+        self.update_status(redis_hash, 'started')
+
         all_hashes = self._upload_archived_images(hvals)
         self.logger.info('Uploaded %s hashes.  Waiting for ImageConsumers.',
                          len(all_hashes))
+
         # Now all images have been uploaded with new redis hashes
         # Wait for these to be processed by an ImageFileConsumer
-        waiting_time = time.time() * 1000
-        self.hmset(redis_hash, {
-            'identity_waiting': self.hostname,
-            'status': 'waiting',
-            'timestamp_waiting': waiting_time,
-            'identity_waiting': self.hostname,
-            'timestamp_last_status_update': waiting_time
-        })
+        self.update_status(redis_hash, 'waiting')
 
         with utils.get_tempdir() as tempdir:
             finished_hashes = set()
@@ -742,10 +589,10 @@ class ZipFileConsumer(Consumer):
                     if h in finished_hashes:
                         continue
 
-                    status = self.hget(h, 'status')
+                    status = self.redis.hget(h, 'status')
 
                     if status == 'failed':
-                        reason = self.hget(h, 'reason')
+                        reason = self.redis.hget(h, 'reason')
                         # one of the hashes failed to process
                         self.logger.error('Failed to process hash `%s`: %s',
                                           h, reason)
@@ -754,7 +601,7 @@ class ZipFileConsumer(Consumer):
 
                     elif status == self.final_status:
                         # one of our hashes is done!
-                        fname = self.hget(h, 'output_file_name')
+                        fname = self.redis.hget(h, 'output_file_name')
                         local_fname = self.storage.download(fname, tempdir)
                         self.logger.info('Saved file: %s', local_fname)
                         if zipfile.is_zipfile(local_fname):
@@ -782,14 +629,11 @@ class ZipFileConsumer(Consumer):
             self.logger.debug('Uploaded output to: `%s`', output_url)
 
             # Update redis with the results
-            output_timestamp = time.time() * 1000
-            self.hmset(redis_hash, {
+            self.update_status(redis_hash, self.final_status, {
                 'identity_output': self.hostname,
+                'finished_at': self.get_current_timestamp(),
                 'output_url': output_url,
-                'output_file_name': uploaded_file_path,
-                'status': self.final_status,
-                'timestamp_output': output_timestamp,
-                'timestamp_last_status_update': output_timestamp
+                'output_file_name': uploaded_file_path
             })
 
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
@@ -800,17 +644,17 @@ class ZipFileConsumer(Consumer):
 class TrackingConsumer(Consumer):
     """Consumes some unspecified file format, tracks the images, and uploads the results"""
 
-    def iter_redis_hashes(self, status='new', prefix='track_'):
-        """Iterate over hash values in redis.
-        Only yield hash values for zip files
+    def is_valid_hash(self, redis_hash):
+        if redis_hash is None:
+            return False
+        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
+        valid_prefix = redis_hash.startswith("track_")
+        valid_file = fname.lower().endswith('.zip')
 
-        Returns:
-            Iterator of all zip hashes with a valid status
-        """
-        keys = super(TrackingConsumer, self).iter_redis_hashes(status, prefix)
-        for key in keys:
-            if key.startswith("track_"):
-                yield key
+        self.logger.debug('TrackingCOnsumer: Got key {} and decided {}'.format(
+            redis_hash, valid_prefix and valid_file))
+
+        return valid_prefix and valid_file
 
     def _done(self, redis_hash, status, output_url, output_file_name):
         output_timestamp = time.time() * 1000

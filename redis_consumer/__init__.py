@@ -29,6 +29,7 @@ from __future__ import print_function
 
 from redis_consumer import grpc_clients
 from redis_consumer import consumers
+from redis_consumer import redis
 from redis_consumer import settings
 from redis_consumer import storage
 from redis_consumer import utils
