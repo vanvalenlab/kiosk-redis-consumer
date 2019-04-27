@@ -247,7 +247,7 @@ class ImageFileConsumer(Consumer):
         keys = super(ImageFileConsumer, self).iter_redis_hashes(status, prefix)
         for key in keys:
             fname = str(self.hget(key, 'input_file_name'))
-            if not (fname.lower().endswith('.zip') or fname.lower().endswith('.trk')):
+            if not fname.lower().endswith('.zip') and key.startswith("predict_"):
                 self.logger.debug('Yielding key %s', fname)
                 self.logger.debug('endswith trk %s', fname.lower().endswith('.trk'))
                 yield key
@@ -669,7 +669,7 @@ class ZipFileConsumer(Consumer):
         for key in keys:
             fname = str(self.hget(key, 'input_file_name'))
             # ZipFileConsumer should not touch tracking jobs
-            if fname.lower().endswith('.zip') and not key.startswith("predict_track_"):
+            if fname.lower().endswith('.zip') and key.startswith("predict_"):
                 yield key
 
     def _upload_archived_images(self, hvalues):
@@ -800,7 +800,7 @@ class ZipFileConsumer(Consumer):
 class TrackingConsumer(Consumer):
     """Consumes some unspecified file format, tracks the images, and uploads the results"""
 
-    def iter_redis_hashes(self, status='new', prefix='predict_track_'):
+    def iter_redis_hashes(self, status='new', prefix='track_'):
         """Iterate over hash values in redis.
         Only yield hash values for zip files
 
@@ -809,7 +809,7 @@ class TrackingConsumer(Consumer):
         """
         keys = super(TrackingConsumer, self).iter_redis_hashes(status, prefix)
         for key in keys:
-            if key.startswith("predict_track_"):
+            if key.startswith("track_"):
                 yield key
 
     def _done(self, redis_hash, status, output_url, output_file_name):
