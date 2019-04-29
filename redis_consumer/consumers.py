@@ -90,6 +90,8 @@ class Consumer(object):
             self.redis.lrem(self.processing_queue, 1, redis_hash)
             self.redis.lpush(self.queue, redis_hash)
 
+            # TODO(enricozb): maybe wait here? so we don't just pop and push
+
     def _handle_error(self, err, redis_hash):
         """Update redis with failure information, and log errors.
 
@@ -134,7 +136,7 @@ class Consumer(object):
     def _consume(self, redis_hash):
         raise NotImplementedError
 
-    def consume(self):
+    def consume(self, sleeptime=settings.INTERVAL):
         """Consume all redis events every `interval` seconds.
 
         Args:
@@ -165,6 +167,11 @@ class Consumer(object):
 
             # remove the key from the processing queue
             self.redis.lrem(self.processing_queue, 1, redis_hash)
+        else:
+            self.logger.debug("Queue is empty.")
+            self.logger.debug('Waiting for %s seconds before retrying',
+                              sleeptime)
+            time.sleep(sleeptime)  # sleep before retry
 
 
 class ImageFileConsumer(Consumer):
@@ -181,7 +188,7 @@ class ImageFileConsumer(Consumer):
         # files won't break this.
         valid_file = not fname.lower().endswith('.zip')
 
-        self.logger.debug('ImageFileConsumer: Got key {} and decided {}'.format(
+        self.logger.debug('Got key {} and decided {}'.format(
             redis_hash, valid_prefix and valid_file))
 
         return valid_prefix and valid_file
@@ -527,7 +534,7 @@ class ZipFileConsumer(Consumer):
         valid_prefix = redis_hash.startswith("predict_")
         valid_file = fname.lower().endswith('.zip')
 
-        self.logger.debug('ZipFileConsumer: Got key {} and decided {}'.format(
+        self.logger.debug('Got key {} and decided {}'.format(
             redis_hash, valid_prefix and valid_file))
 
         return valid_prefix and valid_file
@@ -649,16 +656,18 @@ class TrackingConsumer(Consumer):
             return False
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
         valid_prefix = redis_hash.startswith("track_")
-        valid_file = fname.lower().endswith('.zip')
+        valid_file = (fname.lower().endswith('.zip') or
+                      fname.lower().endswith(".trk") or
+                      fname.lower().endswith(".trks"))
 
-        self.logger.debug('TrackingCOnsumer: Got key {} and decided {}'.format(
+        self.logger.debug('Got key {} and decided {}'.format(
             redis_hash, valid_prefix and valid_file))
 
         return valid_prefix and valid_file
 
     def _done(self, redis_hash, status, output_url, output_file_name):
         output_timestamp = time.time() * 1000
-        self.hmset(redis_hash, {
+        self.redis.hmset(redis_hash, {
             'identity_output': self.hostname,
             'status': status,
             'output_url': output_url,
@@ -701,19 +710,19 @@ class TrackingConsumer(Consumer):
         return tracker
 
     def _update_progress(self, redis_hash, progress):
-        self.hmset(redis_hash, {
+        self.redis.hmset(redis_hash, {
             'progress': progress,
         })
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
-        hvalues = self.hgetall(redis_hash)
+        hvalues = self.redis.hgetall(redis_hash)
         self.logger.debug('Found track_* hash to process "%s": %s',
                           redis_hash, json.dumps(hvalues, indent=4))
 
         # Set status and initial progress
         starting_time = time.time() * 1000
-        self.hmset(redis_hash, {
+        self.redis.hmset(redis_hash, {
             'status': 'started',
             'progress': 0,
             'timestamp_started': starting_time,

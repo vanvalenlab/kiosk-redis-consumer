@@ -63,9 +63,11 @@ def initialize_logger(debug_mode=True):
 
     logger.addHandler(console)
     logger.addHandler(fh)
+    logger.debug("Logger initialized.")
 
 
 def get_consumer(consumer_type, **kwargs):
+    logging.debug("Getting '{}' consumer.".format(consumer_type))
     ct = str(consumer_type).lower()
     if ct == 'image':
         return redis_consumer.consumers.ImageFileConsumer(**kwargs)
@@ -97,9 +99,11 @@ if __name__ == '__main__':
 
     consumer = get_consumer(settings.CONSUMER_TYPE, **kwargs)
 
+    logging.debug("Got '{}' consumer.".format(settings.CONSUMER_TYPE))
+
     while True:
         try:
-            consumer.consume()
+            consumer.consume(sleeptime=settings.INTERVAL)
         except Exception as err:  # pylint: disable=broad-except
             _logger.critical('Fatal Error: %s: %s\n%s',
                              type(err).__name__, err, traceback.format_exc())
