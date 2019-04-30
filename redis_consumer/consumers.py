@@ -525,7 +525,8 @@ class ZipFileConsumer(Consumer):
                 clean_imfile = settings._strip(imfile.replace(tempdir, ''))
                 # Save each result channel as an image file
                 subdir = os.path.dirname(clean_imfile)
-                uploaded_file_path = self.storage.upload(imfile, subdir=subdir)
+                dest, _ = self.storage.upload(imfile, subdir=subdir)
+
                 new_hash = '{prefix}_{file}_{hash}'.format(
                     prefix=settings.HASH_PREFIX,
                     file=clean_imfile,
@@ -534,12 +535,13 @@ class ZipFileConsumer(Consumer):
                 current_timestamp = self.get_current_timestamp()
                 new_hvals = dict()
                 new_hvals.update(hvalues)
-                new_hvals['output_file_name'] = uploaded_file_path
+                new_hvals['input_file_name'] = dest
                 new_hvals['original_name'] = clean_imfile
                 new_hvals['status'] = 'new'
                 new_hvals['identity_upload'] = self.hostname
                 new_hvals['created_at'] = current_timestamp
                 new_hvals['updated_at'] = current_timestamp
+
                 self.redis.hmset(new_hash, new_hvals)
                 self.redis.lpush(self.queue, new_hash)
                 self.logger.debug('Added new hash `%s`: %s',
