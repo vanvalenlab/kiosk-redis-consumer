@@ -541,7 +541,7 @@ class ZipFileConsumer(Consumer):
                 new_hvals['created_at'] = current_timestamp
                 new_hvals['updated_at'] = current_timestamp
                 self.redis.hmset(new_hash, new_hvals)
-                self.redis.lpush(self.queue, redis_hash)
+                self.redis.lpush(self.queue, new_hash)
                 self.logger.debug('Added new hash `%s`: %s',
                                   new_hash, json.dumps(new_hvals, indent=4))
                 all_hashes.add(new_hash)
