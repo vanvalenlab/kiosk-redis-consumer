@@ -525,7 +525,8 @@ class ZipFileConsumer(Consumer):
                 clean_imfile = settings._strip(imfile.replace(tempdir, ''))
                 # Save each result channel as an image file
                 subdir = os.path.dirname(clean_imfile)
-                uploaded_file_path = self.storage.upload(imfile, subdir=subdir)
+                dest, _ = self.storage.upload(imfile, subdir=subdir)
+
                 new_hash = '{prefix}_{file}_{hash}'.format(
                     prefix=settings.HASH_PREFIX,
                     file=clean_imfile,
@@ -534,13 +535,15 @@ class ZipFileConsumer(Consumer):
                 current_timestamp = self.get_current_timestamp()
                 new_hvals = dict()
                 new_hvals.update(hvalues)
-                new_hvals['output_file_name'] = uploaded_file_path
+                new_hvals['input_file_name'] = dest
                 new_hvals['original_name'] = clean_imfile
                 new_hvals['status'] = 'new'
                 new_hvals['identity_upload'] = self.hostname
                 new_hvals['created_at'] = current_timestamp
                 new_hvals['updated_at'] = current_timestamp
+
                 self.redis.hmset(new_hash, new_hvals)
+                self.redis.lpush(self.queue, new_hash)
                 self.logger.debug('Added new hash `%s`: %s',
                                   new_hash, json.dumps(new_hvals, indent=4))
                 all_hashes.add(new_hash)
@@ -552,7 +555,9 @@ class ZipFileConsumer(Consumer):
         self.logger.debug('Found hash to process `%s`: %s',
                           redis_hash, json.dumps(hvals, indent=4))
 
-        self.update_status(redis_hash, 'started')
+        self.update_status(redis_hash, 'started', {
+            'identity_started': self.hostname,
+        })
 
         all_hashes = self._upload_archived_images(hvals)
         self.logger.info('Uploaded %s hashes.  Waiting for ImageConsumers.',
@@ -598,7 +603,7 @@ class ZipFileConsumer(Consumer):
                         finished_hashes.add(h)
 
             if failed_hashes:
-                self.logger.warning('Failed to process %s hashes',
+                self.logger.warning('Failed to process %s hashes.',
                                     len(failed_hashes))
 
             saved_files = list(saved_files)
@@ -606,9 +611,7 @@ class ZipFileConsumer(Consumer):
             zip_file = utils.zip_files(saved_files, tempdir)
 
             # Upload the zip file to cloud storage bucket
-            uploaded_file_path = self.storage.upload(zip_file)
-
-            output_url = self.storage.get_public_url(uploaded_file_path)
+            uploaded_file_path, output_url = self.storage.upload(zip_file)
             self.logger.debug('Uploaded output to: `%s`', output_url)
 
             # Update redis with the results
@@ -619,5 +622,7 @@ class ZipFileConsumer(Consumer):
                 'output_file_name': uploaded_file_path
             })
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
-                             len(all_hashes), hvals['output_file_name'],
+                             len(all_hashes), hvals['input_file_name'],
                              timeit.default_timer() - start)
+
+            # TODO: expire `finished_hashes`?
