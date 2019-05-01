@@ -609,9 +609,7 @@ class ZipFileConsumer(Consumer):
             zip_file = utils.zip_files(saved_files, tempdir)
 
             # Upload the zip file to cloud storage bucket
-            uploaded_file_path = self.storage.upload(zip_file)
-
-            output_url = self.storage.get_public_url(uploaded_file_path)
+            uploaded_file_path, output_url = self.storage.upload(zip_file)
             self.logger.debug('Uploaded output to: `%s`', output_url)
 
             # Update redis with the results
