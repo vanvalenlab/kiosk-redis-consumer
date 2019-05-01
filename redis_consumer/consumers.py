@@ -603,7 +603,7 @@ class ZipFileConsumer(Consumer):
                         finished_hashes.add(h)
 
             if failed_hashes:
-                self.logger.warning('Failed to process %s hashes',
+                self.logger.warning('Failed to process %s hashes.',
                                     len(failed_hashes))
 
             saved_files = list(saved_files)
@@ -624,3 +624,5 @@ class ZipFileConsumer(Consumer):
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
                              len(all_hashes), hvals['input_file_name'],
                              timeit.default_timer() - start)
+
+            # TODO: expire `finished_hashes`?
