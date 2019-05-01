@@ -555,7 +555,9 @@ class ZipFileConsumer(Consumer):
         self.logger.debug('Found hash to process `%s`: %s',
                           redis_hash, json.dumps(hvals, indent=4))
 
-        self.update_status(redis_hash, 'started')
+        self.update_status(redis_hash, 'started', {
+            'identity_started': self.hostname,
+        })
 
         all_hashes = self._upload_archived_images(hvals)
         self.logger.info('Uploaded %s hashes.  Waiting for ImageConsumers.',
