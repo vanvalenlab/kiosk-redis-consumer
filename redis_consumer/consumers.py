@@ -622,5 +622,5 @@ class ZipFileConsumer(Consumer):
                 'output_file_name': uploaded_file_path
             })
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
-                             len(all_hashes), hvals['output_file_name'],
+                             len(all_hashes), hvals['input_file_name'],
                              timeit.default_timer() - start)
