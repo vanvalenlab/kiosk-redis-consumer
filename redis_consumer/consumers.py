@@ -572,6 +572,9 @@ class ZipFileConsumer(Consumer):
             finished_hashes = set()
             failed_hashes = set()
             saved_files = set()
+
+            expire_time = 60 * 10  # ten minutes
+
             # ping redis until all the sets are finished
             while all_hashes.symmetric_difference(finished_hashes):
                 for h in all_hashes:
@@ -587,6 +590,7 @@ class ZipFileConsumer(Consumer):
                                           h, reason)
                         failed_hashes.add(h)
                         finished_hashes.add(h)
+                        self.redis.expire(h, expire_time)
 
                     elif status == self.final_status:
                         # one of our hashes is done!
@@ -602,6 +606,7 @@ class ZipFileConsumer(Consumer):
                         for imfile in image_files:
                             saved_files.add(imfile)
                         finished_hashes.add(h)
+                        self.redis.expire(h, expire_time)
 
             if failed_hashes:
                 self.logger.warning('Failed to process %s hashes.',
@@ -625,5 +630,3 @@ class ZipFileConsumer(Consumer):
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
                              len(all_hashes), hvals['input_file_name'],
                              timeit.default_timer() - start)
-
-            # TODO: expire `finished_hashes`?
