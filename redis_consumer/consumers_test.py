@@ -97,6 +97,9 @@ class DummyRedis(object):
     def hmset(self, rhash, hvals):  # pylint: disable=W0613
         return hvals
 
+    def expire(self, name, time):  # pylint: disable=W0613
+        return 1
+
     def hget(self, rhash, field):
         if field == 'status':
             return rhash.split('_')[1]
