@@ -28,12 +28,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import uuid
-import timeit
-import datetime
 import os
 import json
 import time
+import uuid
+import urllib
+import timeit
+import datetime
 import logging
 import zipfile
 
@@ -569,8 +570,11 @@ class ZipFileConsumer(Consumer):
 
         with utils.get_tempdir() as tempdir:
             finished_hashes = set()
-            failed_hashes = set()
+            failed_hashes = dict()
             saved_files = set()
+
+            expire_time = 60 * 10  # ten minutes
+
             # ping redis until all the sets are finished
             while all_hashes.symmetric_difference(finished_hashes):
                 for h in all_hashes:
@@ -584,8 +588,9 @@ class ZipFileConsumer(Consumer):
                         # one of the hashes failed to process
                         self.logger.error('Failed to process hash `%s`: %s',
                                           h, reason)
-                        failed_hashes.add(h)
+                        failed_hashes[h] = reason
                         finished_hashes.add(h)
+                        self.redis.expire(h, expire_time)
 
                     elif status == self.final_status:
                         # one of our hashes is done!
@@ -601,28 +606,29 @@ class ZipFileConsumer(Consumer):
                         for imfile in image_files:
                             saved_files.add(imfile)
                         finished_hashes.add(h)
+                        self.redis.expire(h, expire_time)
 
             if failed_hashes:
-                self.logger.warning('Failed to process %s hashes.',
-                                    len(failed_hashes))
+                self.logger.warning('Failed to process hashes: %s',
+                                    json.dumps(failed_hashes, indent=4))
 
-            saved_files = list(saved_files)
-            self.logger.info(saved_files)
             zip_file = utils.zip_files(saved_files, tempdir)
 
             # Upload the zip file to cloud storage bucket
             uploaded_file_path, output_url = self.storage.upload(zip_file)
             self.logger.debug('Uploaded output to: `%s`', output_url)
 
+            # check python2 vs python3
+            url = urllib.parse.urlencode if hasattr(urllib, 'parse') else urllib.urlencode
+
             # Update redis with the results
             self.update_status(redis_hash, self.final_status, {
                 'identity_output': self.hostname,
                 'finished_at': self.get_current_timestamp(),
                 'output_url': output_url,
+                'failures': url(failed_hashes),
                 'output_file_name': uploaded_file_path
             })
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
                              len(all_hashes), hvals['input_file_name'],
                              timeit.default_timer() - start)
-
-            # TODO: expire `finished_hashes`?
