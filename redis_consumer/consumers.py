@@ -38,9 +38,10 @@ import timeit
 import uuid
 import zipfile
 
-import pytz
 import grpc
 import numpy as np
+import pytz
+import skimage
 
 from redis_consumer.grpc_clients import PredictClient
 from redis_consumer.grpc_clients import ProcessClient
@@ -73,7 +74,7 @@ class Consumer(object):
         self.final_status = final_status
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
-    def get_redis_hash(self):
+    def get_redis_hash(self, sleeptime=settings.INTERVAL):
         while True:
             redis_hash = self.redis.rpoplpush(self.queue, self.processing_queue)
 
@@ -90,7 +91,7 @@ class Consumer(object):
             self.redis.lrem(self.processing_queue, 1, redis_hash)
             self.redis.lpush(self.queue, redis_hash)
 
-            # TODO(enricozb): maybe wait here? so we don't just pop and push
+            time.sleep(sleeptime)
 
     def _handle_error(self, err, redis_hash):
         """Update redis with failure information, and log errors.
@@ -549,6 +550,8 @@ class ZipFileConsumer(Consumer):
                 clean_imfile = settings._strip(imfile.replace(tempdir, ''))
                 # Save each result channel as an image file
                 subdir = os.path.dirname(clean_imfile)
+                # TODO(enricozb): i think uploaded_file_path is a tuple, and
+                # will break.
                 uploaded_file_path = self.storage.upload(imfile, subdir=subdir)
                 new_hash = '{prefix}_{file}_{hash}'.format(
                     prefix=settings.HASH_PREFIX,
@@ -558,13 +561,15 @@ class ZipFileConsumer(Consumer):
                 current_timestamp = self.get_current_timestamp()
                 new_hvals = dict()
                 new_hvals.update(hvalues)
-                new_hvals['output_file_name'] = uploaded_file_path
+                new_hvals['input_file_name'] = uploaded_file_path
                 new_hvals['original_name'] = clean_imfile
                 new_hvals['status'] = 'new'
                 new_hvals['identity_upload'] = self.hostname
                 new_hvals['created_at'] = current_timestamp
                 new_hvals['updated_at'] = current_timestamp
                 self.redis.hmset(new_hash, new_hvals)
+                # TODO(enricozb): not sure which queue to push to here?
+                self.redis.lpush(self.queue, new_hash)
                 self.logger.debug('Added new hash `%s`: %s',
                                   new_hash, json.dumps(new_hvals, indent=4))
                 all_hashes.add(new_hash)
@@ -649,16 +654,22 @@ class ZipFileConsumer(Consumer):
 
 
 class TrackingConsumer(Consumer):
-    """Consumes some unspecified file format, tracks the images, and uploads the results"""
+    """Consumes some unspecified file format, tracks the images,
+       and uploads the results
+    """
 
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
             return False
-        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
+        fname = str(self.redis.hget(redis_hash, 'input_file_name')).lower()
+
+        if fname.endswith(".zip"):
+            raise ValueError(".zip files are not supported for tracking.")
+
         valid_prefix = redis_hash.startswith("track_")
-        valid_file = (fname.lower().endswith('.zip') or
-                      fname.lower().endswith(".trk") or
-                      fname.lower().endswith(".trks"))
+        valid_file = (fname.endswith(".trk") or
+                      fname.endswith(".trks") or
+                      fname.endswith(".tiff"))
 
         self.logger.debug('Got key {} and decided {}'.format(
             redis_hash, valid_prefix and valid_file))
@@ -676,24 +687,22 @@ class TrackingConsumer(Consumer):
             'timestamp_last_status_update': output_timestamp
         })
 
-    def _get_model(self, redis_hash):
+    def _get_model(self, redis_hash, hvalues):
         hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
-        model_name = "tracking_neigh=30_in=32"
-        model_version = 0
 
         t = timeit.default_timer()
         model = TrackingClient(hostname,
                                redis_hash,
-                               model_name,
-                               model_version,
+                               hvalues.get('model_name'),
+                               int(hvalues.get('model_version')),
                                progress_callback=self._update_progress)
 
         self.logger.debug('Created the TrackingClient in %s seconds.',
                           timeit.default_timer() - t)
         return model
 
-    def _get_tracker(self, redis_hash, raw, segmented):
-        tracking_model = self._get_model(redis_hash)
+    def _get_tracker(self, redis_hash, hvalues, raw, segmented):
+        tracking_model = self._get_model(redis_hash, hvalues)
 
         features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
         tracker = tracking.cell_tracker(raw, segmented,
@@ -714,6 +723,137 @@ class TrackingConsumer(Consumer):
             'progress': progress,
         })
 
+    def _load_data(self, hvalues, subdir, fname):
+        """
+        Given the upload location `input_file_name`, and the downloaded
+        location of the same file in subdir/fname, return the raw and annotated
+        data. If the input is only raw data, we call up the ImageFileConsumer
+        to predict and annotate the data.
+
+        Args:
+            hvalues: map of original hvalues of the tracking job
+            subdir: string of path that contains the downloaded file
+            fname: string of file name inside subdir
+        """
+        if fname.endswith('.trk') or fname.endswith('.trks'):
+            return utils.load_track_file(os.path.join(subdir, fname))
+
+        if not fname.endswith('.tiff'):
+            raise ValueError("_load_data takes in only .tiff, .trk, or .trks")
+
+        # push a key per frame and let ImageFileConsumers segment
+        raw = utils.get_image(os.path.join(subdir, fname))
+
+        # remove the last dimensions added by `get_image`
+
+        tiff_stack = np.squeeze(raw, -1)
+        if len(tiff_stack.shape) != 3:
+            raise ValueError(
+                "This tiff file has shape {}, which isn't 3"
+                " dimensions. Tracking can only be done on images with 3"
+                " dimensions, (time, width, height)".format(tiff_stack.shape))
+
+        num_frames = len(tiff_stack)
+        hash_to_frame = {}
+        remaining_hashes = set()
+
+        self.logger.debug("Got tiffstack shape {}.".format(tiff_stack.shape))
+        self.logger.debug("tiffstack num_frames {}.".format(num_frames))
+
+        with utils.get_tempdir() as tempdir:
+            for (i, img) in enumerate(tiff_stack):
+                # make a file name for this frame
+                segment_fname = (hvalues.get("original_name") +
+                                 "-tracking-frame-{}.tif".format(i))
+                segment_local_path = os.path.join(tempdir, segment_fname)
+
+                # upload it
+                skimage.external.tifffile.imsave(segment_local_path, img)
+                upload_file_name, upload_file_url = self.storage.upload(
+                    segment_local_path)
+
+                # prepare hvalues for this frame's hash
+                current_timestamp = self.get_current_timestamp()
+                frame_hvalues = {
+                    'identity_upload': self.hostname,
+                    'input_file_name': upload_file_name,
+                    'original_name': segment_fname,
+                    'model_name': 'HeLaS3watershed',
+                    'model_version': 2,
+                    'postprocess_function': 'watershed',
+                    'cuts': 0,
+                    'status': 'new',
+                    'created_at': current_timestamp,
+                    'updated_at': current_timestamp,
+                    'url': upload_file_url
+                }
+
+                self.logger.debug("Setting {}".format(frame_hvalues))
+
+                # make a hash for this frame
+                segment_hash = '{prefix}_{file}_{hash}'.format(
+                    prefix='predict',
+                    file=segment_fname,
+                    hash=uuid.uuid4().hex)
+
+                # push the hash to redis and the predict queue
+                self.redis.hmset(segment_hash, frame_hvalues)
+                self.redis.lpush('predict', segment_hash)
+                self.logger.debug('Added new hash for segmentation `%s`: %s',
+                                  segment_hash, json.dumps(frame_hvalues,
+                                                           indent=4))
+                hash_to_frame[segment_hash] = i
+                remaining_hashes.add(segment_hash)
+
+            # pop hash, check it, and push it back if it's not done
+            # this checks the same hash over and over again, since set's
+            # pop is not random. This is fine, since we still need every
+            # hash to finish before doing anything.
+            frames = {}
+            while remaining_hashes:
+                finished_hashes = set()
+
+                self.logger.debug("Checking on hashes.")
+                for segment_hash in remaining_hashes:
+                    status = self.redis.hget(segment_hash, 'status')
+
+                    self.logger.debug('Hash {} has status {}'.format(
+                        segment_hash, status))
+
+                    if status == 'failed':
+                        reason = self.redis.hget(segment_hash, 'reason')
+                        raise RuntimeError(
+                            'Tracking failed during segmentation on frame {}.\n'
+                            'Segmentation Error: {}'.format(
+                                hash_to_frame[segment_hash], reason))
+
+                    elif status == self.final_status:
+                        # if it's done, save the frame, as they'll be packed up
+                        # later
+                        frame_zip = self.storage.download(
+                            self.redis.hget(segment_hash, 'output_file_name'),
+                            tempdir)
+
+                        frame_files = list(utils.iter_image_archive(frame_zip,
+                                                                    tempdir))
+
+                        if len(frame_files) != 1:
+                            raise RuntimeError(
+                                "After unzipping predicted frame, got "
+                                "back multiple files {}. Expected a "
+                                "single file.".format(frame_files))
+
+                        frame_idx = hash_to_frame[segment_hash]
+                        frames[frame_idx] = utils.get_image(frame_files[0])
+                        finished_hashes.add(segment_hash)
+
+                remaining_hashes -= finished_hashes
+                time.sleep(settings.INTERVAL)
+
+        frames = [frames[i] for i in range(num_frames)]
+
+        return {"X": raw, "y": np.array(frames)}
+
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvalues = self.redis.hgetall(redis_hash)
@@ -722,6 +862,7 @@ class TrackingConsumer(Consumer):
 
         # Set status and initial progress
         starting_time = time.time() * 1000
+        # TODO(enricozb): see `update_status`
         self.redis.hmset(redis_hash, {
             'status': 'started',
             'progress': 0,
@@ -731,14 +872,16 @@ class TrackingConsumer(Consumer):
         })
 
         with utils.get_tempdir() as tempdir:
-            fname = self.storage.download(hvalues.get('input_file_name'), tempdir)
-            trk = utils.load_track_file(os.path.join(tempdir, fname))
+            fname = self.storage.download(hvalues.get('input_file_name'),
+                                          tempdir)
+            data = self._load_data(hvalues, tempdir, fname)
 
             self.logger.debug('Got contents tracking file contents.')
-            self.logger.debug('X shape: %s', trk['X'].shape)
-            self.logger.debug('y shape: %s', trk['y'].shape)
+            self.logger.debug('X shape: %s', data['X'].shape)
+            self.logger.debug('y shape: %s', data['y'].shape)
 
-            tracker = self._get_tracker(redis_hash, trk["X"], trk["y"])
+            tracker = self._get_tracker(redis_hash, hvalues,
+                                        data["X"], data["y"])
             self.logger.debug('Trying to track...')
 
             tracker._track_cells()
@@ -746,9 +889,10 @@ class TrackingConsumer(Consumer):
             self.logger.debug('Tracking done!')
 
             # Save tracking result and upload
-            save_name = os.path.join(tempdir,
-                                     hvalues.get('original_name', fname))
-            tracker.dump(save_name)
+            save_name = os.path.join(
+                tempdir, hvalues.get('original_name', fname)) + ".trk"
+
+            tracker.dump(save_name, file_format=".trk")
             output_file_name, output_url = self.storage.upload(save_name)
 
             self._done(redis_hash, self.final_status,

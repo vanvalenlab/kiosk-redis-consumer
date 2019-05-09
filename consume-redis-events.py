@@ -67,7 +67,9 @@ def initialize_logger(debug_mode=True):
 
 
 def get_consumer(consumer_type, **kwargs):
-    logging.debug("Getting '{}' consumer.".format(consumer_type))
+    logging.debug("Getting '{}' consumer with args {}.".format(
+        consumer_type,
+        kwargs))
     ct = str(consumer_type).lower()
     if ct == 'image':
         return redis_consumer.consumers.ImageFileConsumer(**kwargs)

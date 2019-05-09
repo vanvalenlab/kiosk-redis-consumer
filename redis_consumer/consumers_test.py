@@ -336,11 +336,10 @@ class TestZipFileConsumer(object):
         assert consumer.is_valid_hash('predict_1234567890_file.tiff') is False
         assert consumer.is_valid_hash('predict_1234567890_file.png') is False
 
-    def test___upload_archived_images(self):
+    def test__upload_archived_images(self):
         N = 3
-        prefix = 'prefix'
-        status = 'new'
-        redis_client = DummyRedis(prefix, status)
+        items = ['item%s' % x for x in range(1, 4)]
+        redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
         hsh = consumer._upload_archived_images({'input_file_name': 'test.zip'})
@@ -348,10 +347,10 @@ class TestZipFileConsumer(object):
 
     def test__consume(self):
         N = 3
-        prefix = 'prefix'
-        status = 'new'
-        _redis = DummyRedis(prefix, status)
-        redis_client = DummyRedis(prefix, status)
+        prefix = 'predict'
+        items = ['item%s' % x for x in range(1, 4)]
+        _redis = DummyRedis(items)
+        redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
 
         # test `status` = "done"

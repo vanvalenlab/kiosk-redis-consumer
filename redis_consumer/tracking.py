@@ -30,6 +30,7 @@ import logging
 import json
 import pathlib
 import tarfile
+import zipfile
 import tempfile
 
 import numpy as np
@@ -761,31 +762,56 @@ class cell_tracker():
 
         return dataframe
 
-    def dump(self, filename):
-        """Writes the state of the cell tracker to a .trk ("track") file.
-        Includes raw & tracked images, and a lineage.json for parent/daughter
-        information.
+    def dump(self, filename, file_format='.trk'):
+        """Writes the state of the cell tracker to a .trk ("track") or .zip
+        file. Includes raw & tracked images, and a lineage.json for
+        parent/daughter information.
+
+        Args:
+            filename: PathLib or string to the output file
+            file_format: either 'zip' or 'trk'
         """
         track_review_dict = self._track_review_dict()
         filename = pathlib.Path(filename)
 
-        if filename.suffix != '.trk':
-            filename = filename.with_suffix('.trk')
+        if file_format not in ('.trk', '.zip'):
+            raise ValueError("file_format must be either '.zip' or '.trk'")
+
+        if filename.suffix != file_format:
+            filename = filename.with_suffix(file_format)
 
         filename = str(filename)
 
-        with tarfile.open(filename, 'w') as trks:
-            with tempfile.NamedTemporaryFile('w') as lineage_file:
-                json.dump(track_review_dict['tracks'], lineage_file, indent=1)
-                lineage_file.flush()
-                trks.add(lineage_file.name, 'lineage.json')
+        if file_format == '.zip':
+            with zipfile.open(filename, 'w') as trks:
+                with tempfile.NamedTemporaryFile('w') as lineage_file:
+                    json.dump(track_review_dict['tracks'], lineage_file, indent=1)
+                    lineage_file.flush()
+                    trks.write(lineage_file.name, 'lineage.json')
 
-            with tempfile.NamedTemporaryFile() as raw_file:
-                np.save(raw_file, track_review_dict['X'])
-                raw_file.flush()
-                trks.add(raw_file.name, 'raw.npy')
+                with tempfile.NamedTemporaryFile() as raw_file:
+                    np.save(raw_file, track_review_dict['X'])
+                    raw_file.flush()
+                    trks.write(raw_file.name, 'raw.npy')
 
-            with tempfile.NamedTemporaryFile() as tracked_file:
-                np.save(tracked_file, track_review_dict['y_tracked'])
-                tracked_file.flush()
-                trks.add(tracked_file.name, 'tracked.npy')
+                with tempfile.NamedTemporaryFile() as tracked_file:
+                    np.save(tracked_file, track_review_dict['y_tracked'])
+                    tracked_file.flush()
+                    trks.write(tracked_file.name, 'tracked.npy')
+
+        else:
+            with tarfile.open(filename, 'w') as trks:
+                with tempfile.NamedTemporaryFile('w') as lineage_file:
+                    json.dump(track_review_dict['tracks'], lineage_file, indent=1)
+                    lineage_file.flush()
+                    trks.add(lineage_file.name, 'lineage.json')
+
+                with tempfile.NamedTemporaryFile() as raw_file:
+                    np.save(raw_file, track_review_dict['X'])
+                    raw_file.flush()
+                    trks.add(raw_file.name, 'raw.npy')
+
+                with tempfile.NamedTemporaryFile() as tracked_file:
+                    np.save(tracked_file, track_review_dict['y_tracked'])
+                    tracked_file.flush()
+                    trks.add(tracked_file.name, 'tracked.npy')

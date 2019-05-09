@@ -160,7 +160,7 @@ def get_tempdir():
 
 
 def iter_image_archive(zip_path, destination):
-    """Extract all files in archie and yield the paths of all images.
+    """Extract all files in archive and yield the paths of all images.
 
     Args:
         zip_path: path to zip archive
