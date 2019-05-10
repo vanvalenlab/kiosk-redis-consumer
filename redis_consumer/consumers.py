@@ -533,7 +533,7 @@ class ZipFileConsumer(Consumer):
                 subdir = os.path.dirname(clean_imfile)
                 dest, _ = self.storage.upload(imfile, subdir=subdir)
 
-                new_hash = '{prefix}_{file}_{hash}'.format(
+                new_hash = '{prefix}:{file}:{hash}'.format(
                     prefix=settings.HASH_PREFIX,
                     file=clean_imfile,
                     hash=uuid.uuid4().hex)
