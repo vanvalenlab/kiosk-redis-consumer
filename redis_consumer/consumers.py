@@ -164,6 +164,11 @@ class Consumer(object):
             # remove the key from the processing queue
             self.redis.lrem(self.processing_queue, 1, redis_hash)
 
+        else:
+            self.logger.debug('Queue `%s` is empty. Waiting for %s seconds.',
+                              self.queue, settings.EMPTY_QUEUE_TIMEOUT)
+            time.sleep(settings.EMPTY_QUEUE_TIMEOUT)
+
 
 class ImageFileConsumer(Consumer):
     """Consumes image files and uploads the results"""
