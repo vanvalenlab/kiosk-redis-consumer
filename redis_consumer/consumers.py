@@ -52,9 +52,10 @@ class Consumer(object):
     """Base class for all redis event consumer classes.
 
     Args:
-        redis_client: Client class to communicate with redis
-        storage_client: Client to communicate with cloud storage buckets.
-        final_status: Update the status of redis event with this value.
+        redis_client: obj, Client class to communicate with redis
+        storage_client: obj, Client to communicate with cloud storage buckets.
+        queue: str, Name of queue to pop off work items.
+        final_status: str, Update the status of redis event with this value.
     """
 
     def __init__(self,
@@ -137,22 +138,19 @@ class Consumer(object):
         raise NotImplementedError
 
     def consume(self):
-        """Consume all redis events every `interval` seconds.
-
-        Args:
-            status: string, only consume hashes where `status` == status.
-            prefix: string, only consume hashes that start with `prefix`.
-
-        Returns:
-            nothing: this is the consumer main process
-        """
+        """Find a redis key and process it"""
         start = timeit.default_timer()
         redis_hash = self.get_redis_hash()
 
         if redis_hash is not None:  # popped something off the queue
             try:
                 self._consume(redis_hash)
-                hvals = self.redis.hgetall(redis_hash)
+            except Exception as err:  # pylint: disable=broad-except
+                # log the error and update redis with details
+                self._handle_error(err, redis_hash)
+
+            hvals = self.redis.hgetall(redis_hash)
+            if hvals.get('status') == self.final_status:
                 self.logger.debug('Consumed key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s) '
                                   '(%s retries) in %s seconds.',
@@ -161,12 +159,13 @@ class Consumer(object):
                                   hvals.get('preprocess_function'),
                                   hvals.get('postprocess_function'),
                                   0, timeit.default_timer() - start)
-            except Exception as err:  # pylint: disable=broad-except
-                # log the error and update redis with details
-                self._handle_error(err, redis_hash)
 
-            # remove the key from the processing queue
-            self.redis.lrem(self.processing_queue, 1, redis_hash)
+                # this key is done. remove the key from the processing queue.
+                self.redis.lrem(self.processing_queue, 1, redis_hash)
+            else:
+                # this key is not done yet.
+                # remove it from processing and push it back to the work queue.
+                self._put_back_hash(redis_hash)
 
         else:
             self.logger.debug('Queue `%s` is empty. Waiting for %s seconds.',
@@ -552,6 +551,16 @@ class ZipFileConsumer(Consumer):
                 new_hvals['created_at'] = current_timestamp
                 new_hvals['updated_at'] = current_timestamp
 
+                # remove unnecessary/confusing keys (maybe from getting restarted)
+                bad_keys = [
+                    'identity_started',
+                    'children',
+                    'children:done',
+                    'children:finished',
+                ]
+                for k in bad_keys:
+                    if k in new_hvals:
+                        del new_hvals[k]
                 self.logger.debug('Added new hash `%s`: %s',
                                   new_hash, json.dumps(new_hvals, indent=4))
                 all_hashes.add(new_hash)
@@ -635,9 +644,6 @@ class ZipFileConsumer(Consumer):
                 'children:failed': '',  # empty for now
             })
 
-            # remove it from processing, and push it back to the work queue.
-            self._put_back_hash(redis_hash)
-
         elif hvals['status'] == 'waiting':
             # this key was previously processed by a ZipConsumer
             # check to see which child keys have been processed
@@ -660,8 +666,6 @@ class ZipFileConsumer(Consumer):
                 'children:done': key_separator.join(done),
                 'children:failed': key_separator.join(failed),
             })
-            # remove it from processing, and push it back to the work queue.
-            self._put_back_hash(redis_hash)
 
         elif hvals['status'] == 'cleanup':
             # clean up children with status `done`
