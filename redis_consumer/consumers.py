@@ -561,6 +561,9 @@ class ZipFileConsumer(Consumer):
                 for k in bad_keys:
                     if k in new_hvals:
                         del new_hvals[k]
+
+                self.redis.hmset(new_hash, new_hvals)
+                self.redis.lpush(self.queue, new_hash)
                 self.logger.debug('Added new hash `%s`: %s',
                                   new_hash, json.dumps(new_hvals, indent=4))
                 all_hashes.add(new_hash)
