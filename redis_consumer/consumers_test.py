@@ -353,7 +353,7 @@ class TestZipFileConsumer(object):
         redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
-        path, url = consumer._upload_finished_children(finished_children)
+        path, url = consumer._upload_finished_children(finished_children, 0)
         assert path and url
 
     def test__parse_failures(self):
@@ -376,7 +376,6 @@ class TestZipFileConsumer(object):
         N = 3
         prefix = 'predict'
         items = ['item%s' % x for x in range(1, 4)]
-        _redis = DummyRedis(items)
         redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
 
