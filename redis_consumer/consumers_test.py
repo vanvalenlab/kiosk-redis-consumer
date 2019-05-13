@@ -370,7 +370,7 @@ class TestZipFileConsumer(object):
 
         failed_children = ['item1', 'item2']
         parsed = consumer._parse_failures(failed_children)
-        assert parsed == 'item1=reason&item2=reason'
+        assert 'item1=reason' in parsed and 'item2=reason' in parsed
 
     def test__consume(self):
         N = 3
