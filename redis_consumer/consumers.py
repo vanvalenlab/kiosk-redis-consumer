@@ -629,7 +629,7 @@ class ZipFileConsumer(Consumer):
         key_separator = ','  # char to separate child keys in Redis
         expire_time = 60 * 10  # expire finished child keys in ten minutes
 
-        if hvals['status'] == 'new':
+        if hvals.get('status') == 'new':
             # download the zip file, upload the contents, and enter into Redis
             self.update_status(redis_hash, 'started', {
                 'identity_started': self.hostname,
@@ -647,7 +647,7 @@ class ZipFileConsumer(Consumer):
                 'children:failed': '',  # empty for now
             })
 
-        elif hvals['status'] == 'waiting':
+        elif hvals.get('status') == 'waiting':
             # this key was previously processed by a ZipConsumer
             # check to see which child keys have been processed
             children = set(hvals.get('children', '').split(key_separator))
@@ -670,7 +670,7 @@ class ZipFileConsumer(Consumer):
                 'children:failed': key_separator.join(failed),
             })
 
-        elif hvals['status'] == 'cleanup':
+        elif hvals.get('status') == 'cleanup':
             # clean up children with status `done`
             done = hvals['children:done'].split(key_separator)
             uploaded_file_path, output_url = self._upload_finished_children(
