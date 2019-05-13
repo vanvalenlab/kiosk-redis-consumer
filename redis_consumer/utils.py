@@ -298,7 +298,7 @@ def zip_files(files, dest=None, prefix=None):
 
     try:
         logger.debug('Saving %s files to %s', len(files), filepath)
-        with zipfile.ZipFile(filepath, 'wb', allowZip64=True) as zip_file:
+        with zipfile.ZipFile(filepath, 'w', allowZip64=True) as zip_file:
             for f in files:  # writing each file one by one
                 name = f.replace(dest, '')
                 name = name[1:] if name.startswith(os.path.sep) else name
