@@ -109,6 +109,8 @@ class DummyRedis(object):
             return rhash.split(':')[-1]
         elif field == 'output_file_name':
             return rhash.split(':')[-1]
+        elif field == 'reason':
+            return 'reason'
         return False
 
     def hset(self, rhash, status, value):  # pylint: disable=W0613
@@ -124,7 +126,11 @@ class DummyRedis(object):
             'preprocess_function': '',
             'file_name': rhash.split(':')[-1],
             'input_file_name': rhash.split(':')[-1],
-            'output_file_name': rhash.split(':')[-1]
+            'output_file_name': rhash.split(':')[-1],
+            'status': rhash.split(':')[1],
+            'children': 'predict:done:1.tiff,predict:failed:2.tiff,predict:new:3.tiff',
+            'children:done': 'predict:done:4.tiff,predict:done:5.tiff',
+            'children:failed': 'predict:failed:6.tiff,predict:failed:7.tiff',
         }
 
 
@@ -215,7 +221,7 @@ class TestConsumer(object):
         assert _redis_values.get('status') == 'failed'
 
     def test_consume(self):
-        items = ['item%s' % x for x in range(1, 4)]
+        items = ['{}:{}:{}.tiff'.format('predict', 'new', x) for x in range(1, 4)]
         N = 1  # using a queue, only one key is processed per consume()
         consumer = consumers.Consumer(DummyRedis(items), DummyStorage(), 'q')
 
@@ -240,7 +246,7 @@ class TestConsumer(object):
     def test__consume(self):
         with np.testing.assert_raises(NotImplementedError):
             consumer = consumers.Consumer(None, None, 'q')
-            consumer._consume('hash')
+            consumer._consume('predict:new:hash.tiff')
 
 
 class TestImageFileConsumer(object):
@@ -288,7 +294,7 @@ class TestImageFileConsumer(object):
         def grpc_image_multi(data, *args, **kwargs):  # pylint: disable=W0613
             return np.array(tuple(list(data.shape) + [2]))
 
-        dummyhash = '{}_test.tiff'.format(prefix)
+        dummyhash = '{}:{}:test.tiff'.format(prefix, status)
 
         # consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image_multi
@@ -340,6 +346,32 @@ class TestZipFileConsumer(object):
         hsh = consumer._upload_archived_images({'input_file_name': 'test.zip'})
         assert len(hsh) == N
 
+    def test__upload_finished_children(self):
+        finished_children = ['predict:1.tiff', 'predict:2.zip']
+        N = 3
+        items = ['item%s' % x for x in range(1, N + 1)]
+        redis_client = DummyRedis(items)
+        storage = DummyStorage(num=N)
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        path, url = consumer._upload_finished_children(finished_children)
+        assert path and url
+
+    def test__parse_failures(self):
+        N = 3
+        items = ['item%s' % x for x in range(1, N + 1)]
+        redis_client = DummyRedis(items)
+        storage = DummyStorage(num=N)
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+
+        # no failures
+        failed_children = ''
+        parsed = consumer._parse_failures(failed_children)
+        assert parsed == ''
+
+        failed_children = ['item1', 'item2']
+        parsed = consumer._parse_failures(failed_children)
+        assert parsed == 'item1=reason&item2=reason'
+
     def test__consume(self):
         N = 3
         prefix = 'predict'
@@ -348,33 +380,39 @@ class TestZipFileConsumer(object):
         redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
 
-        # test `status` = "done"
-        hget = lambda h, k: 'done' if k == 'status' else _redis.hget(h, k)
-        redis_client.hget = hget
+        # test `status` = "new"
+        status = 'new'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
-        dummyhash = '{}:test.zip'.format(prefix)
+        consumer._upload_archived_images = lambda x: items
+        dummyhash = '{queue}:{status}:{fname}.zip'.format(
+            queue=prefix, status=status, fname=status)
+        consumer._consume(dummyhash)
+
+        # test `status` = "waiting"
+        status = 'waiting'
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        dummyhash = '{queue}:{status}:{fname}.zip'.format(
+            queue=prefix, status=status, fname=status)
+        consumer._consume(dummyhash)
+
+        # test `status` = "cleanup"
+        status = 'cleanup'
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        consumer._upload_finished_children = lambda x, y: (x, y)
+        dummyhash = '{queue}:{status}:{fname}.zip'.format(
+            queue=prefix, status=status, fname=status)
+        consumer._consume(dummyhash)
+
+        # test `status` = "done"
+        status = 'done'
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        dummyhash = '{queue}:{status}:{fname}.zip'.format(
+            queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)
 
         # test `status` = "failed"
-        hget = lambda h, k: 'failed' if k == 'status' else _redis.hget(h, k)
-        redis_client.hget = hget
+        status = 'failed'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
-        dummyhash = '{}:test.zip'.format(prefix)
-        consumer._consume(dummyhash)
-
-        # test mixed `status` = "waiting" and "done"
-        global counter
-        counter = 0
-
-        def hget_wait(h, k):
-            if k == 'status':
-                global counter
-                status = 'waiting' if counter % 2 == 0 else 'done'
-                counter += 1
-                return status
-            return _redis.hget(h, k)
-
-        redis_client.hget = hget_wait
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
-        dummyhash = '{}:test.zip'.format(prefix)
+        dummyhash = '{queue}:{status}:{fname}.zip'.format(
+            queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)
