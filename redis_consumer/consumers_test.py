@@ -85,7 +85,7 @@ class DummyRedis(object):
 
     def expected_keys(self, suffix=None):
         for k in self.keys:
-            v = k.split('_')
+            v = k.split(':')
             if v[0] == self.prefix:
                 if v[1] == self.status:
                     if suffix:
@@ -102,13 +102,13 @@ class DummyRedis(object):
 
     def hget(self, rhash, field):
         if field == 'status':
-            return rhash.split('_')[1]
+            return rhash.split(':')[1]
         elif field == 'file_name':
-            return rhash.split('_')[-1]
+            return rhash.split(':')[-1]
         elif field == 'input_file_name':
-            return rhash.split('_')[-1]
+            return rhash.split(':')[-1]
         elif field == 'output_file_name':
-            return rhash.split('_')[-1]
+            return rhash.split(':')[-1]
         return False
 
     def hset(self, rhash, status, value):  # pylint: disable=W0613
@@ -122,9 +122,9 @@ class DummyRedis(object):
             'cuts': '0',
             'postprocess_function': '',
             'preprocess_function': '',
-            'file_name': rhash.split('_')[-1],
-            'input_file_name': rhash.split('_')[-1],
-            'output_file_name': rhash.split('_')[-1]
+            'file_name': rhash.split(':')[-1],
+            'input_file_name': rhash.split(':')[-1],
+            'output_file_name': rhash.split(':')[-1]
         }
 
 
@@ -352,14 +352,14 @@ class TestZipFileConsumer(object):
         hget = lambda h, k: 'done' if k == 'status' else _redis.hget(h, k)
         redis_client.hget = hget
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
-        dummyhash = '{}_test.zip'.format(prefix)
+        dummyhash = '{}:test.zip'.format(prefix)
         consumer._consume(dummyhash)
 
         # test `status` = "failed"
         hget = lambda h, k: 'failed' if k == 'status' else _redis.hget(h, k)
         redis_client.hget = hget
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
-        dummyhash = '{}_test.zip'.format(prefix)
+        dummyhash = '{}:test.zip'.format(prefix)
         consumer._consume(dummyhash)
 
         # test mixed `status` = "waiting" and "done"
@@ -376,5 +376,5 @@ class TestZipFileConsumer(object):
 
         redis_client.hget = hget_wait
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
-        dummyhash = '{}_test.zip'.format(prefix)
+        dummyhash = '{}:test.zip'.format(prefix)
         consumer._consume(dummyhash)
