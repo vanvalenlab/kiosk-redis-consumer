@@ -672,12 +672,12 @@ class ZipFileConsumer(Consumer):
 
         elif hvals.get('status') == 'cleanup':
             # clean up children with status `done`
-            done = hvals['children:done'].split(key_separator)
+            done = hvals.get('children:done', '').split(key_separator)
             uploaded_file_path, output_url = self._upload_finished_children(
                 done, expire_time)
 
             # clean up children with status `failed`
-            failed = hvals['children:failed'].split(key_separator)
+            failed = hvals.get('children:failed', '').split(key_separator)
             failures = self._parse_failures(failed, expire_time)
 
             # Update redis with the results
