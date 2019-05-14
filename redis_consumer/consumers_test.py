@@ -30,6 +30,8 @@ from __future__ import print_function
 
 import os
 import copy
+import math
+import random
 
 import redis
 import numpy as np
@@ -55,12 +57,12 @@ class DummyRedis(object):
         self.prefix = '/'.join(x for x in prefix.split('/') if x)
         self.status = status
         self.keys = [
-            '{}_{}_{}'.format(self.prefix, self.status, 'x.tiff'),
-            '{}_{}_{}'.format(self.prefix, 'other', 'x.zip'),
-            '{}_{}_{}'.format('other', self.status, 'x.TIFF'),
-            '{}_{}_{}'.format(self.prefix, self.status, 'x.ZIP'),
-            '{}_{}_{}'.format(self.prefix, 'other', 'x.tiff'),
-            '{}_{}_{}'.format('other', self.status, 'x.zip'),
+            '{}:{}:{}'.format(self.prefix, 'x.tiff', self.status),
+            '{}:{}:{}'.format(self.prefix, 'x.zip', 'other'),
+            '{}:{}:{}'.format('other', 'x.TIFF', self.status),
+            '{}:{}:{}'.format(self.prefix, 'x.ZIP', self.status),
+            '{}:{}:{}'.format(self.prefix, 'x.tiff', 'other'),
+            '{}:{}:{}'.format('other', 'x.zip', self.status),
         ]
 
     def rpoplpush(self, src, dst):
@@ -102,13 +104,13 @@ class DummyRedis(object):
 
     def hget(self, rhash, field):
         if field == 'status':
-            return rhash.split(':')[1]
+            return rhash.split(':')[-1]
         elif field == 'file_name':
-            return rhash.split(':')[-1]
+            return rhash.split(':')[1]
         elif field == 'input_file_name':
-            return rhash.split(':')[-1]
+            return rhash.split(':')[1]
         elif field == 'output_file_name':
-            return rhash.split(':')[-1]
+            return rhash.split(':')[1]
         elif field == 'reason':
             return 'reason'
         return False
@@ -124,10 +126,10 @@ class DummyRedis(object):
             'cuts': '0',
             'postprocess_function': '',
             'preprocess_function': '',
-            'file_name': rhash.split(':')[-1],
-            'input_file_name': rhash.split(':')[-1],
-            'output_file_name': rhash.split(':')[-1],
-            'status': rhash.split(':')[1],
+            'file_name': rhash.split(':')[1],
+            'input_file_name': rhash.split(':')[1],
+            'output_file_name': rhash.split(':')[1],
+            'status': rhash.split(':')[-1],
             'children': 'predict:done:1.tiff,predict:failed:2.tiff,predict:new:3.tiff',
             'children:done': 'predict:done:4.tiff,predict:done:5.tiff',
             'children:failed': 'predict:failed:6.tiff,predict:failed:7.tiff',
@@ -294,7 +296,7 @@ class TestImageFileConsumer(object):
         def grpc_image_multi(data, *args, **kwargs):  # pylint: disable=W0613
             return np.array(tuple(list(data.shape) + [2]))
 
-        dummyhash = '{}:{}:test.tiff'.format(prefix, status)
+        dummyhash = '{}:test.tiff:{}'.format(prefix, status)
 
         # consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image_multi
@@ -415,3 +417,37 @@ class TestZipFileConsumer(object):
         dummyhash = '{queue}:{status}:{fname}.zip'.format(
             queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)
+
+    def test_consume(self):
+        prefix = 'predict'
+        items = [
+            '{queue}:f.zip:{status}'.format(queue=prefix, status='new'),
+            '{queue}:e.zip:{status}'.format(queue=prefix, status='waiting'),
+            '{queue}:d.zip:{status}'.format(queue=prefix, status='cleanup'),
+            '{queue}:c.zip:{status}'.format(queue=prefix, status='done'),
+            '{queue}:b.zip:{status}'.format(queue=prefix, status='failed'),
+            '{queue}:a.tiff:{status}'.format(queue=prefix, status='new'),
+        ]
+        redis_client = DummyRedis(items)
+        storage = DummyStorage(num=len(items))
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+
+        global put_back_counter
+        put_back_counter = 0
+
+        def _put_back_hash(redis_hash):
+            _consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+            _consumer._put_back_hash(redis_hash)
+            global put_back_counter
+            put_back_counter = put_back_counter + 1
+
+        consumer._put_back_hash = _put_back_hash
+        consumer._upload_finished_children = lambda x, y: (x, y)
+        consumer._upload_archived_images = lambda x: items
+
+        # searches items from end to start, extra put_back every len(items) - 1
+        num_invalid = 1  # 1 file that is not a zip file
+        N = random.randint(0, len(items) * 3 + 1)
+        for _ in range(N):
+            consumer.consume()
+        assert put_back_counter == N + math.ceil(N / (len(items) - num_invalid))
