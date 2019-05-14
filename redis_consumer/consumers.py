@@ -640,7 +640,7 @@ class ZipFileConsumer(Consumer):
             })
 
             all_hashes = self._upload_archived_images(hvals)
-            self.logger.info('Uploaded %s hashes.  Waiting for ImageConsumers.',
+            self.logger.info('Uploaded %s hashes. Waiting for ImageConsumers.',
                              len(all_hashes))
 
             # Now all images have been uploaded with new redis hashes
@@ -666,6 +666,9 @@ class ZipFileConsumer(Consumer):
                     failed.add(child)
                 elif status == self.final_status:
                     done.add(child)
+
+            self.logger.info('Key `%s` has %s children waiting for processing',
+                             redis_hash, len(children - done - failed))
 
             # if there are no remaining children, update status to cleanup
             status = 'cleanup' if not children - done - failed else 'waiting'
