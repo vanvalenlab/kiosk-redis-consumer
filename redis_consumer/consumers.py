@@ -672,6 +672,7 @@ class ZipFileConsumer(Consumer):
 
         elif hvals.get('status') == 'cleanup':
             # clean up children with status `done` and `failed`
+            children = set(hvals.get('children', '').split(key_separator))
             done = set(hvals.get('children:done', '').split(key_separator))
             failed = set(hvals.get('children:failed', '').split(key_separator))
 
@@ -689,6 +690,5 @@ class ZipFileConsumer(Consumer):
                 'output_file_name': output_file_name
             })
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
-                             len(hvals.get('children', [])),
-                             hvals.get('input_file_name'),
+                             len(children), hvals.get('input_file_name'),
                              timeit.default_timer() - start)
