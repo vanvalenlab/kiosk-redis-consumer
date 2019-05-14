@@ -574,6 +574,8 @@ class ZipFileConsumer(Consumer):
         with utils.get_tempdir() as tempdir:
             # process each successfully completed key
             for key in finished_children:
+                if not key:
+                    continue
                 fname = self.redis.hget(key, 'output_file_name')
                 local_fname = self.storage.download(fname, tempdir)
 
@@ -601,6 +603,8 @@ class ZipFileConsumer(Consumer):
     def _parse_failures(self, failed_children, expire_time=3600):
         failed_hashes = {}
         for key in failed_children:
+            if not key:
+                continue
             reason = self.redis.hget(key, 'reason')
             # one of the hashes failed to process
             self.logger.error('Failed to process hash `%s`: %s',

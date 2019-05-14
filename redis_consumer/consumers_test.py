@@ -347,7 +347,7 @@ class TestZipFileConsumer(object):
         assert len(hsh) == N
 
     def test__upload_finished_children(self):
-        finished_children = ['predict:1.tiff', 'predict:2.zip']
+        finished_children = ['predict:1.tiff', 'predict:2.zip', '']
         N = 3
         items = ['item%s' % x for x in range(1, N + 1)]
         redis_client = DummyRedis(items)
@@ -368,7 +368,7 @@ class TestZipFileConsumer(object):
         parsed = consumer._parse_failures(failed_children)
         assert parsed == ''
 
-        failed_children = ['item1', 'item2']
+        failed_children = ['item1', 'item2', '']
         parsed = consumer._parse_failures(failed_children)
         assert 'item1=reason' in parsed and 'item2=reason' in parsed
 
