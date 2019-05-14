@@ -640,8 +640,8 @@ class ZipFileConsumer(Consumer):
             })
 
             all_hashes = self._upload_archived_images(hvals)
-            self.logger.info('Uploaded %s hashes. Waiting for ImageConsumers.',
-                             len(all_hashes))
+            self.logger.info('Uploaded %s child keys for key `%s`. Waiting for'
+                             ' ImageConsumers.', len(all_hashes), redis_hash)
 
             # Now all images have been uploaded with new redis hashes
             # Update Redis with child keys and put item back in queue
