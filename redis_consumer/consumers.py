@@ -553,10 +553,10 @@ class ZipFileConsumer(Consumer):
 
                 # remove unnecessary/confusing keys (maybe from getting restarted)
                 bad_keys = [
-                    'identity_started',
                     'children',
                     'children:done',
-                    'children:finished',
+                    'children:failed',
+                    'identity_started',
                 ]
                 for k in bad_keys:
                     if k in new_hvals:
