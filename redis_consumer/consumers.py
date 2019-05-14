@@ -179,8 +179,8 @@ class ImageFileConsumer(Consumer):
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
             return False
-        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-        is_valid = not fname.lower().endswith('.zip')
+        fname = self.redis.hget(redis_hash, 'input_file_name')
+        is_valid = not str(fname).lower().endswith('.zip')
         return is_valid
 
     def _process(self, image, key, process_type, timeout=30, streaming=False):
@@ -520,8 +520,8 @@ class ZipFileConsumer(Consumer):
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
             return False
-        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-        is_valid = fname.lower().endswith('.zip')
+        fname = self.redis.hget(redis_hash, 'input_file_name')
+        is_valid = str(fname).lower().endswith('.zip')
         return is_valid
 
     def _upload_archived_images(self, hvalues):
@@ -666,18 +666,18 @@ class ZipFileConsumer(Consumer):
             # if there are no remaining children, update status to cleanup
             status = 'cleanup' if not children - done - failed else 'waiting'
             self.update_status(redis_hash, status, {
-                'children:done': key_separator.join(done),
-                'children:failed': key_separator.join(failed),
+                'children:done': key_separator.join(d for d in done if d),
+                'children:failed': key_separator.join(f for f in failed if f),
             })
 
         elif hvals.get('status') == 'cleanup':
-            # clean up children with status `done`
-            done = hvals.get('children:done', '').split(key_separator)
-            uploaded_file_path, output_url = self._upload_finished_children(
+            # clean up children with status `done` and `failed`
+            done = set(hvals.get('children:done', '').split(key_separator))
+            failed = set(hvals.get('children:failed', '').split(key_separator))
+
+            output_file_name, output_url = self._upload_finished_children(
                 done, expire_time)
 
-            # clean up children with status `failed`
-            failed = hvals.get('children:failed', '').split(key_separator)
             failures = self._parse_failures(failed, expire_time)
 
             # Update redis with the results
@@ -686,7 +686,7 @@ class ZipFileConsumer(Consumer):
                 'finished_at': self.get_current_timestamp(),
                 'output_url': output_url,
                 'failures': failures,
-                'output_file_name': uploaded_file_path
+                'output_file_name': output_file_name
             })
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
                              len(hvals.get('children', [])),
