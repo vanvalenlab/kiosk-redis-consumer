@@ -444,8 +444,8 @@ class ImageFileConsumer(Consumer):
         # hold on to the redis hash/values for logging purposes
         self._redis_hash = redis_hash
         self._redis_values = hvals
-        self.logger.debug('Found hash to process "%s": %s',
-                          redis_hash, json.dumps(hvals, indent=4))
+        self.logger.debug('Found hash to process `%s` with status `%s`.',
+                          redis_hash, hvals.get('status'))
 
         self.update_status(redis_hash, 'started', {
             'identity_started': self.hostname,
@@ -531,7 +531,7 @@ class ZipFileConsumer(Consumer):
         with utils.get_tempdir() as tempdir:
             fname = self.storage.download(hvalues.get('input_file_name'), tempdir)
             image_files = utils.get_image_files_from_dir(fname, tempdir)
-            for imfile in image_files:
+            for i, imfile in enumerate(image_files):
                 clean_imfile = settings._strip(imfile.replace(tempdir, ''))
                 # Save each result channel as an image file
                 subdir = os.path.dirname(clean_imfile)
@@ -565,8 +565,8 @@ class ZipFileConsumer(Consumer):
 
                 self.redis.hmset(new_hash, new_hvals)
                 self.redis.lpush(self.queue, new_hash)
-                self.logger.debug('Added new hash `%s`: %s',
-                                  new_hash, json.dumps(new_hvals, indent=4))
+                self.logger.debug('Added new hash %s of %s: `%s`',
+                                  i + 1, len(image_files), new_hash)
                 all_hashes.add(new_hash)
         return all_hashes
 
@@ -628,8 +628,8 @@ class ZipFileConsumer(Consumer):
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
-        self.logger.debug('Found hash to process `%s`: %s',
-                          redis_hash, json.dumps(hvals, indent=4))
+        self.logger.debug('Found hash to process `%s` with status `%s`.',
+                          redis_hash, hvals.get('status'))
 
         key_separator = ','  # char to separate child keys in Redis
         expire_time = 60 * 10  # expire finished child keys in ten minutes
