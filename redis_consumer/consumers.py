@@ -646,9 +646,7 @@ class ZipFileConsumer(Consumer):
             # Now all images have been uploaded with new redis hashes
             # Update Redis with child keys and put item back in queue
             self.update_status(redis_hash, 'waiting', {
-                'children': key_separator.join(all_hashes),
-                'children:done': '',  # empty for now
-                'children:failed': '',  # empty for now
+                'children': key_separator.join(all_hashes)
             })
 
         elif hvals.get('status') == 'waiting':
@@ -667,11 +665,13 @@ class ZipFileConsumer(Consumer):
                 elif status == self.final_status:
                     done.add(child)
 
+            remaining_children = children - done - failed
+
             self.logger.info('Key `%s` has %s children waiting for processing',
-                             redis_hash, len(children - done - failed))
+                             redis_hash, len(remaining_children))
 
             # if there are no remaining children, update status to cleanup
-            status = 'cleanup' if not children - done - failed else 'waiting'
+            status = 'cleanup' if not remaining_children else 'waiting'
             self.update_status(redis_hash, status, {
                 'children:done': key_separator.join(d for d in done if d),
                 'children:failed': key_separator.join(f for f in failed if f),
