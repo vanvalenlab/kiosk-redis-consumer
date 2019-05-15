@@ -41,6 +41,7 @@ import pytest
 
 from redis_consumer import consumers
 from redis_consumer import utils
+from redis_consumer import settings
 
 
 def _get_image(img_h=300, img_w=300):
@@ -75,10 +76,11 @@ class DummyRedis(object):
 
     def lpush(self, name, *values):
         self.work_queue = list(values) + self.work_queue
-        return len(values)
+        return len(self.work_queue)
 
     def lrem(self, name, count, value):
         self.processing_queue.remove(value)
+        return count
 
     def scan_iter(self, match=None, count=None):
         if match:
@@ -130,9 +132,9 @@ class DummyRedis(object):
             'input_file_name': rhash.split(':')[1],
             'output_file_name': rhash.split(':')[1],
             'status': rhash.split(':')[-1],
-            'children': 'predict:done:1.tiff,predict:failed:2.tiff,predict:new:3.tiff',
-            'children:done': 'predict:done:4.tiff,predict:done:5.tiff',
-            'children:failed': 'predict:failed:6.tiff,predict:failed:7.tiff',
+            'children': 'predict:1.tiff:done,predict:2.tiff:failed,predict:3.tiff:new',
+            'children:done': 'predict:4.tiff:done,predict:5.tiff:done',
+            'children:failed': 'predict:6.tiff:failed,predict:7.tiff:failed',
         }
 
 
@@ -244,6 +246,30 @@ class TestConsumer(object):
         consumer._handle_error = F
         consumer.consume()
         assert _processed == N + 1
+
+        # empty redis queue
+        consumer.get_redis_hash = lambda: None
+        settings.EMPTY_QUEUE_TIMEOUT = 0.1  # don't sleep too long
+        consumer.consume()
+
+        # failed and done statuses call lrem
+        def lrem(key, count, value):
+            global _processed
+            _processed = True
+
+        _processed = False
+        redis_client = DummyRedis(items)
+        redis_client.lrem = lrem
+        consumer = consumers.Consumer(redis_client, DummyStorage(), 'q')
+        consumer.get_redis_hash = lambda: 'predict:f.tiff:failed'
+        consumer.consume()
+        assert _processed is True
+
+        _processed = False
+        consumer.get_redis_hash = lambda: 'predict:f.tiff:{status}'.format(
+            status=consumer.final_status)
+        consumer.consume()
+        assert _processed is True
 
     def test__consume(self):
         with np.testing.assert_raises(NotImplementedError):
@@ -385,14 +411,14 @@ class TestZipFileConsumer(object):
         status = 'new'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
         consumer._upload_archived_images = lambda x: items
-        dummyhash = '{queue}:{status}:{fname}.zip'.format(
+        dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)
 
         # test `status` = "waiting"
         status = 'waiting'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
-        dummyhash = '{queue}:{status}:{fname}.zip'.format(
+        dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)
 
@@ -400,54 +426,20 @@ class TestZipFileConsumer(object):
         status = 'cleanup'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
         consumer._upload_finished_children = lambda x, y: (x, y)
-        dummyhash = '{queue}:{status}:{fname}.zip'.format(
+        dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)
 
         # test `status` = "done"
         status = 'done'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
-        dummyhash = '{queue}:{status}:{fname}.zip'.format(
+        dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)
 
         # test `status` = "failed"
         status = 'failed'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
-        dummyhash = '{queue}:{status}:{fname}.zip'.format(
+        dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)
-
-    def test_consume(self):
-        prefix = 'predict'
-        items = [
-            '{queue}:f.zip:{status}'.format(queue=prefix, status='new'),
-            '{queue}:e.zip:{status}'.format(queue=prefix, status='waiting'),
-            '{queue}:d.zip:{status}'.format(queue=prefix, status='cleanup'),
-            '{queue}:c.zip:{status}'.format(queue=prefix, status='done'),
-            '{queue}:b.zip:{status}'.format(queue=prefix, status='failed'),
-            '{queue}:a.tiff:{status}'.format(queue=prefix, status='new'),
-        ]
-        redis_client = DummyRedis(items)
-        storage = DummyStorage(num=len(items))
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
-
-        global put_back_counter
-        put_back_counter = 0
-
-        def _put_back_hash(redis_hash):
-            _consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
-            _consumer._put_back_hash(redis_hash)
-            global put_back_counter
-            put_back_counter = put_back_counter + 1
-
-        consumer._put_back_hash = _put_back_hash
-        consumer._upload_finished_children = lambda x, y: (x, y)
-        consumer._upload_archived_images = lambda x: items
-
-        # searches items from end to start, extra put_back every len(items) - 1
-        num_invalid = 1  # 1 file that is not a zip file
-        N = random.randint(0, len(items) * 3 + 1)
-        for _ in range(N):
-            consumer.consume()
-        assert put_back_counter == N + math.ceil(N / (len(items) - num_invalid))
