@@ -159,10 +159,9 @@ class Consumer(object):
                                   hvals.get('preprocess_function'),
                                   hvals.get('postprocess_function'),
                                   0, timeit.default_timer() - start)
+
+            if hvals.get('status') in {self.final_status, 'failed'}:
                 # this key is done. remove the key from the processing queue.
-                self.redis.lrem(self.processing_queue, 1, redis_hash)
-            elif hvals.get('status') == 'failed':
-                # the key failed, remove it from the processing queue
                 self.redis.lrem(self.processing_queue, 1, redis_hash)
             else:
                 # this key is not done yet.
