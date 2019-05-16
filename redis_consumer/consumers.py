@@ -130,7 +130,8 @@ class Consumer(object):
         data = {} if data is None else data
         data.update({
             'status': status,
-            'updated_at': self.get_current_timestamp()
+            'updated_at': self.get_current_timestamp(),
+            'updated_by': self.hostname,
         })
         self.redis.hmset(redis_hash, data)
 
@@ -636,9 +637,7 @@ class ZipFileConsumer(Consumer):
 
         if hvals.get('status') == 'new':
             # download the zip file, upload the contents, and enter into Redis
-            self.update_status(redis_hash, 'started', {
-                'identity_started': self.hostname,
-            })
+            self.update_status(redis_hash, 'started')
 
             all_hashes = self._upload_archived_images(hvals)
             self.logger.info('Uploaded %s child keys for key `%s`. Waiting for'
@@ -651,6 +650,7 @@ class ZipFileConsumer(Consumer):
             })
 
         elif hvals.get('status') == 'waiting':
+            self.update_status(redis_hash, 'updating_children')
             # this key was previously processed by a ZipConsumer
             # check to see which child keys have been processed
             children = set(hvals.get('children', '').split(key_separator))
@@ -679,6 +679,7 @@ class ZipFileConsumer(Consumer):
             })
 
         elif hvals.get('status') == 'cleanup':
+            self.update_status(redis_hash, 'finishing')
             # clean up children with status `done` and `failed`
             children = set(hvals.get('children', '').split(key_separator))
             done = set(hvals.get('children:done', '').split(key_separator))
