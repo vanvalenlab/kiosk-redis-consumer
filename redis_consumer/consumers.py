@@ -75,8 +75,19 @@ class Consumer(object):
 
     def _put_back_hash(self, redis_hash):
         """Put the hash back into the work queue"""
-        self.redis.lrem(self.processing_queue, 1, redis_hash)
-        self.redis.lpush(self.queue, redis_hash)
+        queue_size = self.redis.llen(self.processing_queue)
+        if queue_size == 1:
+            key = self.redis.rpoplpush(self.processing_queue, self.queue)
+            if key != redis_hash:
+                self.logger.warning('`RPOPLPUSH %s %s` popped key %s but'
+                                    'expected key to be %s',
+                                    self.processing_queue, self.queue,
+                                    key, redis_hash)
+        else:
+            self.logger.warning('Expected `%s` would have 1 item, but has %s. '
+                                'restarting the key the old way')
+            self.redis.lrem(self.processing_queue, 1, redis_hash)
+            self.redis.lpush(self.queue, redis_hash)
 
     def get_redis_hash(self):
         while True:
