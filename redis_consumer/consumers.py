@@ -635,10 +635,11 @@ class ZipFileConsumer(Consumer):
         key_separator = ','  # char to separate child keys in Redis
         expire_time = 60 * 10  # expire finished child keys in ten minutes
 
+        # update without changing status, just to refresh timestamp
+        self.update_status(redis_hash, hvals.get('status'))
+
         if hvals.get('status') == 'new':
             # download the zip file, upload the contents, and enter into Redis
-            self.update_status(redis_hash, 'started')
-
             all_hashes = self._upload_archived_images(hvals)
             self.logger.info('Uploaded %s child keys for key `%s`. Waiting for'
                              ' ImageConsumers.', len(all_hashes), redis_hash)
@@ -650,7 +651,6 @@ class ZipFileConsumer(Consumer):
             })
 
         elif hvals.get('status') == 'waiting':
-            self.update_status(redis_hash, 'updating_children')
             # this key was previously processed by a ZipConsumer
             # check to see which child keys have been processed
             children = set(hvals.get('children', '').split(key_separator))
@@ -679,7 +679,6 @@ class ZipFileConsumer(Consumer):
             })
 
         elif hvals.get('status') == 'cleanup':
-            self.update_status(redis_hash, 'finishing')
             # clean up children with status `done` and `failed`
             children = set(hvals.get('children', '').split(key_separator))
             done = set(hvals.get('children:done', '').split(key_separator))
@@ -692,7 +691,6 @@ class ZipFileConsumer(Consumer):
 
             # Update redis with the results
             self.update_status(redis_hash, self.final_status, {
-                'identity_output': self.hostname,
                 'finished_at': self.get_current_timestamp(),
                 'output_url': output_url,
                 'failures': failures,
