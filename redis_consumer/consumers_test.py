@@ -192,7 +192,7 @@ class TestConsumer(object):
         # assert redis_client.work_queue == items[1:]
         # assert redis_client.processing_queue == items[0:1]
 
-    def test_update_status(self):
+    def test_update_key(self):
         global _redis_values
         _redis_values = None
 
@@ -203,7 +203,8 @@ class TestConsumer(object):
 
         consumer = consumers.Consumer(_DummyRedis(), None, 'q')
         status = 'updated_status'
-        consumer.update_status('redis-hash', status, {
+        consumer.update_key('redis-hash', {
+            'status': status,
             'new_field': True
         })
         assert isinstance(_redis_values, dict)
@@ -212,7 +213,7 @@ class TestConsumer(object):
         assert _redis_values.get('new_field') is True
 
         with pytest.raises(ValueError):
-            consumer.update_status('redis-hash', status, 'data')
+            consumer.update_key('redis-hash', 'data')
 
     def test_handle_error(self):
         global _redis_values
