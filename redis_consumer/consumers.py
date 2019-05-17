@@ -68,9 +68,10 @@ class Consumer(object):
         self.redis = redis_client
         self.storage = storage_client
         self.queue = str(queue).lower()
-        self.processing_queue = 'processing-{}'.format(self.queue)
         self.final_status = final_status
         self.logger = logging.getLogger(str(self.__class__.__name__))
+        self.processing_queue = 'processing-{queue}:{name}'.format(
+            queue=self.queue, name=self.hostname)
 
     def _put_back_hash(self, redis_hash):
         """Put the hash back into the work queue"""
