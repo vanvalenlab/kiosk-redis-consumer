@@ -160,7 +160,7 @@ def iter_image_archive(zip_path, destination):
     Returns:
         Iterator of all image paths in extracted archive
     """
-    archive = zipfile.ZipFile(zip_path, 'r')
+    archive = zipfile.ZipFile(zip_path, 'r', allowZip64=True)
     is_valid = lambda x: os.path.splitext(x)[1] and '__MACOSX' not in x
     for info in archive.infolist():
         extracted = archive.extract(info, path=destination)
@@ -298,7 +298,7 @@ def zip_files(files, dest=None, prefix=None):
 
     try:
         logger.debug('Saving %s files to %s', len(files), filepath)
-        with zipfile.ZipFile(filepath, 'w') as zip_file:
+        with zipfile.ZipFile(filepath, 'w', allowZip64=True) as zip_file:
             for f in files:  # writing each file one by one
                 name = f.replace(dest, '')
                 name = name[1:] if name.startswith(os.path.sep) else name

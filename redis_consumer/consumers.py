@@ -34,9 +34,9 @@ import time
 import uuid
 import urllib
 import timeit
-import datetime
 import logging
 import zipfile
+import datetime
 
 import pytz
 import grpc
@@ -52,9 +52,10 @@ class Consumer(object):
     """Base class for all redis event consumer classes.
 
     Args:
-        redis_client: Client class to communicate with redis
-        storage_client: Client to communicate with cloud storage buckets.
-        final_status: Update the status of redis event with this value.
+        redis_client: obj, Client class to communicate with redis
+        storage_client: obj, Client to communicate with cloud storage buckets.
+        queue: str, Name of queue to pop off work items.
+        final_status: str, Update the status of redis event with this value.
     """
 
     def __init__(self,
@@ -67,9 +68,26 @@ class Consumer(object):
         self.redis = redis_client
         self.storage = storage_client
         self.queue = str(queue).lower()
-        self.processing_queue = 'processing-{}'.format(self.queue)
         self.final_status = final_status
         self.logger = logging.getLogger(str(self.__class__.__name__))
+        self.processing_queue = 'processing-{queue}:{name}'.format(
+            queue=self.queue, name=self.hostname)
+
+    def _put_back_hash(self, redis_hash):
+        """Put the hash back into the work queue"""
+        queue_size = self.redis.llen(self.processing_queue)
+        if queue_size == 1:
+            key = self.redis.rpoplpush(self.processing_queue, self.queue)
+            if key != redis_hash:
+                self.logger.warning('`RPOPLPUSH %s %s` popped key %s but'
+                                    'expected key to be %s',
+                                    self.processing_queue, self.queue,
+                                    key, redis_hash)
+        else:
+            self.logger.warning('Expected `%s` would have 1 item, but has %s. '
+                                'restarting the key the old way')
+            self.redis.lrem(self.processing_queue, 1, redis_hash)
+            self.redis.lpush(self.queue, redis_hash)
 
     def get_redis_hash(self):
         while True:
@@ -79,14 +97,15 @@ class Consumer(object):
             if redis_hash is None:
                 return redis_hash
 
+            self.update_key(redis_hash)  # update timestamp that it was touched
+
             # if hash is found and valid, return the hash
             if self.is_valid_hash(redis_hash):
                 return redis_hash
 
             # this invalid hash should not be processed by this consumer.
             # remove it from processing, and push it back to the work queue.
-            self.redis.lrem(self.processing_queue, 1, redis_hash)
-            self.redis.lpush(self.queue, redis_hash)
+            self._put_back_hash(redis_hash)
 
     def _handle_error(self, err, redis_hash):
         """Update redis with failure information, and log errors.
@@ -96,7 +115,8 @@ class Consumer(object):
             redis_hash: string, the hash that will be updated to failure.
         """
         # Update redis with failed status
-        self.update_status(redis_hash, 'failed', {
+        self.update_key(redis_hash, {
+            'status': 'failed',
             'reason': '{}: {}'.format(type(err).__name__, err),
         })
         self.logger.error('Failed to process redis key %s due to %s: %s',
@@ -110,8 +130,8 @@ class Consumer(object):
         """Helper function, returns ISO formatted UTC timestamp"""
         return datetime.datetime.now(pytz.UTC).isoformat()
 
-    def update_status(self, redis_hash, status, data=None):
-        """Update the status of a the given hash.
+    def update_key(self, redis_hash, data=None):
+        """Update the hash with `data` and updated_by & updated_at stamps.
 
         Args:
             redis_hash: string, the hash that will be updated
@@ -124,8 +144,8 @@ class Consumer(object):
 
         data = {} if data is None else data
         data.update({
-            'status': status,
-            'updated_at': self.get_current_timestamp()
+            'updated_at': self.get_current_timestamp(),
+            'updated_by': self.hostname,
         })
         self.redis.hmset(redis_hash, data)
 
@@ -133,22 +153,19 @@ class Consumer(object):
         raise NotImplementedError
 
     def consume(self):
-        """Consume all redis events every `interval` seconds.
-
-        Args:
-            status: string, only consume hashes where `status` == status.
-            prefix: string, only consume hashes that start with `prefix`.
-
-        Returns:
-            nothing: this is the consumer main process
-        """
+        """Find a redis key and process it"""
         start = timeit.default_timer()
         redis_hash = self.get_redis_hash()
 
         if redis_hash is not None:  # popped something off the queue
             try:
                 self._consume(redis_hash)
-                hvals = self.redis.hgetall(redis_hash)
+            except Exception as err:  # pylint: disable=broad-except
+                # log the error and update redis with details
+                self._handle_error(err, redis_hash)
+
+            hvals = self.redis.hgetall(redis_hash)
+            if hvals.get('status') == self.final_status:
                 self.logger.debug('Consumed key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s) '
                                   '(%s retries) in %s seconds.',
@@ -157,12 +174,19 @@ class Consumer(object):
                                   hvals.get('preprocess_function'),
                                   hvals.get('postprocess_function'),
                                   0, timeit.default_timer() - start)
-            except Exception as err:  # pylint: disable=broad-except
-                # log the error and update redis with details
-                self._handle_error(err, redis_hash)
 
-            # remove the key from the processing queue
-            self.redis.lrem(self.processing_queue, 1, redis_hash)
+            if hvals.get('status') in {self.final_status, 'failed'}:
+                # this key is done. remove the key from the processing queue.
+                self.redis.lrem(self.processing_queue, 1, redis_hash)
+            else:
+                # this key is not done yet.
+                # remove it from processing and push it back to the work queue.
+                self._put_back_hash(redis_hash)
+
+        else:
+            self.logger.debug('Queue `%s` is empty. Waiting for %s seconds.',
+                              self.queue, settings.EMPTY_QUEUE_TIMEOUT)
+            time.sleep(settings.EMPTY_QUEUE_TIMEOUT)
 
 
 class ImageFileConsumer(Consumer):
@@ -171,8 +195,8 @@ class ImageFileConsumer(Consumer):
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
             return False
-        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-        is_valid = not fname.lower().endswith('.zip')
+        fname = self.redis.hget(redis_hash, 'input_file_name')
+        is_valid = not str(fname).lower().endswith('.zip')
         return is_valid
 
     def _process(self, image, key, process_type, timeout=30, streaming=False):
@@ -249,7 +273,8 @@ class ImageFileConsumer(Consumer):
                     count += 1
                     temp_status = 'retry-processing - {} - {}'.format(
                         count, err.code().name)
-                    self.update_status(self._redis_hash, temp_status, {
+                    self.update_key(self._redis_hash, {
+                        'status': temp_status,
                         'process_retries': count,
                     })
                     sleeptime = np.random.randint(1, 20)
@@ -407,7 +432,8 @@ class ImageFileConsumer(Consumer):
                     # write update to Redis
                     temp_status = 'retry-predicting - {} - {}'.format(
                         count, err.code().name)
-                    self.update_status(self._redis_hash, temp_status, {
+                    self.update_key(self._redis_hash, {
+                        'status': temp_status,
                         'predict_retries': count,
                     })
                     self.logger.warning('%sException `%s: %s` during '
@@ -435,10 +461,11 @@ class ImageFileConsumer(Consumer):
         # hold on to the redis hash/values for logging purposes
         self._redis_hash = redis_hash
         self._redis_values = hvals
-        self.logger.debug('Found hash to process "%s": %s',
-                          redis_hash, json.dumps(hvals, indent=4))
+        self.logger.debug('Found hash to process `%s` with status `%s`.',
+                          redis_hash, hvals.get('status'))
 
-        self.update_status(redis_hash, 'started', {
+        self.update_key(redis_hash, {
+            'status': 'started',
             'identity_started': self.hostname,
         })
 
@@ -457,13 +484,13 @@ class ImageFileConsumer(Consumer):
             timeout = timeout if not streaming else timeout * int(cuts)
 
             # Pre-process data before sending to the model
-            self.update_status(redis_hash, 'pre-processing')
+            self.update_key(redis_hash, {'status': 'pre-processing'})
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
             image = self.preprocess(image, pre_funcs, timeout, True)
 
             # Send data to the model
-            self.update_status(redis_hash, 'predicting')
+            self.update_key(redis_hash, {'status': 'predicting'})
 
             if streaming:
                 image = self.process_big_image(
@@ -473,13 +500,13 @@ class ImageFileConsumer(Consumer):
                     image, model_name, model_version, timeout)
 
             # Post-process model results
-            self.update_status(redis_hash, 'post-processing')
+            self.update_key(redis_hash, {'status': 'post-processing'})
 
             post_funcs = hvals.get('postprocess_function', '').split(',')
             image = self.postprocess(image, post_funcs, timeout, True)
 
             # Save the post-processed results to a file
-            self.update_status(redis_hash, 'saving-results')
+            self.update_key(redis_hash, {'status': 'saving-results'})
 
             # Save each result channel as an image file
             save_name = hvals.get('original_name', fname)
@@ -499,7 +526,8 @@ class ImageFileConsumer(Consumer):
             dest, output_url = self.storage.upload(zip_file, subdir=subdir)
 
             # Update redis with the final results
-            self.update_status(redis_hash, self.final_status, {
+            self.update_key(redis_hash, {
+                'status': self.final_status,
                 'output_url': output_url,
                 'output_file_name': dest,
                 'finished_at': self.get_current_timestamp(),
@@ -512,8 +540,8 @@ class ZipFileConsumer(Consumer):
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
             return False
-        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-        is_valid = fname.lower().endswith('.zip')
+        fname = self.redis.hget(redis_hash, 'input_file_name')
+        is_valid = str(fname).lower().endswith('.zip')
         return is_valid
 
     def _upload_archived_images(self, hvalues):
@@ -522,13 +550,13 @@ class ZipFileConsumer(Consumer):
         with utils.get_tempdir() as tempdir:
             fname = self.storage.download(hvalues.get('input_file_name'), tempdir)
             image_files = utils.get_image_files_from_dir(fname, tempdir)
-            for imfile in image_files:
+            for i, imfile in enumerate(image_files):
                 clean_imfile = settings._strip(imfile.replace(tempdir, ''))
                 # Save each result channel as an image file
                 subdir = os.path.dirname(clean_imfile)
                 dest, _ = self.storage.upload(imfile, subdir=subdir)
 
-                new_hash = '{prefix}_{file}_{hash}'.format(
+                new_hash = '{prefix}:{file}:{hash}'.format(
                     prefix=settings.HASH_PREFIX,
                     file=clean_imfile,
                     hash=uuid.uuid4().hex)
@@ -543,92 +571,151 @@ class ZipFileConsumer(Consumer):
                 new_hvals['created_at'] = current_timestamp
                 new_hvals['updated_at'] = current_timestamp
 
+                # remove unnecessary/confusing keys (maybe from getting restarted)
+                bad_keys = [
+                    'children',
+                    'children:done',
+                    'children:failed',
+                    'identity_started',
+                ]
+                for k in bad_keys:
+                    if k in new_hvals:
+                        del new_hvals[k]
+
                 self.redis.hmset(new_hash, new_hvals)
                 self.redis.lpush(self.queue, new_hash)
-                self.logger.debug('Added new hash `%s`: %s',
-                                  new_hash, json.dumps(new_hvals, indent=4))
+                self.logger.debug('Added new hash %s of %s: `%s`',
+                                  i + 1, len(image_files), new_hash)
                 all_hashes.add(new_hash)
         return all_hashes
+
+    def _upload_finished_children(self, finished_children, expire_time=3600):
+        saved_files = set()
+        with utils.get_tempdir() as tempdir:
+            # process each successfully completed key
+            for key in finished_children:
+                if not key:
+                    continue
+                fname = self.redis.hget(key, 'output_file_name')
+                local_fname = self.storage.download(fname, tempdir)
+
+                self.logger.info('Saved file: %s', local_fname)
+
+                if zipfile.is_zipfile(local_fname):
+                    image_files = utils.get_image_files_from_dir(
+                        local_fname, tempdir)
+                else:
+                    image_files = [local_fname]
+
+                for imfile in image_files:
+                    saved_files.add(imfile)
+
+                self.redis.expire(key, expire_time)
+
+            # zip up all saved results
+            zip_file = utils.zip_files(saved_files, tempdir)
+
+            # Upload the zip file to cloud storage bucket
+            path, url = self.storage.upload(zip_file)
+            self.logger.debug('Uploaded output to: `%s`', url)
+            return path, url
+
+    def _parse_failures(self, failed_children, expire_time=3600):
+        failed_hashes = {}
+        for key in failed_children:
+            if not key:
+                continue
+            reason = self.redis.hget(key, 'reason')
+            # one of the hashes failed to process
+            self.logger.error('Failed to process hash `%s`: %s',
+                              key, reason)
+            failed_hashes[key] = reason
+            self.redis.expire(key, expire_time)
+
+        if failed_hashes:
+            self.logger.warning('Failed to process hashes: %s',
+                                json.dumps(failed_hashes, indent=4))
+
+        # check python2 vs python3
+        if hasattr(urllib, 'parse'):
+            url_encode = urllib.parse.urlencode  # pylint: disable=E1101
+        else:
+            url_encode = urllib.urlencode  # pylint: disable=E1101
+
+        return url_encode(failed_hashes)
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
-        self.logger.debug('Found hash to process `%s`: %s',
-                          redis_hash, json.dumps(hvals, indent=4))
+        self.logger.debug('Found hash to process `%s` with status `%s`.',
+                          redis_hash, hvals.get('status'))
 
-        self.update_status(redis_hash, 'started', {
-            'identity_started': self.hostname,
-        })
+        key_separator = ','  # char to separate child keys in Redis
+        expire_time = 60 * 10  # expire finished child keys in ten minutes
 
-        all_hashes = self._upload_archived_images(hvals)
-        self.logger.info('Uploaded %s hashes.  Waiting for ImageConsumers.',
-                         len(all_hashes))
+        # update without changing status, just to refresh timestamp
+        self.update_key(redis_hash, {'status': hvals.get('status')})
 
-        # Now all images have been uploaded with new redis hashes
-        # Wait for these to be processed by an ImageFileConsumer
-        self.update_status(redis_hash, 'waiting')
+        if hvals.get('status') == 'new':
+            # download the zip file, upload the contents, and enter into Redis
+            all_hashes = self._upload_archived_images(hvals)
+            self.logger.info('Uploaded %s child keys for key `%s`. Waiting for'
+                             ' ImageConsumers.', len(all_hashes), redis_hash)
 
-        with utils.get_tempdir() as tempdir:
-            finished_hashes = set()
-            failed_hashes = dict()
-            saved_files = set()
+            # Now all images have been uploaded with new redis hashes
+            # Update Redis with child keys and put item back in queue
+            self.update_key(redis_hash, {
+                'status': 'waiting',
+                'children': key_separator.join(all_hashes)
+            })
 
-            expire_time = 60 * 10  # ten minutes
+        elif hvals.get('status') == 'waiting':
+            # this key was previously processed by a ZipConsumer
+            # check to see which child keys have been processed
+            children = set(hvals.get('children', '').split(key_separator))
+            done = set(hvals.get('children:done', '').split(key_separator))
+            failed = set(hvals.get('children:failed', '').split(key_separator))
 
-            # ping redis until all the sets are finished
-            while all_hashes.symmetric_difference(finished_hashes):
-                for h in all_hashes:
-                    if h in finished_hashes:
-                        continue
+            # get keys that have not yet reached a completed status
+            remaining_children = children - done - failed
+            for child in remaining_children:
+                status = self.redis.hget(child, 'status')
+                if status == 'failed':
+                    failed.add(child)
+                elif status == self.final_status:
+                    done.add(child)
 
-                    status = self.redis.hget(h, 'status')
+            remaining_children = children - done - failed
 
-                    if status == 'failed':
-                        reason = self.redis.hget(h, 'reason')
-                        # one of the hashes failed to process
-                        self.logger.error('Failed to process hash `%s`: %s',
-                                          h, reason)
-                        failed_hashes[h] = reason
-                        finished_hashes.add(h)
-                        self.redis.expire(h, expire_time)
+            self.logger.info('Key `%s` has %s children waiting for processing',
+                             redis_hash, len(remaining_children))
 
-                    elif status == self.final_status:
-                        # one of our hashes is done!
-                        fname = self.redis.hget(h, 'output_file_name')
-                        local_fname = self.storage.download(fname, tempdir)
-                        self.logger.info('Saved file: %s', local_fname)
-                        if zipfile.is_zipfile(local_fname):
-                            image_files = utils.get_image_files_from_dir(
-                                local_fname, tempdir)
-                        else:
-                            image_files = [local_fname]
+            # if there are no remaining children, update status to cleanup
+            self.update_key(redis_hash, {
+                'status': 'cleanup' if not remaining_children else 'waiting',
+                'children:done': key_separator.join(d for d in done if d),
+                'children:failed': key_separator.join(f for f in failed if f),
+            })
 
-                        for imfile in image_files:
-                            saved_files.add(imfile)
-                        finished_hashes.add(h)
-                        self.redis.expire(h, expire_time)
+        elif hvals.get('status') == 'cleanup':
+            # clean up children with status `done` and `failed`
+            children = set(hvals.get('children', '').split(key_separator))
+            done = set(hvals.get('children:done', '').split(key_separator))
+            failed = set(hvals.get('children:failed', '').split(key_separator))
 
-            if failed_hashes:
-                self.logger.warning('Failed to process hashes: %s',
-                                    json.dumps(failed_hashes, indent=4))
+            output_file_name, output_url = self._upload_finished_children(
+                done, expire_time)
 
-            zip_file = utils.zip_files(saved_files, tempdir)
-
-            # Upload the zip file to cloud storage bucket
-            uploaded_file_path, output_url = self.storage.upload(zip_file)
-            self.logger.debug('Uploaded output to: `%s`', output_url)
-
-            # check python2 vs python3
-            url = urllib.parse.urlencode if hasattr(urllib, 'parse') else urllib.urlencode
+            failures = self._parse_failures(failed, expire_time)
 
             # Update redis with the results
-            self.update_status(redis_hash, self.final_status, {
-                'identity_output': self.hostname,
+            self.update_key(redis_hash, {
+                'status': self.final_status,
                 'finished_at': self.get_current_timestamp(),
                 'output_url': output_url,
-                'failures': url(failed_hashes),
-                'output_file_name': uploaded_file_path
+                'failures': failures,
+                'output_file_name': output_file_name
             })
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
-                             len(all_hashes), hvals['input_file_name'],
+                             len(children), hvals.get('input_file_name'),
                              timeit.default_timer() - start)
