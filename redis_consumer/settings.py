@@ -51,18 +51,20 @@ REDIS_HOST = config('REDIS_HOST', default='redis-master')
 REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
 
 # tensorflow-serving client connection
-TF_HOST = config('TF_HOST', default='tf-serving-service')
+TF_HOST = config('TF_HOST', default='tf-serving')
 TF_PORT = config('TF_PORT', default=8500, cast=int)
 TF_TENSOR_NAME = config('TF_TENSOR_NAME', default='image')
 TF_TENSOR_DTYPE = config('TF_TENSOR_DTYPE', default='DT_FLOAT')
 
 # data-processing client connection
-DP_HOST = config('DP_HOST', default='data-processing-service')
+DP_HOST = config('DP_HOST', default='data-processing')
 DP_PORT = config('DP_PORT', default=8080, cast=int)
 
 # gRPC API timeout in seconds (scales with `cuts`)
 GRPC_TIMEOUT = config('GRPC_TIMEOUT', default=30, cast=int)
+# timeout/backoff wait time in seconds
 REDIS_TIMEOUT = config('REDIS_TIMEOUT', default=3, cast=int)
+EMPTY_QUEUE_TIMEOUT = config('EMPTY_QUEUE_TIMEOUT', default=5, cast=int)
 
 # Status of hashes marked for prediction
 STATUS = config('STATUS', default='new')

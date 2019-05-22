@@ -32,13 +32,32 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
+import signal
 import traceback
 import logging
 import logging.handlers
 
 import redis_consumer
 from redis_consumer import settings
-from redis_consumer import storage
+
+
+class GracefulDeath:
+    """Catch signals to allow graceful shutdown.
+
+    Adapted from: https://stackoverflow.com/questions/18499497
+    """
+
+    def __init__(self):
+        self.signum = None
+        self.kill_now = False
+        self.logger = logging.getLogger(str(self.__class__.__name__))
+        signal.signal(signal.SIGINT, self.handle_signal)
+        signal.signal(signal.SIGTERM, self.handle_signal)
+
+    def handle_signal(self, signum, frame):  # pylint: disable=unused-argument
+        self.signum = signum
+        self.kill_now = True
+        self.logger.debug('Received signal `%s` and frame `%s`', signum, frame)
 
 
 def initialize_logger(debug_mode=True):
@@ -82,6 +101,7 @@ def get_consumer(consumer_type, **kwargs):
 
 if __name__ == '__main__':
     initialize_logger(settings.DEBUG)
+    sighandler = GracefulDeath()
 
     _logger = logging.getLogger(__file__)
 
@@ -105,9 +125,13 @@ if __name__ == '__main__':
 
     while True:
         try:
-            consumer.consume(sleeptime=settings.INTERVAL)
+            consumer.consume()
+            if sighandler.kill_now:
+                break
         except Exception as err:  # pylint: disable=broad-except
             _logger.critical('Fatal Error: %s: %s\n%s',
                              type(err).__name__, err, traceback.format_exc())
 
             sys.exit(1)
+
+    _logger.info('Gracefully exited after signal number %s', sighandler.signum)
