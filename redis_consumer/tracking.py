@@ -225,7 +225,8 @@ class cell_tracker():
             feature_shape = self.feature_shape[feature_name]
             # TODO(enricozb): why are there extra (1,)'s in the image shapes
             additional = (1,) if feature_name in {'appearance', 'neighborhood'} else ()
-            frame_features[feature_name] = np.zeros((number_of_cells, *additional, *feature_shape),
+            frame_features[feature_name] = np.zeros((number_of_cells,) +
+                                                    additional + feature_shape,
                                                     dtype='float32')
         # Fill frame_features with the proper values
         for cell_idx, cell_id in enumerate(cells_in_frame):
@@ -283,10 +284,10 @@ class cell_tracker():
             for feature_name in self.features:
                 in_1, in_2 = inputs[feature_name]
                 feature_shape = self.feature_shape[feature_name]
-                in_1 = np.reshape(np.stack(in_1), (len(input_pairs),
-                                  self.track_length, *feature_shape))
-                in_2 = np.reshape(np.stack(in_2), (len(input_pairs),
-                                  1, *feature_shape))
+                in_1 = np.reshape(np.stack(in_1),
+                                  (len(input_pairs), self.track_length) + feature_shape)
+                in_2 = np.reshape(np.stack(in_2),
+                                  (len(input_pairs), 1) + feature_shape)
                 model_input.extend([in_1, in_2])
 
             predictions = self.model.predict(model_input)
@@ -492,7 +493,7 @@ class cell_tracker():
             else:
                 num_missing = self.track_length - len(allowed_frames)
                 last_frame = allowed_frames[-1]
-                frames = [*allowed_frames, *([last_frame] * num_missing)]
+                frames = allowed_frames + [last_frame] * num_missing
 
             track_appearances[track_id] = app[[frame_dict[f] for f in frames]]
 
@@ -519,7 +520,7 @@ class cell_tracker():
             else:
                 num_missing = self.track_length - len(allowed_frames)
                 last_frame = allowed_frames[-1]
-                frames = [*allowed_frames, *([last_frame] * num_missing)]
+                frames = allowed_frames + [last_frame] * num_missing
 
             track_regionprops[track_id] = regionprop[[frame_dict[f] for f in frames]]
 
@@ -546,7 +547,7 @@ class cell_tracker():
             else:
                 num_missing = self.track_length - len(allowed_frames)
                 last_frame = allowed_frames[-1]
-                frames = [*allowed_frames, *([last_frame] * num_missing)]
+                frames = allowed_frames + [last_frame] * num_missing
 
             track_centroids[track_id] = centroids[[frame_dict[f] for f in frames]]
 
@@ -577,7 +578,7 @@ class cell_tracker():
             else:
                 num_missing = self.track_length - len(allowed_frames)
                 last_frame = allowed_frames[-1]
-                frames = [*allowed_frames, *([last_frame] * num_missing)]
+                frames = allowed_frames + [last_frame] * num_missing
 
             track_neighborhoods[track_id] = neighborhoods[[frame_dict[f] for f in frames]]
 
@@ -753,8 +754,8 @@ class cell_tracker():
         # fill the dataframe
         data = []
         for cell_id, track in self.tracks.items():
-            data.append([*extra_column_vals, *[track[c] for c in track_columns]])
-        dataframe = DataFrame(data, columns=[*extra_columns, *track_columns])
+            data.append(extra_column_vals + [track[c] for c in track_columns])
+        dataframe = DataFrame(data, columns=extra_columns + track_columns)
 
         # daughters contains track_id not labels
         dataframe['daughters'] = dataframe['daughters'].apply(
