@@ -9,10 +9,11 @@ exclude_lines =
     raise NotImplementedError
 
 ignore_errors = True
-fail_under = 80
+fail_under = 75
 show_missing = True
 
 omit =
     **/*_test.py
     redis_consumer/pbs/*
     redis_consumer/grpc_clients.py
+    redis_consumer/tracking.py

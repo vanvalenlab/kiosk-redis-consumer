@@ -172,6 +172,8 @@ class DummyStorage(object):
 class TestConsumer(object):
 
     def test_get_redis_hash(self):
+        settings.EMPTY_QUEUE_TIMEOUT = 0.1  # don't sleep too long
+
         # test emtpy queue
         items = []
         redis_client = DummyRedis(items)
@@ -293,7 +295,7 @@ class TestImageFileConsumer(object):
         redis_client = DummyRedis(items)
         redis_client.hget = lambda *x: x[0]
 
-        consumer = consumers.ImageFileConsumer(redis_client, storage, 'q')
+        consumer = consumers.ImageFileConsumer(redis_client, storage, 'predict')
         assert consumer.is_valid_hash(None) is False
         assert consumer.is_valid_hash('file.ZIp') is False
         assert consumer.is_valid_hash('predict:1234567890_file.ZIp') is False
@@ -313,7 +315,7 @@ class TestImageFileConsumer(object):
 
         redis_client = None
         storage = None
-        consumer = consumers.ImageFileConsumer(redis_client, storage, 'q')
+        consumer = consumers.ImageFileConsumer(redis_client, storage, 'predict')
 
         # image should be chopped into cuts**2 pieces and reassembled
         consumer.grpc_image = lambda x, y, z: x
@@ -325,7 +327,7 @@ class TestImageFileConsumer(object):
         status = 'new'
         redis_client = DummyRedis(prefix, status)
         storage = DummyStorage()
-        consumer = consumers.ImageFileConsumer(redis_client, storage, 'q')
+        consumer = consumers.ImageFileConsumer(redis_client, storage, 'predict')
 
         def _handle_error(err, rhash):  # pylint: disable=W0613
             raise err
@@ -356,7 +358,7 @@ class TestImageFileConsumer(object):
             'output_file_name': 'test_image.tiff'
         }
         redis.hmset = lambda x, y: True
-        consumer = consumers.ImageFileConsumer(redis, storage, 'q')
+        consumer = consumers.ImageFileConsumer(redis, storage, 'predict')
         consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image
         consumer._consume(dummyhash)
@@ -371,7 +373,7 @@ class TestZipFileConsumer(object):
         redis_client = DummyRedis(items)
         redis_client.hget = lambda *x: x[0]
 
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         assert consumer.is_valid_hash(None) is False
         assert consumer.is_valid_hash('file.ZIp') is False
         assert consumer.is_valid_hash('predict:1234567890_file.ZIp') is True
@@ -385,7 +387,7 @@ class TestZipFileConsumer(object):
         items = ['item%s' % x for x in range(1, 4)]
         redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         hsh = consumer._upload_archived_images({'input_file_name': 'test.zip'})
         assert len(hsh) == N
 
@@ -395,7 +397,7 @@ class TestZipFileConsumer(object):
         items = ['item%s' % x for x in range(1, N + 1)]
         redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         path, url = consumer._upload_finished_children(finished_children, 0)
         assert path and url
 
@@ -404,7 +406,7 @@ class TestZipFileConsumer(object):
         items = ['item%s' % x for x in range(1, N + 1)]
         redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
 
         # no failures
         failed_children = ''
@@ -424,7 +426,7 @@ class TestZipFileConsumer(object):
 
         # test `status` = "new"
         status = 'new'
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         consumer._upload_archived_images = lambda x: items
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
@@ -432,14 +434,14 @@ class TestZipFileConsumer(object):
 
         # test `status` = "waiting"
         status = 'waiting'
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)
 
         # test `status` = "cleanup"
         status = 'cleanup'
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         consumer._upload_finished_children = lambda x, y: (x, y)
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
@@ -447,14 +449,38 @@ class TestZipFileConsumer(object):
 
         # test `status` = "done"
         status = 'done'
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)
 
         # test `status` = "failed"
         status = 'failed'
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'q')
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)
+
+
+class TestTrackingConsumer(object):
+
+    def test_is_valid_hash(self):
+        items = ['item%s' % x for x in range(1, 4)]
+
+        storage = DummyStorage()
+        redis_client = DummyRedis(items)
+        redis_client.hget = lambda *x: x[0]
+
+        consumer = consumers.TrackingConsumer(redis_client, storage, 'track')
+        assert consumer.is_valid_hash(None) is False
+        assert consumer.is_valid_hash('file.ZIp') is False
+        assert consumer.is_valid_hash('predict:1234567890_file.ZIp') is False
+        assert consumer.is_valid_hash('predict:123456789_file.zip') is False
+        assert consumer.is_valid_hash('predict:1234567890_file.tiff') is False
+        assert consumer.is_valid_hash('predict:1234567890_file.png') is False
+        assert consumer.is_valid_hash('track:1234567890_file.ZIp') is False
+        assert consumer.is_valid_hash('track:123456789_file.zip') is False
+        assert consumer.is_valid_hash('track:1234567890_file.png') is False
+        assert consumer.is_valid_hash('track:1234567890_file.tiff') is True
+        assert consumer.is_valid_hash('track:1234567890_file.trk') is True
+        assert consumer.is_valid_hash('track:1234567890_file.trks') is True

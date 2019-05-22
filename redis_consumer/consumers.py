@@ -93,7 +93,7 @@ class Consumer(object):
             self.redis.lrem(self.processing_queue, 1, redis_hash)
             self.redis.lpush(self.queue, redis_hash)
 
-    def get_redis_hash(self, sleeptime=settings.INTERVAL):
+    def get_redis_hash(self):
         while True:
             redis_hash = self.redis.rpoplpush(self.queue, self.processing_queue)
 
@@ -111,7 +111,7 @@ class Consumer(object):
             # remove it from processing, and push it back to the work queue.
             self._put_back_hash(redis_hash)
 
-            time.sleep(sleeptime)
+            time.sleep(settings.EMPTY_QUEUE_TIMEOUT)
 
     def _handle_error(self, err, redis_hash):
         """Update redis with failure information, and log errors.
@@ -203,6 +203,7 @@ class ImageFileConsumer(Consumer):
             return False
 
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
+        print("HERE", self.queue)
         valid_prefix = redis_hash.startswith('{}:'.format(self.queue))
 
         # TODO(enricozb): `valid_file` should be a positive match not a
@@ -746,9 +747,6 @@ class TrackingConsumer(Consumer):
         if redis_hash is None:
             return False
         fname = str(self.redis.hget(redis_hash, 'input_file_name')).lower()
-
-        if fname.endswith(".zip"):
-            raise ValueError(".zip files are not supported for tracking.")
 
         valid_prefix = redis_hash.startswith('{}:'.format(self.queue))
         valid_file = (fname.endswith('.trk') or
