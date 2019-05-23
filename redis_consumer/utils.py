@@ -107,13 +107,8 @@ def grpc_response_to_dict(grpc_response):
     return grpc_response_dict
 
 
-def make_tensor_proto(data, dtype, shape=None):
-    if shape is None:
-        tensor_proto = TensorProto()
-    else:
-        tensor_shape = TensorShapeProto(dim=[TensorShapeProto.Dim(size=dim)
-                                        for dim in shape])
-        tensor_proto = TensorProto(tensor_shape=tensor_shape)
+def make_tensor_proto(data, dtype):
+    tensor_proto = TensorProto()
 
     if isinstance(dtype, six.string_types):
         dtype = dtype_to_number[dtype]
@@ -312,23 +307,6 @@ def load_track_file(filename):
             array_file.close()
 
         return {'X': raw, 'y': tracked}
-
-    if filename.endswith(".zip"):
-        with zipfile.ZipFile(filename, 'r') as zip_file:
-            names = zip_file.namelist()
-            images = {}
-
-            for name in names:
-                if name.endswith(".tiff") or name.endswith(".tif"):
-                    img = np.float32(tiff.TiffFile(filepath).asarray())
-                    img = np.expand_dims(img, axis=-1)
-
-                if name.startswith("raw."):
-                    images["X"] = img
-                elif name.startswith("annotated."):
-                    images["y"] = img
-
-            return images
 
     raise Exception("track file must end with .zip or .trk/.trks")
 
