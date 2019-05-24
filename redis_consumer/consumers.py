@@ -809,7 +809,7 @@ class TrackingConsumer(Consumer):
         if fname.endswith('.trk') or fname.endswith('.trks'):
             return utils.load_track_file(os.path.join(subdir, fname))
 
-        if not fname.endswith('.tiff'):
+        if not fname.endswith('.tiff') and not fname.endswith('.tif'):
             raise ValueError('_load_data takes in only .tiff, .trk, or .trks')
 
         # push a key per frame and let ImageFileConsumers segment
