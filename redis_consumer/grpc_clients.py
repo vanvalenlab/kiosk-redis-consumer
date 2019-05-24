@@ -31,6 +31,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import time
 import timeit
 
 import grpc
@@ -281,3 +282,81 @@ class ProcessClient(GrpcClient):
             raise err
 
         return {}
+
+
+class TrackingClient(GrpcClient):
+    """gRPC Client for tensorflow-serving API.
+
+    Arguments:
+        host: string, the hostname and port of the server (`localhost:8080`)
+        model_name: string, name of model served by tensorflow-serving
+        model_version: integer, version of the named model
+    """
+    def __init__(self, host, redis_hash, model_name, model_version, progress_callback):
+        super(TrackingClient, self).__init__(host)
+        self.redis_hash = redis_hash
+        self.model_name = model_name
+        self.model_version = model_version
+        self.progress_callback = progress_callback
+
+    def _single_request(self, stub, request, request_timeout=100):
+        while True:
+            try:
+                predict_response = stub.Predict(request, timeout=request_timeout)
+                predict_response_dict = grpc_response_to_dict(predict_response)
+                keys = [k for k in predict_response_dict]
+                return predict_response_dict['prediction']
+
+            except RpcError as err:
+                self.logger.error(err)
+                self.logger.error('Single prediction failed! Trying again...')
+                time.sleep(10)
+
+    def _predict(self, data, request_timeout=100):
+        self.logger.info('Sending tracking prediction to %s model %s:%s.',
+                         self.host, self.model_name, self.model_version)
+
+        channel = self.insecure_channel()
+        stub = PredictionServiceStub(channel)
+
+        t = timeit.default_timer()
+        num_preds = data[0].shape[0]
+
+        predictions = []
+        self.logger.debug('Sending %i requests...', num_preds)
+        for data_i in range(num_preds):
+            request = PredictRequest()
+            request.model_spec.name = self.model_name  # pylint: disable=E1101
+
+            if self.model_version > 0:
+                request.model_spec.version.value = self.model_version
+
+            for i, model_input in enumerate(data):
+                model_input = np.expand_dims(model_input[data_i], axis=0)
+                tensor_proto = make_tensor_proto(model_input, 'DT_FLOAT')
+                request.inputs["input{}".format(i)].CopyFrom(tensor_proto)
+
+            predictions.append(self._single_request(stub, request))
+
+        self.logger.info('Predicting everything took: %s seconds',
+                         timeit.default_timer() - t)
+
+        return predictions
+
+    def predict(self, data):
+        self.logger.info("Got data with shape %s",
+                         [model_input.shape for model_input in data])
+
+        return np.array(self._predict(data))
+
+    def progress(self, progress):
+        """
+        Update the internal state regarding progress
+
+        Arguments:
+            progress: float, the progress in the interval [0, 1]
+        """
+        progress *= 100
+        # clamp to an integer between 0 and 100
+        progress = min(100, max(0, round(progress)))
+        self.progress_callback(self.redis_hash, progress)

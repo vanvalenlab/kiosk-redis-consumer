@@ -82,14 +82,20 @@ def initialize_logger(debug_mode=True):
 
     logger.addHandler(console)
     logger.addHandler(fh)
+    logger.debug("Logger initialized.")
 
 
 def get_consumer(consumer_type, **kwargs):
+    logging.debug("Getting '{}' consumer with args {}.".format(
+        consumer_type,
+        kwargs))
     ct = str(consumer_type).lower()
     if ct == 'image':
         return redis_consumer.consumers.ImageFileConsumer(**kwargs)
     if ct == 'zip':
         return redis_consumer.consumers.ZipFileConsumer(**kwargs)
+    if ct == 'tracking':
+        return redis_consumer.consumers.TrackingConsumer(**kwargs)
     raise ValueError('Invalid `consumer_type`: "{}"'.format(consumer_type))
 
 
@@ -114,6 +120,8 @@ if __name__ == '__main__':
     }
 
     consumer = get_consumer(settings.CONSUMER_TYPE, **kwargs)
+
+    logging.debug("Got '{}' consumer.".format(settings.CONSUMER_TYPE))
 
     while True:
         try:

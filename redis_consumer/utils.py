@@ -28,25 +28,29 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import io
 import os
 import time
 import timeit
 import contextlib
 import hashlib
+import json
 import logging
 import shutil
+import tarfile
 import tempfile
 import zipfile
 import six
 
 import numpy as np
-import skimage
 import keras_preprocessing.image
+import skimage
 import dict_to_protobuf
 import PIL
 
 from redis_consumer.pbs.types_pb2 import DESCRIPTOR
 from redis_consumer.pbs.tensor_pb2 import TensorProto
+from redis_consumer.pbs.tensor_shape_pb2 import TensorShapeProto
 
 
 logger = logging.getLogger('redis_consumer.utils')
@@ -151,7 +155,7 @@ def get_tempdir():
 
 
 def iter_image_archive(zip_path, destination):
-    """Extract all files in archie and yield the paths of all images.
+    """Extract all files in archive and yield the paths of all images.
 
     Args:
         zip_path: path to zip archive
@@ -276,6 +280,35 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
     logger.debug('Saved %s image files in %s seconds.',
                  len(out_paths), timeit.default_timer() - start)
     return out_paths
+
+
+# from deepcell.utils.tracking_utils.load_trks
+def load_track_file(filename):
+    """Load a trk/trks file.
+    Args:
+        trks_file: full path to the file including .trk/.trks
+    Returns:
+        A dictionary with raw, tracked, and lineage data
+    """
+    if filename.endswith(".trk") or filename.endswith(".trks"):
+        with tarfile.open(filename, 'r') as trks:
+
+            # numpy can't read these from disk...
+            array_file = io.BytesIO()
+            array_file.write(trks.extractfile('raw.npy').read())
+            array_file.seek(0)
+            raw = np.load(array_file)
+            array_file.close()
+
+            array_file = io.BytesIO()
+            array_file.write(trks.extractfile('tracked.npy').read())
+            array_file.seek(0)
+            tracked = np.load(array_file)
+            array_file.close()
+
+        return {'X': raw, 'y': tracked}
+
+    raise Exception("track file must end with .zip or .trk/.trks")
 
 
 def zip_files(files, dest=None, prefix=None):
