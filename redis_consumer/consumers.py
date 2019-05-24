@@ -203,7 +203,6 @@ class ImageFileConsumer(Consumer):
             return False
 
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-        print("HERE", self.queue)
         valid_prefix = redis_hash.startswith('{}:'.format(self.queue))
 
         # TODO(enricozb): `valid_file` should be a positive match not a
@@ -751,6 +750,7 @@ class TrackingConsumer(Consumer):
         valid_prefix = redis_hash.startswith('{}:'.format(self.queue))
         valid_file = (fname.endswith('.trk') or
                       fname.endswith('.trks') or
+                      fname.endswith('.tif') or 
                       fname.endswith('.tiff'))
 
         self.logger.debug('Got key %s and decided %s',
