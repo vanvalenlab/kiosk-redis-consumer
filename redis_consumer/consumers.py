@@ -758,17 +758,6 @@ class TrackingConsumer(Consumer):
 
         return valid_prefix and valid_file
 
-    def _done(self, redis_hash, status, output_url, output_file_name):
-        output_timestamp = time.time() * 1000
-        self.redis.hmset(redis_hash, {
-            'identity_output': self.hostname,
-            'status': status,
-            'output_url': output_url,
-            'output_file_name': output_file_name,
-            'timestamp_output': output_timestamp,
-            'timestamp_last_status_update': output_timestamp
-        })
-
     def _get_model(self, redis_hash, hvalues):
         hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
 
@@ -801,7 +790,7 @@ class TrackingConsumer(Consumer):
         return tracker
 
     def _update_progress(self, redis_hash, progress):
-        self.redis.hmset(redis_hash, {
+        self.update_key(redis_hash, {
             'progress': progress,
         })
 
@@ -855,6 +844,7 @@ class TrackingConsumer(Consumer):
                     segment_local_path)
 
                 # prepare hvalues for this frame's hash
+                # TODO: model info should not be hardcoded
                 current_timestamp = self.get_current_timestamp()
                 frame_hvalues = {
                     'identity_upload': self.hostname,
@@ -942,14 +932,9 @@ class TrackingConsumer(Consumer):
                           self.queue, redis_hash, json.dumps(hvalues, indent=4))
 
         # Set status and initial progress
-        starting_time = time.time() * 1000
-        # TODO(enricozb): see `update_status`
-        self.redis.hmset(redis_hash, {
+        self.update_key(redis_hash, {
             'status': 'started',
             'progress': 0,
-            'timestamp_started': starting_time,
-            'identity_started': self.hostname,
-            'timestamp_last_status_update': starting_time
         })
 
         with utils.get_tempdir() as tempdir:
@@ -976,5 +961,9 @@ class TrackingConsumer(Consumer):
             tracker.dump(save_name, file_format='.trk')
             output_file_name, output_url = self.storage.upload(save_name)
 
-            self._done(redis_hash, self.final_status,
-                       output_url, output_file_name)
+            self.update_key(redis_hash, {
+                'status': self.final_status,
+                'output_url': output_url,
+                'output_file_name': output_file_name,
+                'finished_at': self.get_current_timestamp(),
+            })
