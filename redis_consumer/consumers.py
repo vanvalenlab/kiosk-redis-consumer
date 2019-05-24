@@ -750,7 +750,7 @@ class TrackingConsumer(Consumer):
         valid_prefix = redis_hash.startswith('{}:'.format(self.queue))
         valid_file = (fname.endswith('.trk') or
                       fname.endswith('.trks') or
-                      fname.endswith('.tif') or 
+                      fname.endswith('.tif') or
                       fname.endswith('.tiff'))
 
         self.logger.debug('Got key %s and decided %s',
@@ -863,7 +863,7 @@ class TrackingConsumer(Consumer):
                 self.logger.debug("Setting %s", frame_hvalues)
 
                 # make a hash for this frame
-                segment_hash = '{prefix}_{file}_{hash}'.format(
+                segment_hash = '{prefix}:{file}:{hash}'.format(
                     prefix='predict',
                     file=segment_fname,
                     hash=uuid.uuid4().hex)
