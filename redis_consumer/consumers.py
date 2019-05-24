@@ -753,8 +753,8 @@ class TrackingConsumer(Consumer):
                       fname.endswith('.trks') or
                       fname.endswith('.tiff'))
 
-        self.logger.debug('Got key {} and decided {}'.format(
-            redis_hash, valid_prefix and valid_file))
+        self.logger.debug('Got key %s and decided %s',
+                          redis_hash, valid_prefix and valid_file)
 
         return valid_prefix and valid_file
 
@@ -830,23 +830,23 @@ class TrackingConsumer(Consumer):
 
         tiff_stack = np.squeeze(raw, -1)
         if len(tiff_stack.shape) != 3:
-            raise ValueError(
-                "This tiff file has shape {}, which isn't 3"
-                " dimensions. Tracking can only be done on images with 3"
-                " dimensions, (time, width, height)".format(tiff_stack.shape))
+            raise ValueError("This tiff file has shape {}, which is not 3 "
+                             "dimensions. Tracking can only be done on images "
+                             "with 3 dimensions, (time, width, height)".format(
+                                 tiff_stack.shape))
 
         num_frames = len(tiff_stack)
         hash_to_frame = {}
         remaining_hashes = set()
 
-        self.logger.debug("Got tiffstack shape {}.".format(tiff_stack.shape))
-        self.logger.debug("tiffstack num_frames {}.".format(num_frames))
+        self.logger.debug('Got tiffstack shape %s.', tiff_stack.shape)
+        self.logger.debug('tiffstack num_frames %s.', num_frames)
 
         with utils.get_tempdir() as tempdir:
             for (i, img) in enumerate(tiff_stack):
                 # make a file name for this frame
-                segment_fname = (hvalues.get("original_name") +
-                                 "-tracking-frame-{}.tif".format(i))
+                segment_fname = '{}-tracking-frame-{}.tif'.format(
+                    hvalues.get('original_name'), i)
                 segment_local_path = os.path.join(tempdir, segment_fname)
 
                 # upload it
@@ -870,7 +870,7 @@ class TrackingConsumer(Consumer):
                     'url': upload_file_url
                 }
 
-                self.logger.debug("Setting {}".format(frame_hvalues))
+                self.logger.debug("Setting %s", frame_hvalues)
 
                 # make a hash for this frame
                 segment_hash = '{prefix}_{file}_{hash}'.format(
@@ -895,18 +895,18 @@ class TrackingConsumer(Consumer):
             while remaining_hashes:
                 finished_hashes = set()
 
-                self.logger.debug("Checking on hashes.")
+                self.logger.debug('Checking on hashes.')
                 for segment_hash in remaining_hashes:
                     status = self.redis.hget(segment_hash, 'status')
 
-                    self.logger.debug('Hash {} has status {}'.format(
-                        segment_hash, status))
+                    self.logger.debug('Hash %s has status %s',
+                                      segment_hash, status)
 
                     if status == 'failed':
                         reason = self.redis.hget(segment_hash, 'reason')
                         raise RuntimeError(
-                            'Tracking failed during segmentation on frame {}.\n'
-                            'Segmentation Error: {}'.format(
+                            'Tracking failed during segmentation on frame {}.'
+                            '\nSegmentation Error: {}'.format(
                                 hash_to_frame[segment_hash], reason))
 
                     elif status == self.final_status:
@@ -937,10 +937,9 @@ class TrackingConsumer(Consumer):
         return {"X": raw, "y": np.array(frames)}
 
     def _consume(self, redis_hash):
-        start = timeit.default_timer()
         hvalues = self.redis.hgetall(redis_hash)
-        self.logger.debug('Found track:* hash to process "%s": %s',
-                          redis_hash, json.dumps(hvalues, indent=4))
+        self.logger.debug('Found `%s:*` hash to process "%s": %s',
+                          self.queue, redis_hash, json.dumps(hvalues, indent=4))
 
         # Set status and initial progress
         starting_time = time.time() * 1000
@@ -972,9 +971,9 @@ class TrackingConsumer(Consumer):
 
             # Save tracking result and upload
             save_name = os.path.join(
-                tempdir, hvalues.get('original_name', fname)) + ".trk"
+                tempdir, hvalues.get('original_name', fname)) + '.trk'
 
-            tracker.dump(save_name, file_format=".trk")
+            tracker.dump(save_name, file_format='.trk')
             output_file_name, output_url = self.storage.upload(save_name)
 
             self._done(redis_hash, self.final_status,
