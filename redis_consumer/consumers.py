@@ -203,13 +203,7 @@ class ImageFileConsumer(Consumer):
             return False
 
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-        valid_prefix = redis_hash.startswith('{}:'.format(self.queue))
-
-        # TODO(enricozb): `valid_file` should be a positive match not a
-        # negative one. It seems fragile. With a positive match, adding new
-        # files won't break this.
-        valid_file = not fname.lower().endswith('.zip')
-        return valid_prefix and valid_file
+        return not fname.lower().endswith('.zip')
 
     def _process(self, image, key, process_type, timeout=30, streaming=False):
         """Apply each processing function to image.
@@ -289,17 +283,16 @@ class ImageFileConsumer(Consumer):
                         'status': temp_status,
                         'process_retries': count,
                     })
-                    sleeptime = np.random.randint(1, 20)
-                    sleeptime = 1 + sleeptime * int(streaming)
+                    backoff = settings.GRPC_BACKOFF
                     self.logger.warning('%sException `%s: %s` during %s '
                                         '%s-processing request.  Waiting %s '
                                         'seconds before retrying.',
                                         type(err).__name__, err.code().name,
                                         err.details(), key, process_type,
-                                        sleeptime)
+                                        backoff)
                     self.logger.debug('Waiting for %s seconds before retrying',
-                                      sleeptime)
-                    time.sleep(sleeptime)  # sleep before retry
+                                      backoff)
+                    time.sleep(backoff)  # sleep before retry
                     retrying = True  # Unneccessary but explicit
                 else:
                     retrying = False
@@ -493,6 +486,7 @@ class ImageFileConsumer(Consumer):
             # configure timeout
             streaming = str(cuts).isdigit() and int(cuts) > 0
             timeout = settings.GRPC_TIMEOUT
+            backoff = settings.GRPC_BACKOFF
             timeout = timeout if not streaming else timeout * int(cuts)
 
             # Pre-process data before sending to the model
@@ -509,7 +503,7 @@ class ImageFileConsumer(Consumer):
                     cuts, image, field, model_name, model_version)
             else:
                 image = self.grpc_image(
-                    image, model_name, model_version, timeout)
+                    image, model_name, model_version, timeout, backoff)
 
             # Post-process model results
             self.update_key(redis_hash, {'status': 'post-processing'})
@@ -554,10 +548,8 @@ class ZipFileConsumer(Consumer):
             return False
 
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-        valid_prefix = redis_hash.startswith('{}:'.format(self.queue))
-        valid_file = fname.lower().endswith('.zip')
 
-        return valid_prefix and valid_file
+        return fname.lower().endswith('.zip')
 
     def _upload_archived_images(self, hvalues):
         """Extract all image files and upload them to storage and redis"""
@@ -745,18 +737,17 @@ class TrackingConsumer(Consumer):
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
             return False
+
         fname = str(self.redis.hget(redis_hash, 'input_file_name')).lower()
 
-        valid_prefix = redis_hash.startswith('{}:'.format(self.queue))
         valid_file = (fname.endswith('.trk') or
                       fname.endswith('.trks') or
                       fname.endswith('.tif') or
                       fname.endswith('.tiff'))
 
-        self.logger.debug('Got key %s and decided %s',
-                          redis_hash, valid_prefix and valid_file)
+        self.logger.debug('Got key %s and decided %s', redis_hash, valid_file)
 
-        return valid_prefix and valid_file
+        return valid_file
 
     def _get_model(self, redis_hash, hvalues):
         hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)

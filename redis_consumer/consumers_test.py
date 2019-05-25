@@ -298,11 +298,11 @@ class TestImageFileConsumer(object):
         consumer = consumers.ImageFileConsumer(redis_client, storage, 'predict')
         assert consumer.is_valid_hash(None) is False
         assert consumer.is_valid_hash('file.ZIp') is False
-        assert consumer.is_valid_hash('predict:1234567890_file.ZIp') is False
-        assert consumer.is_valid_hash('track:123456789_file.zip') is False
-        assert consumer.is_valid_hash('predict:123456789_file.zip') is False
-        assert consumer.is_valid_hash('predict:1234567890_file.tiff') is True
-        assert consumer.is_valid_hash('predict:1234567890_file.png') is True
+        assert consumer.is_valid_hash('predict:1234567890:file.ZIp') is False
+        assert consumer.is_valid_hash('track:123456789:file.zip') is False
+        assert consumer.is_valid_hash('predict:123456789:file.zip') is False
+        assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
+        assert consumer.is_valid_hash('predict:1234567890:file.png') is True
 
     def test_process_big_image(self):
         name = 'model'
@@ -375,12 +375,12 @@ class TestZipFileConsumer(object):
 
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         assert consumer.is_valid_hash(None) is False
-        assert consumer.is_valid_hash('file.ZIp') is False
-        assert consumer.is_valid_hash('predict:1234567890_file.ZIp') is True
-        assert consumer.is_valid_hash('track:123456789_file.zip') is False
-        assert consumer.is_valid_hash('predict:123456789_file.zip') is True
-        assert consumer.is_valid_hash('predict:1234567890_file.tiff') is False
-        assert consumer.is_valid_hash('predict:1234567890_file.png') is False
+        assert consumer.is_valid_hash('file.ZIp') is True
+        assert consumer.is_valid_hash('predict:1234567890:file.ZIp') is True
+        assert consumer.is_valid_hash('track:123456789:file.zip') is True
+        assert consumer.is_valid_hash('predict:123456789:file.zip') is True
+        assert consumer.is_valid_hash('predict:1234567890:file.tiff') is False
+        assert consumer.is_valid_hash('predict:1234567890:file.png') is False
 
     def test__upload_archived_images(self):
         N = 3
@@ -473,14 +473,12 @@ class TestTrackingConsumer(object):
 
         consumer = consumers.TrackingConsumer(redis_client, storage, 'track')
         assert consumer.is_valid_hash(None) is False
-        assert consumer.is_valid_hash('file.ZIp') is False
-        assert consumer.is_valid_hash('predict:1234567890_file.ZIp') is False
-        assert consumer.is_valid_hash('predict:123456789_file.zip') is False
-        assert consumer.is_valid_hash('predict:1234567890_file.tiff') is False
-        assert consumer.is_valid_hash('predict:1234567890_file.png') is False
-        assert consumer.is_valid_hash('track:1234567890_file.ZIp') is False
-        assert consumer.is_valid_hash('track:123456789_file.zip') is False
-        assert consumer.is_valid_hash('track:1234567890_file.png') is False
-        assert consumer.is_valid_hash('track:1234567890_file.tiff') is True
-        assert consumer.is_valid_hash('track:1234567890_file.trk') is True
-        assert consumer.is_valid_hash('track:1234567890_file.trks') is True
+        assert consumer.is_valid_hash('predict:123456789:file.png') is False
+        assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
+        assert consumer.is_valid_hash('predict:1234567890:file.png') is False
+        assert consumer.is_valid_hash('track:1234567890:file.ZIp') is False
+        assert consumer.is_valid_hash('track:123456789:file.zip') is False
+        assert consumer.is_valid_hash('track:1234567890:file.png') is False
+        assert consumer.is_valid_hash('track:1234567890:file.tiff') is True
+        assert consumer.is_valid_hash('track:1234567890:file.trk') is True
+        assert consumer.is_valid_hash('track:1234567890:file.trks') is True

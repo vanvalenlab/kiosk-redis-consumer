@@ -62,6 +62,7 @@ DP_PORT = config('DP_PORT', default=8080, cast=int)
 
 # gRPC API timeout in seconds (scales with `cuts`)
 GRPC_TIMEOUT = config('GRPC_TIMEOUT', default=30, cast=int)
+GRPC_BACKOFF = config('GRPC_BACKOFF', default=3, cast=int)
 # timeout/backoff wait time in seconds
 REDIS_TIMEOUT = config('REDIS_TIMEOUT', default=3, cast=int)
 EMPTY_QUEUE_TIMEOUT = config('EMPTY_QUEUE_TIMEOUT', default=5, cast=int)
