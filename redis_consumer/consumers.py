@@ -203,13 +203,7 @@ class ImageFileConsumer(Consumer):
             return False
 
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-        valid_prefix = redis_hash.startswith('{}:'.format(self.queue))
-
-        # TODO(enricozb): `valid_file` should be a positive match not a
-        # negative one. It seems fragile. With a positive match, adding new
-        # files won't break this.
-        valid_file = not fname.lower().endswith('.zip')
-        return valid_prefix and valid_file
+        return not fname.lower().endswith('.zip')
 
     def _process(self, image, key, process_type, timeout=30, streaming=False):
         """Apply each processing function to image.
@@ -554,10 +548,8 @@ class ZipFileConsumer(Consumer):
             return False
 
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-        valid_prefix = redis_hash.startswith('{}:'.format(self.queue))
-        valid_file = fname.lower().endswith('.zip')
 
-        return valid_prefix and valid_file
+        return fname.lower().endswith('.zip')
 
     def _upload_archived_images(self, hvalues):
         """Extract all image files and upload them to storage and redis"""
@@ -745,18 +737,17 @@ class TrackingConsumer(Consumer):
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
             return False
+
         fname = str(self.redis.hget(redis_hash, 'input_file_name')).lower()
 
-        valid_prefix = redis_hash.startswith('{}:'.format(self.queue))
         valid_file = (fname.endswith('.trk') or
                       fname.endswith('.trks') or
                       fname.endswith('.tif') or
                       fname.endswith('.tiff'))
 
-        self.logger.debug('Got key %s and decided %s',
-                          redis_hash, valid_prefix and valid_file)
+        self.logger.debug('Got key %s and decided %s', redis_hash, valid_file)
 
-        return valid_prefix and valid_file
+        return valid_file
 
     def _get_model(self, redis_hash, hvalues):
         hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
