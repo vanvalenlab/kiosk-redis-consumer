@@ -283,8 +283,7 @@ class ImageFileConsumer(Consumer):
                         'status': temp_status,
                         'process_retries': count,
                     })
-                    sleeptime = np.random.randint(1, 20)
-                    sleeptime = 1 + sleeptime * int(streaming)
+                    backoff = settings.GRPC_BACKOFF
                     self.logger.warning('%sException `%s: %s` during %s '
                                         '%s-processing request.  Waiting %s '
                                         'seconds before retrying.',
@@ -292,8 +291,8 @@ class ImageFileConsumer(Consumer):
                                         err.details(), key, process_type,
                                         sleeptime)
                     self.logger.debug('Waiting for %s seconds before retrying',
-                                      sleeptime)
-                    time.sleep(sleeptime)  # sleep before retry
+                                      backoff)
+                    time.sleep(backoff)  # sleep before retry
                     retrying = True  # Unneccessary but explicit
                 else:
                     retrying = False
@@ -487,6 +486,7 @@ class ImageFileConsumer(Consumer):
             # configure timeout
             streaming = str(cuts).isdigit() and int(cuts) > 0
             timeout = settings.GRPC_TIMEOUT
+            backoff = settings.GRPC_BACKOFF
             timeout = timeout if not streaming else timeout * int(cuts)
 
             # Pre-process data before sending to the model
@@ -503,7 +503,7 @@ class ImageFileConsumer(Consumer):
                     cuts, image, field, model_name, model_version)
             else:
                 image = self.grpc_image(
-                    image, model_name, model_version, timeout)
+                    image, model_name, model_version, timeout, backoff)
 
             # Post-process model results
             self.update_key(redis_hash, {'status': 'post-processing'})
