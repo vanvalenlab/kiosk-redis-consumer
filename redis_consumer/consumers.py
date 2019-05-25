@@ -289,7 +289,7 @@ class ImageFileConsumer(Consumer):
                                         'seconds before retrying.',
                                         type(err).__name__, err.code().name,
                                         err.details(), key, process_type,
-                                        sleeptime)
+                                        backoff)
                     self.logger.debug('Waiting for %s seconds before retrying',
                                       backoff)
                     time.sleep(backoff)  # sleep before retry
