@@ -89,7 +89,8 @@ class Consumer(object):
                                     key, redis_hash)
         else:
             self.logger.warning('Expected `%s` would have 1 item, but has %s. '
-                                'restarting the key the old way')
+                                'restarting the key the old way',
+                                self.processing_queue, queue_size)
             self.redis.lrem(self.processing_queue, 1, redis_hash)
             self.redis.lpush(self.queue, redis_hash)
 
