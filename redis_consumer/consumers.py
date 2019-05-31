@@ -271,12 +271,8 @@ class ImageFileConsumer(Consumer):
                 retrying = False
                 return results
             except grpc.RpcError as err:
-                retry_statuses = {
-                    grpc.StatusCode.DEADLINE_EXCEEDED,
-                    grpc.StatusCode.UNAVAILABLE
-                }
                 # pylint: disable=E1101
-                if err.code() in retry_statuses:
+                if err.code() in settings.GRPC_RETRY_STATUSES:
                     count += 1
                     temp_status = 'retry-processing - {} - {}'.format(
                         count, err.code().name)
@@ -428,11 +424,7 @@ class ImageFileConsumer(Consumer):
                 return results
             except grpc.RpcError as err:
                 # pylint: disable=E1101
-                retry_statuses = {
-                    grpc.StatusCode.DEADLINE_EXCEEDED,
-                    grpc.StatusCode.UNAVAILABLE
-                }
-                if err.code() in retry_statuses:
+                if err.code() in settings.GRPC_RETRY_STATUSES:
                     count += 1
                     # write update to Redis
                     temp_status = 'retry-predicting - {} - {}'.format(
