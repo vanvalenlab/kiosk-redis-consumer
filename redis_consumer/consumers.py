@@ -206,14 +206,13 @@ class ImageFileConsumer(Consumer):
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
         return not fname.lower().endswith('.zip')
 
-    def _process(self, image, key, process_type, timeout=30, streaming=False):
+    def _process(self, image, key, process_type, streaming=False):
         """Apply each processing function to image.
 
         Args:
             image: numpy array of image data
             key: function to apply to image
             process_type: pre or post processing
-            timeout: integer. grpc request timeout.
             streaming: boolean. if True, streams data in multiple requests
 
         Returns:
@@ -249,9 +248,9 @@ class ImageFileConsumer(Consumer):
                              'data': np.expand_dims(image, axis=0)}]
 
                 if streaming:
-                    results = client.stream_process(req_data, timeout)
+                    results = client.stream_process(req_data, settings.GRPC_TIMEOUT)
                 else:
-                    results = client.process(req_data, timeout)
+                    results = client.process(req_data, settings.GRPC_TIMEOUT)
 
                 self.logger.debug('%s-processed key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s)'
@@ -299,13 +298,12 @@ class ImageFileConsumer(Consumer):
                                   type(err).__name__, key, process_type, err)
                 raise err
 
-    def preprocess(self, image, keys, timeout=30, streaming=False):
+    def preprocess(self, image, keys, streaming=False):
         """Wrapper for _process_image but can only call with type="pre".
 
         Args:
             image: numpy array of image data
             keys: list of function names to apply to the image
-            timeout: integer. grpc request timeout.
             streaming: boolean. if True, streams data in multiple requests
 
         Returns:
@@ -314,16 +312,15 @@ class ImageFileConsumer(Consumer):
         pre = None
         for key in keys:
             x = pre if pre else image
-            pre = self._process(x, key, 'pre', timeout, streaming)
+            pre = self._process(x, key, 'pre', streaming)
         return pre
 
-    def postprocess(self, image, keys, timeout=30, streaming=False):
+    def postprocess(self, image, keys, streaming=False):
         """Wrapper for _process_image but can only call with type="post".
 
         Args:
             image: numpy array of image data
             keys: list of function names to apply to the image
-            timeout: integer. grpc request timeout.
             streaming: boolean. if True, streams data in multiple requests
 
         Returns:
@@ -332,7 +329,7 @@ class ImageFileConsumer(Consumer):
         post = None
         for key in keys:
             x = post if post else image
-            post = self._process(x, key, 'post', timeout, streaming)
+            post = self._process(x, key, 'post', streaming)
         return post
 
     def process_big_image(self,
@@ -388,7 +385,7 @@ class ImageFileConsumer(Consumer):
                           tf_results.shape, timeit.default_timer() - start)
         return tf_results
 
-    def grpc_image(self, img, model_name, model_version, timeout=30):
+    def grpc_image(self, img, model_name, model_version):
         count = 0
         start = timeit.default_timer()
         self.logger.debug('Segmenting image of shape %s with model %s:%s',
@@ -411,7 +408,7 @@ class ImageFileConsumer(Consumer):
                 self.logger.debug('Created the PredictClient in %s seconds.',
                                   timeit.default_timer() - t)
 
-                prediction = client.predict(req_data, request_timeout=timeout)
+                prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
                 retrying = False
                 results = prediction['prediction']
                 self.logger.debug('Segmented key %s (model %s:%s, '
@@ -477,14 +474,12 @@ class ImageFileConsumer(Consumer):
 
             # configure timeout
             streaming = str(cuts).isdigit() and int(cuts) > 0
-            timeout = settings.GRPC_TIMEOUT
-            timeout = timeout if not streaming else timeout * int(cuts)
 
             # Pre-process data before sending to the model
             self.update_key(redis_hash, {'status': 'pre-processing'})
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
-            image = self.preprocess(image, pre_funcs, timeout, True)
+            image = self.preprocess(image, pre_funcs, True)
 
             # Send data to the model
             self.update_key(redis_hash, {'status': 'predicting'})
@@ -493,14 +488,13 @@ class ImageFileConsumer(Consumer):
                 image = self.process_big_image(
                     cuts, image, field, model_name, model_version)
             else:
-                image = self.grpc_image(
-                    image, model_name, model_version, timeout)
+                image = self.grpc_image(image, model_name, model_version)
 
             # Post-process model results
             self.update_key(redis_hash, {'status': 'post-processing'})
 
             post_funcs = hvals.get('postprocess_function', '').split(',')
-            image = self.postprocess(image, post_funcs, timeout, True)
+            image = self.postprocess(image, post_funcs, True)
 
             # Save the post-processed results to a file
             self.update_key(redis_hash, {'status': 'saving-results'})
