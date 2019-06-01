@@ -472,7 +472,6 @@ class ImageFileConsumer(Consumer):
             fname = self.storage.download(hvals.get('input_file_name'), tempdir)
             image = utils.get_image(fname)
 
-            # configure timeout
             streaming = str(cuts).isdigit() and int(cuts) > 0
 
             # Pre-process data before sending to the model
