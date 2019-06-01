@@ -31,33 +31,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-import signal
-import traceback
 import logging
 import logging.handlers
+import sys
+import traceback
 
 import redis_consumer
 from redis_consumer import settings
-
-
-class GracefulDeath:
-    """Catch signals to allow graceful shutdown.
-
-    Adapted from: https://stackoverflow.com/questions/18499497
-    """
-
-    def __init__(self):
-        self.signum = None
-        self.kill_now = False
-        self.logger = logging.getLogger(str(self.__class__.__name__))
-        signal.signal(signal.SIGINT, self.handle_signal)
-        signal.signal(signal.SIGTERM, self.handle_signal)
-
-    def handle_signal(self, signum, frame):  # pylint: disable=unused-argument
-        self.signum = signum
-        self.kill_now = True
-        self.logger.debug('Received signal `%s` and frame `%s`', signum, frame)
 
 
 def initialize_logger(debug_mode=True):
@@ -82,13 +62,10 @@ def initialize_logger(debug_mode=True):
 
     logger.addHandler(console)
     logger.addHandler(fh)
-    logger.debug("Logger initialized.")
 
 
 def get_consumer(consumer_type, **kwargs):
-    logging.debug("Getting '{}' consumer with args {}.".format(
-        consumer_type,
-        kwargs))
+    logging.debug('Getting `%s` consumer with args %s.', consumer_type, kwargs)
     ct = str(consumer_type).lower()
     if ct == 'image':
         return redis_consumer.consumers.ImageFileConsumer(**kwargs)
@@ -101,7 +78,6 @@ def get_consumer(consumer_type, **kwargs):
 
 if __name__ == '__main__':
     initialize_logger(settings.DEBUG)
-    sighandler = GracefulDeath()
 
     _logger = logging.getLogger(__file__)
 
@@ -112,26 +88,22 @@ if __name__ == '__main__':
 
     storage_client = redis_consumer.storage.get_client(settings.CLOUD_PROVIDER)
 
-    kwargs = {
+    consumer_kwargs = {
         'redis_client': redis,
         'storage_client': storage_client,
         'final_status': 'done',
         'queue': settings.QUEUE,
     }
 
-    consumer = get_consumer(settings.CONSUMER_TYPE, **kwargs)
+    consumer = get_consumer(settings.CONSUMER_TYPE, **consumer_kwargs)
 
-    logging.debug("Got '{}' consumer.".format(settings.CONSUMER_TYPE))
+    _logger.debug('Got `%s` consumer.', settings.CONSUMER_TYPE)
 
     while True:
         try:
             consumer.consume()
-            if sighandler.kill_now:
-                break
         except Exception as err:  # pylint: disable=broad-except
             _logger.critical('Fatal Error: %s: %s\n%s',
                              type(err).__name__, err, traceback.format_exc())
 
             sys.exit(1)
-
-    _logger.info('Gracefully exited after signal number %s', sighandler.signum)
