@@ -62,6 +62,12 @@ class RedisClient(object):
                                         str(name).upper(),
                                         ' '.join(values), self.backoff)
                     time.sleep(self.backoff)
+                except redis.exceptions.ReadOnlyError as err:
+                    self.logger.warning('Encountered `READONLYERROR: %s` '
+                                        'Resetting connection and retrying '
+                                        'in %s seconds.', err, self.backoff)
+                    self._redis.connection_pool.reset()
+                    time.sleep(self.backoff)
                 except Exception as err:
                     self.logger.error('Unexpected %s: %s when calling `%s %s`.',
                                       type(err).__name__, err,
