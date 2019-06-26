@@ -410,7 +410,12 @@ class ImageFileConsumer(Consumer):
 
                 prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
                 retrying = False
-                results = prediction['prediction']
+                results = []
+                for k in prediction:
+                    if k.startswith('prediction'):
+                        results.append(prediction[k])
+                if len(results) == 1:
+                    results = results[0]
                 self.logger.debug('Segmented key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s)'
                                   ' (%s retries) in %s seconds.',
