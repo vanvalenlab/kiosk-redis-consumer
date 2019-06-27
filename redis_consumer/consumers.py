@@ -219,8 +219,10 @@ class ImageFileConsumer(Consumer):
             list of processed image data
         """
         # Squeeze out batch dimension if unnecessary
-        if image.shape[0] == 1:
+        try:
             image = np.squeeze(image, axis=0)
+        except:
+            pass
 
         if not key:
             return image
@@ -508,8 +510,14 @@ class ImageFileConsumer(Consumer):
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
 
-            outpaths = utils.save_numpy_array(
-                image, name=name, subdir=subdir, output_dir=tempdir)
+            if isinstance(image, list):
+                outpaths = []
+                for i in image:
+                    outpaths.extend(utils.save_numpy_array(
+                        image, name=name, subdir=subdir, output_dir=tempdir))
+            else:
+                outpaths = utils.save_numpy_array(
+                    image, name=name, subdir=subdir, output_dir=tempdir)
 
             # Save each prediction image as zip file
             zip_file = utils.zip_files(outpaths, tempdir)
