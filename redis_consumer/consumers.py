@@ -96,6 +96,10 @@ class Consumer(object):
 
     def get_redis_hash(self):
         while True:
+
+            if self.redis.llen(self.queue) == 0:
+                return None
+
             redis_hash = self.redis.rpoplpush(self.queue, self.processing_queue)
 
             # if queue is empty, return None
