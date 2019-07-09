@@ -256,6 +256,12 @@ class ImageFileConsumer(Consumer):
                 else:
                     results = client.process(req_data, settings.GRPC_TIMEOUT)
 
+                finished = timeit.default_timer() - start
+
+                self.update_key(self._redis_hash, {
+                    '{}process_time'.format(process_type): finished
+                })
+
                 self.logger.debug('%s-processed key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s)'
                                   ' (%s retries)  in %s seconds.',
@@ -264,7 +270,7 @@ class ImageFileConsumer(Consumer):
                                   self._redis_values.get('model_version'),
                                   self._redis_values.get('preprocess_function'),
                                   self._redis_values.get('postprocess_function'),
-                                  count, timeit.default_timer() - start)
+                                  count, finished)
 
                 results = results['results']
                 # Again, squeeze out batch dimension if unnecessary
@@ -415,13 +421,18 @@ class ImageFileConsumer(Consumer):
                 prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
                 retrying = False
                 results = prediction['prediction']
+
+                finished = timeit.default_timer() - start
+                self.update_key(self._redis_hash, {
+                    'prediction_time': finished,
+                })
                 self.logger.debug('Segmented key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s)'
                                   ' (%s retries) in %s seconds.',
                                   self._redis_hash, model_name, model_version,
                                   self._redis_values.get('preprocess_function'),
                                   self._redis_values.get('postprocess_function'),
-                                  count, timeit.default_timer() - start)
+                                  count, finished)
                 return results
             except grpc.RpcError as err:
                 # pylint: disable=E1101
@@ -473,13 +484,17 @@ class ImageFileConsumer(Consumer):
         field = hvals.get('field_size', '61')
 
         with utils.get_tempdir() as tempdir:
+            _ = timeit.default_timer()
             fname = self.storage.download(hvals.get('input_file_name'), tempdir)
             image = utils.get_image(fname)
 
             streaming = str(cuts).isdigit() and int(cuts) > 0
 
             # Pre-process data before sending to the model
-            self.update_key(redis_hash, {'status': 'pre-processing'})
+            self.update_key(redis_hash, {
+                'status': 'pre-processing',
+                'download_time': timeit.default_timer() - _,
+            })
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
             image = self.preprocess(image, pre_funcs, True)
@@ -500,6 +515,7 @@ class ImageFileConsumer(Consumer):
             image = self.postprocess(image, post_funcs, True)
 
             # Save the post-processed results to a file
+            _ = timeit.default_timer()
             self.update_key(redis_hash, {'status': 'saving-results'})
 
             # Save each result channel as an image file
@@ -523,8 +539,10 @@ class ImageFileConsumer(Consumer):
             self.update_key(redis_hash, {
                 'status': self.final_status,
                 'output_url': output_url,
+                'upload_time': timeit.default_timer() - _,
                 'output_file_name': dest,
-                'finished_at': self.get_current_timestamp(),
+                'total_jobs': 1,
+                'finished_at': self.get_current_timestamp()
             })
 
 
@@ -591,6 +609,7 @@ class ZipFileConsumer(Consumer):
             for key in finished_children:
                 if not key:
                     continue
+
                 fname = self.redis.hget(key, 'output_file_name')
                 local_fname = self.storage.download(fname, tempdir)
 
@@ -698,19 +717,45 @@ class ZipFileConsumer(Consumer):
             done = set(hvals.get('children:done', '').split(key_separator))
             failed = set(hvals.get('children:failed', '').split(key_separator))
 
+            # get summary data for all finished children
+            summary_fields = [
+                # 'created_at',
+                # 'finished_at',
+                'prediction_time',
+                'postprocess_time',
+                'upload_time',
+                'download_time',
+            ]
+
+            summaries = dict()
+            for d in done:
+                results = self.redis.hmget(d, *summary_fields)
+                for field, result in zip(summary_fields, results):
+                    if result is not None and str(result).isdigit():
+                        if field not in summaries:
+                            summaries[field] = int(result)
+                        else:
+                            summaries[field] += int(result)
+
+            for k in summaries:
+                summaries[k] = summaries[k] / len(done)
+
             output_file_name, output_url = self._upload_finished_children(
                 done, expire_time)
 
             failures = self._parse_failures(failed, expire_time)
 
-            # Update redis with the results
-            self.update_key(redis_hash, {
+            summaries.update({
                 'status': self.final_status,
                 'finished_at': self.get_current_timestamp(),
                 'output_url': output_url,
                 'failures': failures,
+                'total_jobs': len(children),
                 'output_file_name': output_file_name
             })
+
+            # Update redis with the results
+            self.update_key(redis_hash, summaries)
 
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
                              len(children), hvals.get('input_file_name'),
