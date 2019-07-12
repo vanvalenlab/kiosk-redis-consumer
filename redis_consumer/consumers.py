@@ -619,7 +619,7 @@ class ZipFileConsumer(Consumer):
                     image_files = utils.get_image_files_from_dir(
                         local_fname, tempdir)
                 else:
-                    image_files = [local_fname]
+                    image_files = (local_fname,)
 
                 for imfile in image_files:
                     saved_files.add(imfile)
