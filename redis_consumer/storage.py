@@ -34,10 +34,14 @@ import timeit
 import os
 import logging
 import random
+import socket
+import urllib3
 
 import boto3
 from google.cloud import storage as google_storage
 from google.cloud import exceptions as google_exceptions
+from google.auth import exceptions as auth_exceptions
+import requests
 
 from redis_consumer import settings
 from redis_consumer.settings import DOWNLOAD_DIR
@@ -143,6 +147,15 @@ class GoogleStorage(Storage):
     def __init__(self, bucket, download_dir=DOWNLOAD_DIR, backoff=1.5):
         super(GoogleStorage, self).__init__(bucket, download_dir, backoff)
         self.bucket_url = 'www.googleapis.com/storage/v1/b/{}/o'.format(bucket)
+        self._network_errors = (
+            socket.gaierror,
+            google_exceptions.TooManyRequests,
+            urllib3.exceptions.MaxRetryError,
+            urllib3.exceptions.NewConnectionError,
+            requests.exceptions.ConnectionError,
+            auth_exceptions.RefreshError,
+            auth_exceptions.TransportError
+        )
 
     def get_storage_client(self):
         """Returns the storage API client"""
@@ -168,11 +181,28 @@ class GoogleStorage(Storage):
         Returns:
             url: Public URL to download the file
         """
-        client = self.get_storage_client()
-        bucket = client.get_bucket(self.bucket)
-        blob = bucket.blob(filepath)
-        blob.make_public()
-        return blob.public_url
+        retrying = True
+        while retrying:
+            try:
+                client = self.get_storage_client()
+                bucket = client.get_bucket(self.bucket)
+                blob = bucket.blob(filepath)
+                blob.make_public()
+                retrying = False
+                return blob.public_url
+
+            except self._network_errors as err:
+                self.logger.warning('Encountered %s: %s.  Backing off for %s '
+                                    'seconds...', type(err).__name__, err,
+                                    self.backoff)
+                time.sleep(self.backoff)
+                retrying = True  # Unneccessary but explicit
+
+            except Exception as err:
+                retrying = False
+                self.logger.error('Encountered %s: %s during make_public %s.',
+                                  type(err).__name__, err, filepath)
+                raise err
 
     def upload(self, filepath, subdir=None):
         """Upload a file to the cloud storage bucket.
@@ -203,12 +233,13 @@ class GoogleStorage(Storage):
                                   timeit.default_timer() - start)
                 retrying = False
                 return dest, blob.public_url
-            except google_exceptions.TooManyRequests as err:
+            except self._network_errors as err:
                 self.logger.warning('Encountered %s: %s.  Backing off for %s '
                                     'seconds...', type(err).__name__, err,
                                     self.backoff)
                 time.sleep(self.backoff)
                 retrying = True  # Unneccessary but explicit
+
             except Exception as err:
                 retrying = False
                 self.logger.error('Encountered %s: %s while uploading %s.',
@@ -238,12 +269,14 @@ class GoogleStorage(Storage):
                                   dest, self.bucket,
                                   timeit.default_timer() - start)
                 return dest
-            except google_exceptions.TooManyRequests as err:
+
+            except self._network_errors as err:
                 self.logger.warning('Encountered %s: %s.  Backing off for %s '
                                     'seconds and...', type(err).__name__, err,
                                     self.backoff)
                 time.sleep(self.backoff)
                 retrying = True  # Unneccessary but explicit
+
             except Exception as err:
                 retrying = False
                 self.logger.error('Encountered %s: %s while downloading %s.',
