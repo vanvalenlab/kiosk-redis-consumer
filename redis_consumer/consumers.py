@@ -130,8 +130,8 @@ class Consumer(object):
             'status': 'failed',
             'reason': logging.Formatter().formatException(sys.exc_info()),
         })
-        self.logger.exception('Failed to process redis key %s due to %s: %s',
-                              redis_hash, type(err).__name__, err)
+        self.logger.error('Failed to process redis key %s due to %s: %s',
+                          redis_hash, type(err).__name__, err)
 
     def is_valid_hash(self, redis_hash):  # pylint: disable=unused-argument
         """Returns True if the consumer should work on the item"""
