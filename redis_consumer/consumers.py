@@ -734,20 +734,24 @@ class ZipFileConsumer(Consumer):
                 'postprocess_time',
                 'upload_time',
                 'download_time',
+                'total_time',
             ]
 
             summaries = dict()
             for d in done:
                 results = self.redis.hmget(d, *summary_fields)
                 for field, result in zip(summary_fields, results):
-                    if result is not None and str(result).isdigit():
+                    try:
                         if field not in summaries:
-                            summaries[field] = int(result)
+                            summaries[field] = [float(result)]
                         else:
-                            summaries[field] += int(result)
+                            summaries[field].append(float(result))
+                    except:
+                        self.logger.warning('Summary field `%s` is not a '
+                                            'float: %s', field, result)
 
             for k in summaries:
-                summaries[k] = summaries[k] / len(done)
+                summaries[k] = sum(summaries[k]) / len(summaries[k])
 
             output_file_name, output_url = self._upload_finished_children(
                 done, expire_time)
