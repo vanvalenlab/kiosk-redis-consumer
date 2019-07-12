@@ -175,7 +175,16 @@ class Consumer(object):
                 # log the error and update redis with details
                 self._handle_error(err, redis_hash)
 
-            hvals = self.redis.hgetall(redis_hash)
+            required_fields = [
+                'status',
+                'model_name',
+                'model_version',
+                'preprocess_function',
+                'postprocess_function',
+            ]
+
+            result = self.redis.hmget(redis_hash, *required_fields)
+            hvals = {f: v for f, v in zip(required_fields, result)}
             if hvals.get('status') == self.final_status:
                 self.logger.debug('Consumed key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s) '
