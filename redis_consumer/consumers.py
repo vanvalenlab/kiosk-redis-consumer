@@ -560,12 +560,23 @@ class ImageFileConsumer(Consumer):
 class ZipFileConsumer(Consumer):
     """Consumes zip files and uploads the results"""
 
+    def __init__(self,
+                 redis_client,
+                 storage_client,
+                 queue,
+                 final_status='done'):
+        # zip files go in a new queue
+        zip_queue = '{}-zip'.format(queue)
+        self.child_queue = queue
+        super(ZipFileConsumer, self).__init__(
+            redis_client, storage_client,
+            zip_queue, final_status)
+
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
             return False
 
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-
         return fname.lower().endswith('.zip')
 
     def _upload_archived_images(self, hvalues):
@@ -609,7 +620,7 @@ class ZipFileConsumer(Consumer):
                         del new_hvals[k]
 
                 self.redis.hmset(new_hash, new_hvals)
-                self.redis.lpush(self.queue, new_hash)
+                self.redis.lpush(self.child_queue, new_hash)
                 self.logger.debug('Added new hash %s: `%s`', i + 1, new_hash)
                 all_hashes.add(new_hash)
         return all_hashes
