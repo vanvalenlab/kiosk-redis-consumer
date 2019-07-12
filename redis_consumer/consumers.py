@@ -475,6 +475,7 @@ class ImageFileConsumer(Consumer):
                 raise err
 
     def _consume(self, redis_hash):
+        start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
         # hold on to the redis hash/values for logging purposes
         self._redis_hash = redis_hash
@@ -551,6 +552,7 @@ class ImageFileConsumer(Consumer):
                 'upload_time': timeit.default_timer() - _,
                 'output_file_name': dest,
                 'total_jobs': 1,
+                'total_time': timeit.default_timer() - start,
                 'finished_at': self.get_current_timestamp()
             })
 
