@@ -569,6 +569,8 @@ class ZipFileConsumer(Consumer):
                 subdir = os.path.dirname(clean_imfile)
                 dest, _ = self.storage.upload(imfile, subdir=subdir)
 
+                os.remove(imfile)  # remove the file to save some memory
+
                 new_hash = '{prefix}:{file}:{hash}'.format(
                     prefix=settings.HASH_PREFIX,
                     file=clean_imfile,
