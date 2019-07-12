@@ -154,7 +154,8 @@ class GoogleStorage(Storage):
             urllib3.exceptions.NewConnectionError,
             requests.exceptions.ConnectionError,
             auth_exceptions.RefreshError,
-            auth_exceptions.TransportError
+            auth_exceptions.TransportError,
+            google_exceptions.ServiceUnavailable,
         )
 
     def get_storage_client(self):
