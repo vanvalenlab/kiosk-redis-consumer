@@ -610,8 +610,7 @@ class ZipFileConsumer(Consumer):
 
                 self.redis.hmset(new_hash, new_hvals)
                 self.redis.lpush(self.queue, new_hash)
-                self.logger.debug('Added new hash %s of %s: `%s`',
-                                  i + 1, len(image_files), new_hash)
+                self.logger.debug('Added new hash %s: `%s`', i + 1, new_hash)
                 all_hashes.add(new_hash)
         return all_hashes
 
