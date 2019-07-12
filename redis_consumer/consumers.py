@@ -116,8 +116,6 @@ class Consumer(object):
             # remove it from processing, and push it back to the work queue.
             self._put_back_hash(redis_hash)
 
-            time.sleep(settings.EMPTY_QUEUE_TIMEOUT)
-
     def _handle_error(self, err, redis_hash):
         """Update redis with failure information, and log errors.
 
