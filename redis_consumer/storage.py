@@ -33,6 +33,7 @@ import timeit
 
 import os
 import logging
+import random
 
 import boto3
 from google.cloud import storage as google_storage
@@ -76,10 +77,12 @@ class Storage(object):
         download_dir: path to local directory to save downloaded files
     """
 
-    def __init__(self, bucket, download_dir=DOWNLOAD_DIR, backoff=1.5):
+    def __init__(self, bucket, download_dir=DOWNLOAD_DIR, backoff=None):
         self.bucket = bucket
         self.download_dir = download_dir
         self.output_dir = 'output'
+        if backoff is None:
+            backoff = random.randint(10, 31) / 10.0
         self.backoff = backoff
         self.logger = logging.getLogger(str(self.__class__.__name__))
 
