@@ -632,6 +632,13 @@ class ZipFileConsumer(Consumer):
                     continue
 
                 fname = self.redis.hget(key, 'output_file_name')
+                if fname is None:
+                    if self.redis.hexists(key):
+                        ttl = self.redis.ttl(key)
+                        raise ValueError('Key `%s` exists with TTL %s but has '
+                                         'no output_file_name' % (key, ttl))
+                    else:
+                        raise ValueError('Key `%s` does not exist' % key)
                 local_fname = self.storage.download(fname, tempdir)
 
                 self.logger.info('Saved file: %s', local_fname)
