@@ -146,7 +146,18 @@ class GoogleStorage(Storage):
 
     def get_storage_client(self):
         """Returns the storage API client"""
-        return google_storage.Client()
+        attempts = 0
+        while True:
+            try:
+                return google_storage.Client()
+            except OSError as err:
+                if attempts < 3:
+                    attempts += 1
+                    self.logger.warning('Encountered error while creating '
+                                        'storage client: %s', err)
+                    time.sleep(self.backoff)
+                else:
+                    raise err
 
     def get_public_url(self, filepath):
         """Get the public URL to download the file.
