@@ -682,6 +682,11 @@ class ZipFileConsumer(Consumer):
         # update without changing status, just to refresh timestamp
         self.update_key(redis_hash, {'status': hvals.get('status')})
 
+        # check to see which child keys have been processed
+        children = set(hvals.get('children', '').split(key_separator))
+        done = set(hvals.get('children:done', '').split(key_separator))
+        failed = set(hvals.get('children:failed', '').split(key_separator))
+
         if hvals.get('status') == 'new':
             # download the zip file, upload the contents, and enter into Redis
             all_hashes = self._upload_archived_images(hvals)
@@ -697,11 +702,6 @@ class ZipFileConsumer(Consumer):
 
         elif hvals.get('status') == 'waiting':
             # this key was previously processed by a ZipConsumer
-            # check to see which child keys have been processed
-            children = set(hvals.get('children', '').split(key_separator))
-            done = set(hvals.get('children:done', '').split(key_separator))
-            failed = set(hvals.get('children:failed', '').split(key_separator))
-
             # get keys that have not yet reached a completed status
             remaining_children = children - done - failed
             for child in remaining_children:
@@ -725,9 +725,6 @@ class ZipFileConsumer(Consumer):
 
         elif hvals.get('status') == 'cleanup':
             # clean up children with status `done` and `failed`
-            children = set(hvals.get('children', '').split(key_separator))
-            done = set(hvals.get('children:done', '').split(key_separator))
-            failed = set(hvals.get('children:failed', '').split(key_separator))
 
             # get summary data for all finished children
             summary_fields = [
