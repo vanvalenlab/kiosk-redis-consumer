@@ -696,8 +696,7 @@ class ZipFileConsumer(Consumer):
         key_separator = ','  # char to separate child keys in Redis
         expire_time = 60 * 10  # expire finished child keys in ten minutes
 
-        # update without changing status, just to refresh timestamp
-        self.update_key(redis_hash, {'status': hvals.get('status')})
+        self.update_key(redis_hash)  # refresh timestamp
 
         # check to see which child keys have been processed
         children = set(hvals.get('children', '').split(key_separator))
