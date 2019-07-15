@@ -196,6 +196,7 @@ class Consumer(object):
             if hvals.get('status') in {self.final_status, 'failed'}:
                 # this key is done. remove the key from the processing queue.
                 self.redis.lrem(self.processing_queue, 1, redis_hash)
+
             else:
                 # this key is not done yet.
                 # remove it from processing and push it back to the work queue.
@@ -633,7 +634,7 @@ class ZipFileConsumer(Consumer):
 
                 fname = self.redis.hget(key, 'output_file_name')
                 if fname is None:
-                    if self.redis.hexists(key):
+                    if self.redis.exists(key):
                         ttl = self.redis.ttl(key)
                         raise ValueError('Key `%s` exists with TTL %s but has '
                                          'no output_file_name' % (key, ttl))
