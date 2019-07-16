@@ -361,7 +361,7 @@ class ImageFileConsumer(Consumer):
 
         return results
 
-    def preprocess(self, image, keys):
+    def preprocess(self, image, keys, streaming=False):
         """Wrapper for _process_image but can only call with type="pre".
 
         Args:
