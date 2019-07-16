@@ -341,10 +341,8 @@ class ImageFileConsumer(Consumer):
         f = self._get_processing_function(process_type, key)
         results = f(image)
 
-
         if results.shape[0] == 1:
             results = np.squeeze(results, axis=0)
-
 
         finished = timeit.default_timer() - start
 
