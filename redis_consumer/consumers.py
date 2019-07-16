@@ -333,7 +333,37 @@ class ImageFileConsumer(Consumer):
     #                               type(err).__name__, key, process_type, err)
     #             raise err
 
-    def preprocess(self, image, keys, streaming=False):
+    def process(self, image, key, process_type):
+        start = timeit.default_timer()
+        if not key:
+            return image
+
+        f = self._get_processing_function(process_type, key)
+        results = f(image)
+
+
+        if results.shape[0] == 1:
+            results = np.squeeze(results, axis=0)
+
+
+        finished = timeit.default_timer() - start
+
+        self.update_key(self._redis_hash, {
+            '{}process_time'.format(process_type): finished
+        })
+
+        self.logger.debug('%s-processed key %s (model %s:%s, preprocessing: %s,'
+                          ' postprocessing: %s) in %s seconds.',
+                          process_type.capitalize(), self._redis_hash,
+                          self._redis_values.get('model_name'),
+                          self._redis_values.get('model_version'),
+                          self._redis_values.get('preprocess_function'),
+                          self._redis_values.get('postprocess_function'),
+                          finished)
+
+        return results
+
+    def preprocess(self, image, keys):
         """Wrapper for _process_image but can only call with type="pre".
 
         Args:
@@ -348,8 +378,7 @@ class ImageFileConsumer(Consumer):
         for key in keys:
             x = pre if pre else image
             # pre = self._process(x, key, 'pre', streaming)
-            f = self._get_processing_function('pre', key)
-            pre = f(x)
+            pre = self.process(x, key, 'pre')
         return pre
 
     def postprocess(self, image, keys, streaming=False):
@@ -367,8 +396,7 @@ class ImageFileConsumer(Consumer):
         for key in keys:
             x = post if post else image
             # post = self._process(x, key, 'post', streaming)
-            f = self._get_processing_function('post', key)
-            pre = f(x)
+            post = self.process(x, key, 'post')
         return post
 
     def process_big_image(self,
