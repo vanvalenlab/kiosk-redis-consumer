@@ -45,11 +45,10 @@ import pytz
 import skimage
 
 from redis_consumer.grpc_clients import PredictClient
-from redis_consumer.grpc_clients import ProcessClient
+# from redis_consumer.grpc_clients import ProcessClient
 from redis_consumer.grpc_clients import TrackingClient
 from redis_consumer import utils
 from redis_consumer import tracking
-from redis_consumer import processing
 from redis_consumer import settings
 
 
