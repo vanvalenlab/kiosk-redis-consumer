@@ -37,7 +37,8 @@ from redis_consumer import processing
 
 
 # remove leading/trailing "/"s from cloud bucket folder names
-_strip = lambda x: '/'.join(y for y in x.split('/') if y)
+def _strip(x): return '/'.join(y for y in x.split('/') if y)
+
 
 # Debug Mode
 DEBUG = config('DEBUG', cast=bool, default=False)
@@ -118,6 +119,7 @@ PROCESSING_FUNCTIONS = {
     'post': {
         'deepcell': processing.deepcell,
         'mibi': processing.mibi,
-        'watershed': processing.watershed
+        'watershed': processing.watershed,
+        'retinanet': processing.retinanet_to_label_image
     },
 }
