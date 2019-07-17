@@ -88,6 +88,9 @@ class DummyRedis(object):
         else:
             return len(self.work_queue)
 
+    def hmget(self, *args):
+        return list(range(len(args)))
+
     def scan_iter(self, match=None, count=None):
         if match:
             return (k for k in self.keys if k.startswith(match[:-1]))

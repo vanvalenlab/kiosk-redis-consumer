@@ -143,10 +143,10 @@ def test_get_image_files_from_dir():
             archive.write(path)
         archive.close()
 
-        imfiles = utils.get_image_files_from_dir(path, None)
+        imfiles = list(utils.get_image_files_from_dir(path, None))
         assert len(imfiles) == 1
 
-        imfiles = utils.get_image_files_from_dir(zip_path, tempdir)
+        imfiles = list(utils.get_image_files_from_dir(zip_path, tempdir))
         assert len(imfiles) == num_files
 
 

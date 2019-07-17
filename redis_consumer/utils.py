@@ -185,10 +185,10 @@ def get_image_files_from_dir(fname, destination=None):
     """
     if zipfile.is_zipfile(fname):
         archive = iter_image_archive(fname, destination)
-        image_files = [f for f in archive]
+        for f in archive:
+            yield f
     else:
-        image_files = [fname]
-    return image_files
+        yield fname
 
 
 def get_image(filepath):
