@@ -218,26 +218,6 @@ class ImageFileConsumer(Consumer):
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
         return not fname.lower().endswith('.zip')
 
-<<<<<<< HEAD
-    def _process(self, image, key, process_type, streaming=False):
-        """Apply each processing function to image.
-
-        Args:
-            image: numpy array of image data
-            key: function to apply to image
-            process_type: pre or post processing
-            streaming: boolean. if True, streams data in multiple requests
-
-        Returns:
-            list of processed image data
-        """
-        # Squeeze out batch dimension if unnecessary
-        try:
-            image = np.squeeze(image, axis=0)
-        except:
-            pass
-
-=======
     def _get_processing_function(self, process_type, function_name):
         """Based on the function category and name, return the function"""
         clean = lambda x: str(x).lower()
@@ -354,7 +334,6 @@ class ImageFileConsumer(Consumer):
 
     def process(self, image, key, process_type):
         start = timeit.default_timer()
->>>>>>> feature/redis-sentinel
         if not key:
             return image
 
@@ -495,21 +474,17 @@ class ImageFileConsumer(Consumer):
 
                 prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
                 retrying = False
-<<<<<<< HEAD
                 results = []
                 for k in prediction:
                     if k.startswith('prediction'):
                         results.append(prediction[k])
                 if len(results) == 1:
                     results = results[0]
-=======
-                results = prediction['prediction']
 
                 finished = timeit.default_timer() - start
                 self.update_key(self._redis_hash, {
                     'prediction_time': finished,
                 })
->>>>>>> feature/redis-sentinel
                 self.logger.debug('Segmented key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s)'
                                   ' (%s retries) in %s seconds.',
