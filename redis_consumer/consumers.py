@@ -49,6 +49,7 @@ from redis_consumer.grpc_clients import ProcessClient
 from redis_consumer.grpc_clients import TrackingClient
 from redis_consumer import utils
 from redis_consumer import tracking
+from redis_consumer import processing
 from redis_consumer import settings
 
 
@@ -218,103 +219,147 @@ class ImageFileConsumer(Consumer):
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
         return not fname.lower().endswith('.zip')
 
-    def _process(self, image, key, process_type, streaming=False):
-        """Apply each processing function to image.
+    def _get_processing_function(self, process_type, function_name):
+        """Based on the function category and name, return the function"""
+        clean = lambda x: str(x).lower()
+        # first, verify the route parameters
+        name = clean(function_name)
+        cat = clean(process_type)
+        if cat not in settings.PROCESSING_FUNCTIONS:
+            raise ValueError('Processing functions are either "pre" or "post" '
+                             'processing.  Got %s.' % cat)
 
-        Args:
-            image: numpy array of image data
-            key: function to apply to image
-            process_type: pre or post processing
-            streaming: boolean. if True, streams data in multiple requests
+        if name not in settings.PROCESSING_FUNCTIONS[cat]:
+            if cat not in settings.PROCESSING_FUNCTIONS:
+                raise ValueError('"%s" is not a valid %s-processing function'
+                                 % (name, cat))
+        return settings.PROCESSING_FUNCTIONS[cat][name]
 
-        Returns:
-            list of processed image data
-        """
-        # Squeeze out batch dimension if unnecessary
-        if image.shape[0] == 1:
-            image = np.squeeze(image, axis=0)
+    # def _process(self, image, key, process_type, streaming=False):
+    #     """Apply each processing function to image.
+    #
+    #     Args:
+    #         image: numpy array of image data
+    #         key: function to apply to image
+    #         process_type: pre or post processing
+    #         streaming: boolean. if True, streams data in multiple requests
+    #
+    #     Returns:
+    #         list of processed image data
+    #     """
+    #     # Squeeze out batch dimension if unnecessary
+    #     if image.shape[0] == 1:
+    #         image = np.squeeze(image, axis=0)
+    #
+    #     if not key:
+    #         return image
+    #
+    #     self.logger.debug('Starting %s %s-processing image of shape %s',
+    #                       key, process_type, image.shape)
+    #
+    #     retrying = True
+    #     count = 0
+    #     start = timeit.default_timer()
+    #     while retrying:
+    #         try:
+    #             key = str(key).lower()
+    #             process_type = str(process_type).lower()
+    #             hostname = '{}:{}'.format(settings.DP_HOST, settings.DP_PORT)
+    #             client = ProcessClient(hostname, process_type, key)
+    #
+    #             if streaming:
+    #                 dtype = 'DT_STRING'
+    #             else:
+    #                 dtype = settings.TF_TENSOR_DTYPE
+    #
+    #             req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
+    #                          'in_tensor_dtype': dtype,
+    #                          'data': np.expand_dims(image, axis=0)}]
+    #
+    #             if streaming:
+    #                 results = client.stream_process(req_data, settings.GRPC_TIMEOUT)
+    #             else:
+    #                 results = client.process(req_data, settings.GRPC_TIMEOUT)
+    #
+    #             finished = timeit.default_timer() - start
+    #
+    #             self.update_key(self._redis_hash, {
+    #                 '{}process_time'.format(process_type): finished
+    #             })
+    #
+    #             self.logger.debug('%s-processed key %s (model %s:%s, '
+    #                               'preprocessing: %s, postprocessing: %s)'
+    #                               ' (%s retries)  in %s seconds.',
+    #                               process_type.capitalize(), self._redis_hash,
+    #                               self._redis_values.get('model_name'),
+    #                               self._redis_values.get('model_version'),
+    #                               self._redis_values.get('preprocess_function'),
+    #                               self._redis_values.get('postprocess_function'),
+    #                               count, finished)
+    #
+    #             results = results['results']
+    #             # Again, squeeze out batch dimension if unnecessary
+    #             if results.shape[0] == 1:
+    #                 results = np.squeeze(results, axis=0)
+    #
+    #             retrying = False
+    #             return results
+    #         except grpc.RpcError as err:
+    #             # pylint: disable=E1101
+    #             if err.code() in settings.GRPC_RETRY_STATUSES:
+    #                 count += 1
+    #                 temp_status = 'retry-processing - {} - {}'.format(
+    #                     count, err.code().name)
+    #                 self.update_key(self._redis_hash, {
+    #                     'status': temp_status,
+    #                     'process_retries': count,
+    #                 })
+    #                 self.logger.warning('%sException `%s: %s` during %s '
+    #                                     '%s-processing request.  Waiting %s '
+    #                                     'seconds before retrying.',
+    #                                     type(err).__name__, err.code().name,
+    #                                     err.details(), key, process_type,
+    #                                     settings.GRPC_BACKOFF)
+    #                 self.logger.debug('Waiting for %s seconds before retrying',
+    #                                   settings.GRPC_BACKOFF)
+    #                 time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
+    #                 retrying = True  # Unneccessary but explicit
+    #             else:
+    #                 retrying = False
+    #                 raise err
+    #         except Exception as err:
+    #             retrying = False
+    #             self.logger.error('Encountered %s during %s %s-processing: %s',
+    #                               type(err).__name__, key, process_type, err)
+    #             raise err
 
+    def process(self, image, key, process_type):
+        start = timeit.default_timer()
         if not key:
             return image
 
-        self.logger.debug('Starting %s %s-processing image of shape %s',
-                          key, process_type, image.shape)
+        f = self._get_processing_function(process_type, key)
+        results = f(image)
 
-        retrying = True
-        count = 0
-        start = timeit.default_timer()
-        while retrying:
-            try:
-                key = str(key).lower()
-                process_type = str(process_type).lower()
-                hostname = '{}:{}'.format(settings.DP_HOST, settings.DP_PORT)
-                client = ProcessClient(hostname, process_type, key)
+        if results.shape[0] == 1:
+            results = np.squeeze(results, axis=0)
 
-                if streaming:
-                    dtype = 'DT_STRING'
-                else:
-                    dtype = settings.TF_TENSOR_DTYPE
+        finished = timeit.default_timer() - start
 
-                req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
-                             'in_tensor_dtype': dtype,
-                             'data': np.expand_dims(image, axis=0)}]
+        self.update_key(self._redis_hash, {
+            '{}process_time'.format(process_type): finished
+        })
 
-                if streaming:
-                    results = client.stream_process(req_data, settings.GRPC_TIMEOUT)
-                else:
-                    results = client.process(req_data, settings.GRPC_TIMEOUT)
+        self.logger.debug('%s-processed key %s (model %s:%s, preprocessing: %s,'
+                          ' postprocessing: %s) in %s seconds.',
+                          process_type.capitalize(), self._redis_hash,
+                          self._redis_values.get('model_name'),
+                          self._redis_values.get('model_version'),
+                          self._redis_values.get('preprocess_function'),
+                          self._redis_values.get('postprocess_function'),
+                          finished)
 
-                finished = timeit.default_timer() - start
-
-                self.update_key(self._redis_hash, {
-                    '{}process_time'.format(process_type): finished
-                })
-
-                self.logger.debug('%s-processed key %s (model %s:%s, '
-                                  'preprocessing: %s, postprocessing: %s)'
-                                  ' (%s retries)  in %s seconds.',
-                                  process_type.capitalize(), self._redis_hash,
-                                  self._redis_values.get('model_name'),
-                                  self._redis_values.get('model_version'),
-                                  self._redis_values.get('preprocess_function'),
-                                  self._redis_values.get('postprocess_function'),
-                                  count, finished)
-
-                results = results['results']
-                # Again, squeeze out batch dimension if unnecessary
-                if results.shape[0] == 1:
-                    results = np.squeeze(results, axis=0)
-
-                retrying = False
-                return results
-            except grpc.RpcError as err:
-                # pylint: disable=E1101
-                if err.code() in settings.GRPC_RETRY_STATUSES:
-                    count += 1
-                    temp_status = 'retry-processing - {} - {}'.format(
-                        count, err.code().name)
-                    self.update_key(self._redis_hash, {
-                        'status': temp_status,
-                        'process_retries': count,
-                    })
-                    self.logger.warning('%sException `%s: %s` during %s '
-                                        '%s-processing request.  Waiting %s '
-                                        'seconds before retrying.',
-                                        type(err).__name__, err.code().name,
-                                        err.details(), key, process_type,
-                                        settings.GRPC_BACKOFF)
-                    self.logger.debug('Waiting for %s seconds before retrying',
-                                      settings.GRPC_BACKOFF)
-                    time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
-                    retrying = True  # Unneccessary but explicit
-                else:
-                    retrying = False
-                    raise err
-            except Exception as err:
-                retrying = False
-                self.logger.error('Encountered %s during %s %s-processing: %s',
-                                  type(err).__name__, key, process_type, err)
-                raise err
+        return results
 
     def preprocess(self, image, keys, streaming=False):
         """Wrapper for _process_image but can only call with type="pre".
@@ -330,7 +375,8 @@ class ImageFileConsumer(Consumer):
         pre = None
         for key in keys:
             x = pre if pre else image
-            pre = self._process(x, key, 'pre', streaming)
+            # pre = self._process(x, key, 'pre', streaming)
+            pre = self.process(x, key, 'pre')
         return pre
 
     def postprocess(self, image, keys, streaming=False):
@@ -347,7 +393,8 @@ class ImageFileConsumer(Consumer):
         post = None
         for key in keys:
             x = post if post else image
-            post = self._process(x, key, 'post', streaming)
+            # post = self._process(x, key, 'post', streaming)
+            post = self.process(x, key, 'post')
         return post
 
     def process_big_image(self,
