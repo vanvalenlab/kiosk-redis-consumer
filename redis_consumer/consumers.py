@@ -494,7 +494,7 @@ class ImageFileConsumer(Consumer):
                 prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
                 retrying = False
                 results = []
-                for k in prediction:
+                for k in sorted(prediction.keys()):
                     if k.startswith('prediction'):
                         results.append(prediction[k])
                 if len(results) == 1:
@@ -591,13 +591,19 @@ class ImageFileConsumer(Consumer):
             if isinstance(image,list):
                 self.logger.debug('Output length: {}'.format(len(image)))
             else:
-                self.logger.debut('Output type: {}'.format(type(image)))
+                self.logger.debug('Output type: {}'.format(type(image)))
 
             # Post-process model results
             self.update_key(redis_hash, {'status': 'post-processing'})
 
             post_funcs = hvals.get('postprocess_function', '').split(',')
+            self.logger.debug('Starting post-processing using function {}'.format(post_funcs))
             image = self.postprocess(image, post_funcs, True)
+
+            if isinstance(image,list):
+                self.logger.debug('Postprocess length: {}'.format(len(image)))
+            else:
+                self.logger.debug('Postprocess type: {}'.format(type(image)))
 
             # Save the post-processed results to a file
             _ = timeit.default_timer()
