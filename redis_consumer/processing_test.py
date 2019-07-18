@@ -31,7 +31,7 @@ from __future__ import print_function
 import numpy as np
 from skimage.measure import regionprops
 
-from data_processing import processing
+from redis_consumer import processing
 
 
 def _get_image(img_h=300, img_w=300):
