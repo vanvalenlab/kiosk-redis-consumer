@@ -643,7 +643,7 @@ class ZipFileConsumer(Consumer):
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
         return fname.lower().endswith('.zip')
 
-    def _upload_archived_images(self, hvalues):
+    def _upload_archived_images(self, hvalues, redis_hash):
         """Extract all image files and upload them to storage and redis"""
         all_hashes = set()
         with utils.get_tempdir() as tempdir:
@@ -686,10 +686,11 @@ class ZipFileConsumer(Consumer):
                 self.redis.hmset(new_hash, new_hvals)
                 self.redis.lpush(self.child_queue, new_hash)
                 self.logger.debug('Added new hash %s: `%s`', i + 1, new_hash)
+                self.update_key(redis_hash)
                 all_hashes.add(new_hash)
         return all_hashes
 
-    def _upload_finished_children(self, finished_children, expire_time=3600):
+    def _upload_finished_children(self, finished_children, redis_hash, expire_time=3600):
         saved_files = set()
         with utils.get_tempdir() as tempdir:
             # process each successfully completed key
@@ -719,6 +720,7 @@ class ZipFileConsumer(Consumer):
                     saved_files.add(imfile)
 
                 self.redis.expire(key, expire_time)
+                self.update_key(redis_hash)
 
             # zip up all saved results
             zip_file = utils.zip_files(saved_files, tempdir)
@@ -770,7 +772,7 @@ class ZipFileConsumer(Consumer):
 
         if hvals.get('status') == 'new':
             # download the zip file, upload the contents, and enter into Redis
-            all_hashes = self._upload_archived_images(hvals)
+            all_hashes = self._upload_archived_images(hvals, redis_hash)
             self.logger.info('Uploaded %s child keys for key `%s`. Waiting for'
                              ' ImageConsumers.', len(all_hashes), redis_hash)
 
@@ -835,7 +837,7 @@ class ZipFileConsumer(Consumer):
                 summaries[k] = sum(summaries[k]) / len(summaries[k])
 
             output_file_name, output_url = self._upload_finished_children(
-                done, expire_time)
+                done, redis_hash, expire_time)
 
             failures = self._parse_failures(failed, expire_time)
 
