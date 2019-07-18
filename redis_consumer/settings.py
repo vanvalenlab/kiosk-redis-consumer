@@ -37,7 +37,8 @@ from redis_consumer import processing
 
 
 # remove leading/trailing "/"s from cloud bucket folder names
-def _strip(x): return '/'.join(y for y in x.split('/') if y)
+def _strip(x):
+    return '/'.join(y for y in x.split('/') if y)
 
 
 # Debug Mode

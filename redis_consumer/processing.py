@@ -235,7 +235,7 @@ def retinanet_to_label_image(retinanet_outputs,
         for j in range(masks.shape[0]):
             mask = masks[j]
             box = boxes[j].astype(int)
-            mask = resize(mask, (box[3]-box[1], box[2]-box[0]))
+            mask = resize(mask, (box[3] - box[1], box[2] - box[0]))
             mask = (mask > binarize_threshold).astype('float32')
             mask_image[j, box[1]:box[3], box[0]:box[2]] = mask
 
@@ -281,7 +281,7 @@ def retinanet_to_label_image(retinanet_outputs,
                                        masks_overlaps.shape[1], masks_overlaps.shape[2]))
 
             for j in range(1, masks_overlaps.shape[0] + 1):
-                masks_overlaps[j-1] = segments == j
+                masks_overlaps[j - 1] = segments == j
             range_overlaps = np.arange(masks_no_overlaps.shape[0] + 1,
                                        masks_no_overlaps.shape[0] + masks_overlaps.shape[0] + 1)
             masks_overlaps *= np.expand_dims(np.expand_dims(range_overlaps, axis=-1), axis=-1)
@@ -303,10 +303,11 @@ def retinanet_to_label_image(retinanet_outputs,
             masks_semantic = np.zeros((np.amax(segments_semantic).astype(int),
                                        semantic.shape[0], semantic.shape[1]))
             for j in range(1, masks_semantic.shape[0] + 1):
-                masks_semantic[j-1] = segments_semantic == j
+                masks_semantic[j - 1] = segments_semantic == j
 
             range_semantic = np.arange(masks_no_overlaps.shape[0] + masks_overlaps.shape[0] + 1,
-                                       masks_no_overlaps.shape[0] + masks_overlaps.shape[0] + masks_semantic.shape[0] + 1)
+                                       masks_no_overlaps.shape[0] + masks_overlaps.shape[0] +
+                                       masks_semantic.shape[0] + 1)
             masks_semantic *= np.expand_dims(np.expand_dims(range_semantic, axis=-1), axis=-1)
 
             masks_concat = np.concatenate([masks_concat, masks_semantic], axis=0)
