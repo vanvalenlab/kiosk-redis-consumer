@@ -150,12 +150,13 @@ class GoogleStorage(Storage):
         self._network_errors = (
             socket.gaierror,
             google_exceptions.TooManyRequests,
+            google_exceptions.InternalServerError,
+            google_exceptions.ServiceUnavailable,
             urllib3.exceptions.MaxRetryError,
             urllib3.exceptions.NewConnectionError,
             requests.exceptions.ConnectionError,
             auth_exceptions.RefreshError,
             auth_exceptions.TransportError,
-            google_exceptions.ServiceUnavailable,
         )
 
     def get_storage_client(self):
