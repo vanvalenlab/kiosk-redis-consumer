@@ -568,6 +568,12 @@ class ImageFileConsumer(Consumer):
             else:
                 image = self.grpc_image(image, model_name, model_version)
 
+            # Log info about image type prior to postprocessing
+            if isinstance(image,list):
+                self.logger.debug('Output length: {}'.format(len(image)))
+            else:
+                self.logger.debut('Output type: {}'.format(type(image)))
+
             # Post-process model results
             self.update_key(redis_hash, {'status': 'post-processing'})
 
