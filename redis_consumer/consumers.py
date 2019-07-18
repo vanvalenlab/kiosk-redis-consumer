@@ -79,20 +79,39 @@ class Consumer(object):
 
     def _put_back_hash(self, redis_hash):
         """Put the hash back into the work queue"""
-        queue_size = self.redis.llen(self.processing_queue)
-        if queue_size == 1:
-            key = self.redis.rpoplpush(self.processing_queue, self.queue)
-            if key != redis_hash:
-                self.logger.warning('`RPOPLPUSH %s %s` popped key %s but'
-                                    'expected key to be %s',
-                                    self.processing_queue, self.queue,
-                                    key, redis_hash)
+        key = self.redis.rpoplpush(self.processing_queue, self.queue)
+        if key is None:
+            self.logger.error('RPOPLPUSH got None (%s is empty), key %s was '
+                              'removed somehow. Weird!',
+                              self.processing_queue, redis_hash)
+        elif key != redis_hash:
+            self.logger.error('Whoops! RPOPLPUSH sent key %s to %s instead of '
+                              '%s. Trying to put it back again.',
+                              key, self.queue, redis_hash)
+            self._put_back_hash(redis_hash)
         else:
-            self.logger.warning('Expected `%s` would have 1 item, but has %s. '
-                                'restarting the key the old way',
-                                self.processing_queue, queue_size)
-            self.redis.lrem(self.processing_queue, 1, redis_hash)
-            self.redis.lpush(self.queue, redis_hash)
+            pass  # success
+
+        # queue_size = self.redis.llen(self.processing_queue)
+        # if queue_size == 1:
+        #     key = self.redis.rpoplpush(self.processing_queue, self.queue)
+        #     if key != redis_hash:
+        #         self.logger.warning('`RPOPLPUSH %s %s` popped key %s but'
+        #                             'expected key to be %s',
+        #                             self.processing_queue, self.queue,
+        #                             key, redis_hash)
+        #
+        # else:
+        #     self.logger.warning('Expected `%s` would have 1 item, but has %s. '
+        #                         'restarting key `%s` the old way',
+        #                         self.processing_queue, queue_size, redis_hash)
+        #     res = self.redis.lrem(self.processing_queue, 1, redis_hash)
+        #     self.logger.debug('LREM %s got response %s', redis_hash, res)
+        #     if res:
+        #         self.redis.lpush(self.queue, redis_hash)
+        #     else:
+        #         self.logger.debug('Trying to put back key %s but it is not in '
+        #                           'queue %s', redis_hash, self.processing_queue)
 
     def get_redis_hash(self):
         while True:
@@ -641,7 +660,7 @@ class ZipFileConsumer(Consumer):
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
         return fname.lower().endswith('.zip')
 
-    def _upload_archived_images(self, hvalues):
+    def _upload_archived_images(self, hvalues, redis_hash):
         """Extract all image files and upload them to storage and redis"""
         all_hashes = set()
         with utils.get_tempdir() as tempdir:
@@ -684,10 +703,11 @@ class ZipFileConsumer(Consumer):
                 self.redis.hmset(new_hash, new_hvals)
                 self.redis.lpush(self.child_queue, new_hash)
                 self.logger.debug('Added new hash %s: `%s`', i + 1, new_hash)
+                self.update_key(redis_hash)
                 all_hashes.add(new_hash)
         return all_hashes
 
-    def _upload_finished_children(self, finished_children, expire_time=3600):
+    def _upload_finished_children(self, finished_children, redis_hash, expire_time=3600):
         saved_files = set()
         with utils.get_tempdir() as tempdir:
             # process each successfully completed key
@@ -717,6 +737,7 @@ class ZipFileConsumer(Consumer):
                     saved_files.add(imfile)
 
                 self.redis.expire(key, expire_time)
+                self.update_key(redis_hash)
 
             # zip up all saved results
             zip_file = utils.zip_files(saved_files, tempdir)
@@ -768,7 +789,7 @@ class ZipFileConsumer(Consumer):
 
         if hvals.get('status') == 'new':
             # download the zip file, upload the contents, and enter into Redis
-            all_hashes = self._upload_archived_images(hvals)
+            all_hashes = self._upload_archived_images(hvals, redis_hash)
             self.logger.info('Uploaded %s child keys for key `%s`. Waiting for'
                              ' ImageConsumers.', len(all_hashes), redis_hash)
 
@@ -833,7 +854,7 @@ class ZipFileConsumer(Consumer):
                 summaries[k] = sum(summaries[k]) / len(summaries[k])
 
             output_file_name, output_url = self._upload_finished_children(
-                done, expire_time)
+                done, redis_hash, expire_time)
 
             failures = self._parse_failures(failed, expire_time)
 

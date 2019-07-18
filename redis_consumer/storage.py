@@ -150,12 +150,13 @@ class GoogleStorage(Storage):
         self._network_errors = (
             socket.gaierror,
             google_exceptions.TooManyRequests,
+            google_exceptions.InternalServerError,
+            google_exceptions.ServiceUnavailable,
             urllib3.exceptions.MaxRetryError,
             urllib3.exceptions.NewConnectionError,
             requests.exceptions.ConnectionError,
             auth_exceptions.RefreshError,
             auth_exceptions.TransportError,
-            google_exceptions.ServiceUnavailable,
         )
 
     def get_storage_client(self):
@@ -215,10 +216,10 @@ class GoogleStorage(Storage):
             dest: key of uploaded file in cloud storage
         """
         start = timeit.default_timer()
-        client = self.get_storage_client()
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         retrying = True
         while retrying:
+            client = self.get_storage_client()
             try:
                 dest = os.path.basename(filepath)
                 if subdir:
@@ -257,11 +258,11 @@ class GoogleStorage(Storage):
         Returns:
             dest: local path to downloaded file
         """
-        client = self.get_storage_client()
         dest = self.get_download_path(filepath, download_dir)
         self.logger.debug('Downloading %s to %s.', filepath, dest)
         retrying = True
         while retrying:
+            client = self.get_storage_client()
             try:
                 start = timeit.default_timer()
                 blob = client.get_bucket(self.bucket).blob(filepath)
