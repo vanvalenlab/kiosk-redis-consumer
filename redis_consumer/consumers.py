@@ -79,20 +79,39 @@ class Consumer(object):
 
     def _put_back_hash(self, redis_hash):
         """Put the hash back into the work queue"""
-        queue_size = self.redis.llen(self.processing_queue)
-        if queue_size == 1:
-            key = self.redis.rpoplpush(self.processing_queue, self.queue)
-            if key != redis_hash:
-                self.logger.warning('`RPOPLPUSH %s %s` popped key %s but'
-                                    'expected key to be %s',
-                                    self.processing_queue, self.queue,
-                                    key, redis_hash)
+        key = self.redis.rpoplpush(self.processing_queue, self.queue)
+        if key is None:
+            self.logger.error('RPOPLPUSH got None (%s is empty), key %s was '
+                              'removed somehow. Weird!',
+                              self.processing_queue, redis_hash)
+        elif key != redis_hash:
+            self.logger.error('Whoops! RPOPLPUSH sent key %s to %s instead of '
+                              '%s. Trying to put it back again.',
+                              key, self.queue, redis_hash)
+            self._put_back_hash(redis_hash)
         else:
-            self.logger.warning('Expected `%s` would have 1 item, but has %s. '
-                                'restarting the key the old way',
-                                self.processing_queue, queue_size)
-            self.redis.lrem(self.processing_queue, 1, redis_hash)
-            self.redis.lpush(self.queue, redis_hash)
+            pass  # success
+
+        # queue_size = self.redis.llen(self.processing_queue)
+        # if queue_size == 1:
+        #     key = self.redis.rpoplpush(self.processing_queue, self.queue)
+        #     if key != redis_hash:
+        #         self.logger.warning('`RPOPLPUSH %s %s` popped key %s but'
+        #                             'expected key to be %s',
+        #                             self.processing_queue, self.queue,
+        #                             key, redis_hash)
+        #
+        # else:
+        #     self.logger.warning('Expected `%s` would have 1 item, but has %s. '
+        #                         'restarting key `%s` the old way',
+        #                         self.processing_queue, queue_size, redis_hash)
+        #     res = self.redis.lrem(self.processing_queue, 1, redis_hash)
+        #     self.logger.debug('LREM %s got response %s', redis_hash, res)
+        #     if res:
+        #         self.redis.lpush(self.queue, redis_hash)
+        #     else:
+        #         self.logger.debug('Trying to put back key %s but it is not in '
+        #                           'queue %s', redis_hash, self.processing_queue)
 
     def get_redis_hash(self):
         while True:
