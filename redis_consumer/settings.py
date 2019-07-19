@@ -110,6 +110,9 @@ HOSTNAME = config('HOSTNAME', default='host-unkonwn')
 # Redis queue
 QUEUE = config('QUEUE', default='predict')
 
+# Configure expiration time for child keys
+EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
+
 # Pre- and Post-processing settings
 PROCESSING_FUNCTIONS = {
     'pre': {
