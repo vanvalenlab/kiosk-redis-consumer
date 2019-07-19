@@ -492,11 +492,13 @@ class ImageFileConsumer(Consumer):
                                   timeit.default_timer() - t)
 
                 prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
-                retrying = False
-                results = [prediction[k] for k in sorted(prediction.keys()) if k.startswith('prediction')]
+                results = [prediction[k] for k in sorted(prediction.keys())
+                           if k.startswith('prediction')]
+
                 if len(results) == 1:
                     results = results[0]
 
+                retrying = False
                 finished = timeit.default_timer() - start
                 self.update_key(self._redis_hash, {
                     'prediction_time': finished,
