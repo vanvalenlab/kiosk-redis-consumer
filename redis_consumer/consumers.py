@@ -158,6 +158,16 @@ class Consumer(object):
         """Helper function, returns ISO formatted UTC timestamp"""
         return datetime.datetime.now(pytz.UTC).isoformat()
 
+    def purge_processing_queue(self):
+        """Move all items from the processing queue to the work queue"""
+        while True:
+            key = self.redis.rpoplpush(self.processing_queue, self.queue)
+            if key is None:
+                break
+            self.logger.debug('Found stranded key `%s` in queue `%s`. '
+                              'Moving it back to `%s`.',
+                              key, self.processing_queue, self.queue)
+
     def update_key(self, redis_hash, data=None):
         """Update the hash with `data` and updated_by & updated_at stamps.
 
@@ -183,6 +193,10 @@ class Consumer(object):
     def consume(self):
         """Find a redis key and process it"""
         start = timeit.default_timer()
+
+        # Purge the processing queue in case of stranded keys
+        self.purge_processing_queue()
+
         redis_hash = self.get_redis_hash()
 
         if redis_hash is not None:  # popped something off the queue
