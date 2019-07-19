@@ -733,7 +733,6 @@ class ZipFileConsumer(Consumer):
                 for imfile in image_files:
                     saved_files.add(imfile)
 
-                self.redis.expire(key, expire_time)
                 self.update_key(redis_hash)
 
             # zip up all saved results
@@ -754,7 +753,6 @@ class ZipFileConsumer(Consumer):
             self.logger.error('Failed to process hash `%s`: %s',
                               key, reason)
             failed_hashes[key] = reason
-            self.redis.expire(key, expire_time)
 
         if failed_hashes:
             self.logger.warning('Failed to process hashes: %s',
@@ -866,6 +864,11 @@ class ZipFileConsumer(Consumer):
 
             # Update redis with the results
             self.update_key(redis_hash, summaries)
+
+            for key in children:
+                self.redis.expire(key, expire_time)
+            self.logger.debug('All %s child keys will be expiring in %s '
+                              'seconds.', len(children), expire_time)
 
             self.logger.info('Processed all %s images of zipfile `%s` in %s',
                              len(children), hvals.get('input_file_name'),
