@@ -587,23 +587,11 @@ class ImageFileConsumer(Consumer):
             else:
                 image = self.grpc_image(image, model_name, model_version)
 
-            # Log info about image type prior to postprocessing
-            if isinstance(image, list):
-                self.logger.debug('Output length: {}'.format(len(image)))
-            else:
-                self.logger.debug('Output type: {}'.format(type(image)))
-
             # Post-process model results
             self.update_key(redis_hash, {'status': 'post-processing'})
 
             post_funcs = hvals.get('postprocess_function', '').split(',')
-            self.logger.debug('Starting post-processing using function {}'.format(post_funcs))
             image = self.postprocess(image, post_funcs, True)
-
-            if isinstance(image, list):
-                self.logger.debug('Postprocess length: {}'.format(len(image)))
-            else:
-                self.logger.debug('Postprocess type: {}'.format(type(image)))
 
             # Save the post-processed results to a file
             _ = timeit.default_timer()
