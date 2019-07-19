@@ -493,10 +493,7 @@ class ImageFileConsumer(Consumer):
 
                 prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
                 retrying = False
-                results = []
-                for k in sorted(prediction.keys()):
-                    if k.startswith('prediction'):
-                        results.append(prediction[k])
+                results = [prediction[k] for k in sorted(prediction.keys()) if k.startswith('prediction')]
                 if len(results) == 1:
                     results = results[0]
 
