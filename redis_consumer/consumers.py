@@ -750,12 +750,12 @@ class ZipFileConsumer(Consumer):
                 continue
             reason = self.redis.hget(key, 'reason')
             # one of the hashes failed to process
-            self.logger.error('Failed to process hash `%s`: %s',
-                              key, reason)
+            self.logger.error('Child key `%s` failed: %s', key, reason)
             failed_hashes[key] = reason
 
         if failed_hashes:
-            self.logger.warning('Failed to process hashes: %s',
+            self.logger.warning('%s child keys failed to process: %s',
+                                len(failed_hashes),
                                 json.dumps(failed_hashes, indent=4))
 
         # check python2 vs python3
