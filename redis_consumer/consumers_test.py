@@ -403,7 +403,7 @@ class TestZipFileConsumer(object):
         storage = DummyStorage(num=N)
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         path, url = consumer._upload_finished_children(
-            finished_children, 'predict:redis_hash:f.zip', 0)
+            finished_children, 'predict:redis_hash:f.zip')
         assert path and url
 
     def test__parse_failures(self):
@@ -447,7 +447,7 @@ class TestZipFileConsumer(object):
         # test `status` = "cleanup"
         status = 'cleanup'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
-        consumer._upload_finished_children = lambda x, y, z: (x, y)
+        consumer._upload_finished_children = lambda x, y: (x, y)
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)

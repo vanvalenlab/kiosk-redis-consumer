@@ -704,7 +704,7 @@ class ZipFileConsumer(Consumer):
                 all_hashes.add(new_hash)
         return all_hashes
 
-    def _upload_finished_children(self, finished_children, redis_hash, expire_time=3600):
+    def _upload_finished_children(self, finished_children, redis_hash):
         saved_files = set()
         with utils.get_tempdir() as tempdir:
             # process each successfully completed key
@@ -743,7 +743,7 @@ class ZipFileConsumer(Consumer):
             self.logger.debug('Uploaded output to: `%s`', url)
             return path, url
 
-    def _parse_failures(self, failed_children, expire_time=3600):
+    def _parse_failures(self, failed_children):
         failed_hashes = {}
         for key in failed_children:
             if not key:
@@ -849,9 +849,9 @@ class ZipFileConsumer(Consumer):
                 summaries[k] = sum(summaries[k]) / len(summaries[k])
 
             output_file_name, output_url = self._upload_finished_children(
-                done, redis_hash, expire_time)
+                done, redis_hash)
 
-            failures = self._parse_failures(failed, expire_time)
+            failures = self._parse_failures(failed)
 
             summaries.update({
                 'status': self.final_status,
