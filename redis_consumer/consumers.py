@@ -755,9 +755,9 @@ class TrackingConsumer(Consumer):
                                         tracking_model,
                                         max_distance=50,
                                         track_length=5,
-                                        division=0.5,
-                                        birth=0.9,
-                                        death=0.9,
+                                        division=0.9,
+                                        birth=0.95,
+                                        death=0.95,
                                         neighborhood_scale_size=30,
                                         features=features)
 

@@ -127,7 +127,6 @@ def make_tensor_proto(data, dtype):
         },
         number_to_dtype_value[dtype]: values
     }
-
     dict_to_protobuf.dict_to_protobuf(tensor_proto_dict, tensor_proto)
 
     return tensor_proto
@@ -149,7 +148,8 @@ def cd(newdir, cleanup=lambda: True):
 @contextlib.contextmanager
 def get_tempdir():
     dirpath = tempfile.mkdtemp()
-    cleanup = lambda: shutil.rmtree(dirpath)
+
+    def cleanup(): return shutil.rmtree(dirpath)
     with cd(dirpath, cleanup):
         yield dirpath
 
@@ -165,7 +165,8 @@ def iter_image_archive(zip_path, destination):
         Iterator of all image paths in extracted archive
     """
     archive = zipfile.ZipFile(zip_path, 'r', allowZip64=True)
-    is_valid = lambda x: os.path.splitext(x)[1] and '__MACOSX' not in x
+
+    def is_valid(x): return os.path.splitext(x)[1] and '__MACOSX' not in x
     for info in archive.infolist():
         extracted = archive.extract(info, path=destination)
         if os.path.isfile(extracted):
