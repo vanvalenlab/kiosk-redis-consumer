@@ -534,12 +534,10 @@ class ImageFileConsumer(Consumer):
                     })
                     self.logger.warning('%sException `%s: %s` during '
                                         'PredictClient request to model %s:%s.'
-                                        'Waiting %s seconds before retrying.',
+                                        ' Waiting %s seconds before retrying.',
                                         type(err).__name__, err.code().name,
                                         err.details(), model_name,
                                         model_version, settings.GRPC_BACKOFF)
-                    self.logger.debug('Waiting for %s seconds before retrying',
-                                      settings.GRPC_BACKOFF)
                     time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
                     retrying = True  # Unneccessary but explicit
                 else:
