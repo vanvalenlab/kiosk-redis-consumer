@@ -92,27 +92,6 @@ class Consumer(object):
         else:
             pass  # success
 
-        # queue_size = self.redis.llen(self.processing_queue)
-        # if queue_size == 1:
-        #     key = self.redis.rpoplpush(self.processing_queue, self.queue)
-        #     if key != redis_hash:
-        #         self.logger.warning('`RPOPLPUSH %s %s` popped key %s but'
-        #                             'expected key to be %s',
-        #                             self.processing_queue, self.queue,
-        #                             key, redis_hash)
-        #
-        # else:
-        #     self.logger.warning('Expected `%s` would have 1 item, but has %s. '
-        #                         'restarting key `%s` the old way',
-        #                         self.processing_queue, queue_size, redis_hash)
-        #     res = self.redis.lrem(self.processing_queue, 1, redis_hash)
-        #     self.logger.debug('LREM %s got response %s', redis_hash, res)
-        #     if res:
-        #         self.redis.lpush(self.queue, redis_hash)
-        #     else:
-        #         self.logger.debug('Trying to put back key %s but it is not in '
-        #                           'queue %s', redis_hash, self.processing_queue)
-
     def get_redis_hash(self):
         while True:
 
