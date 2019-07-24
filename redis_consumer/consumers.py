@@ -681,6 +681,27 @@ class ZipFileConsumer(Consumer):
                 all_hashes.add(new_hash)
         return all_hashes
 
+    def _get_output_file_name(self, key):
+        fname = None
+        retries = 3
+        for _ in range(retries):
+            fname = self.redis.hget(key, 'output_file_name')
+            if fname is None:
+                if not self.redis.exists(key):
+                    raise ValueError('Key `%s` does not exist' % key)
+
+                ttl = self.redis.ttl(key)
+                self.logger.warning('Key `%s` exists with TTL %s but has'
+                                    ' no output_file_name', key, ttl)
+                self.redis._update_masters_and_slaves()
+                time.sleep(3)
+            else:
+                break
+        else:
+            raise ValueError('Key %s had no value for output_file_name'
+                             ' %s times in a row.' % (key, retries))
+        return fname
+
     def _upload_finished_children(self, finished_children, redis_hash):
         saved_files = set()
         with utils.get_tempdir() as tempdir:
@@ -689,14 +710,8 @@ class ZipFileConsumer(Consumer):
                 if not key:
                     continue
 
-                fname = self.redis.hget(key, 'output_file_name')
-                if fname is None:
-                    if self.redis.exists(key):
-                        ttl = self.redis.ttl(key)
-                        raise ValueError('Key `%s` exists with TTL %s but has '
-                                         'no output_file_name' % (key, ttl))
-                    else:
-                        raise ValueError('Key `%s` does not exist' % key)
+                fname = self._get_output_file_name(key)
+
                 local_fname = self.storage.download(fname, tempdir)
 
                 self.logger.info('Saved file: %s', local_fname)
