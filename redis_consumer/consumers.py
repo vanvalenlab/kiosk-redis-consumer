@@ -491,6 +491,7 @@ class ImageFileConsumer(Consumer):
                 finished = timeit.default_timer() - start
                 self.update_key(self._redis_hash, {
                     'prediction_time': finished,
+                    'predict_retries': count,
                 })
                 self.logger.debug('Segmented key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s)'
