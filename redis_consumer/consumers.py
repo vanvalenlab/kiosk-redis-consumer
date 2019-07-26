@@ -759,6 +759,58 @@ class ZipFileConsumer(Consumer):
 
         return url_encode(failed_hashes)
 
+    def _cleanup(self, redis_hash, children, done, failed):
+        # get summary data for all finished children
+        summary_fields = [
+            # 'created_at',
+            # 'finished_at',
+            'prediction_time',
+            'postprocess_time',
+            'upload_time',
+            'download_time',
+            'total_time',
+        ]
+
+        summaries = dict()
+        for d in done:
+            results = self.redis.hmget(d, *summary_fields)
+            for field, result in zip(summary_fields, results):
+                try:
+                    if field not in summaries:
+                        summaries[field] = [float(result)]
+                    else:
+                        summaries[field].append(float(result))
+                except:
+                    self.logger.warning('Summary field `%s` is not a '
+                                        'float: %s', field, result)
+
+        for k in summaries:
+            summaries[k] = sum(summaries[k]) / len(summaries[k])
+
+        output_file_name, output_url = self._upload_finished_children(
+            done, redis_hash)
+
+        failures = self._parse_failures(failed)
+
+        summaries.update({
+            'status': self.final_status,
+            'finished_at': self.get_current_timestamp(),
+            'output_url': output_url,
+            'failures': failures,
+            'total_jobs': len(children),
+            'output_file_name': output_file_name
+        })
+
+        # Update redis with the results
+        self.update_key(redis_hash, summaries)
+
+        expire_time = settings.EXPIRE_TIME
+        for key in children:
+            self.redis.expire(key, expire_time)
+
+        self.logger.debug('All %s child keys will be expiring in %s '
+                          'seconds.', len(children), expire_time)
+
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
@@ -766,7 +818,6 @@ class ZipFileConsumer(Consumer):
                           redis_hash, hvals.get('status'))
 
         key_separator = ','  # char to separate child keys in Redis
-        expire_time = settings.EXPIRE_TIME
 
         self.update_key(redis_hash)  # refresh timestamp
 
@@ -812,59 +863,15 @@ class ZipFileConsumer(Consumer):
             })
 
             if not remaining_children:
-                # get summary data for all finished children
-                summary_fields = [
-                    # 'created_at',
-                    # 'finished_at',
-                    'prediction_time',
-                    'postprocess_time',
-                    'upload_time',
-                    'download_time',
-                    'total_time',
-                ]
+                self._cleanup(redis_hash, children, done, failed)
 
-                summaries = dict()
-                for d in done:
-                    results = self.redis.hmget(d, *summary_fields)
-                    for field, result in zip(summary_fields, results):
-                        try:
-                            if field not in summaries:
-                                summaries[field] = [float(result)]
-                            else:
-                                summaries[field].append(float(result))
-                        except:
-                            self.logger.warning('Summary field `%s` is not a '
-                                                'float: %s', field, result)
+        elif hvals.get('status') == 'cleanup':
+            # In case the pod got killed during last cleanup
+            self._cleanup(redis_hash, children, done, failed)
 
-                for k in summaries:
-                    summaries[k] = sum(summaries[k]) / len(summaries[k])
-
-                output_file_name, output_url = self._upload_finished_children(
-                    done, redis_hash)
-
-                failures = self._parse_failures(failed)
-
-                summaries.update({
-                    'status': self.final_status,
-                    'finished_at': self.get_current_timestamp(),
-                    'output_url': output_url,
-                    'failures': failures,
-                    'total_jobs': len(children),
-                    'output_file_name': output_file_name
-                })
-
-                # Update redis with the results
-                self.update_key(redis_hash, summaries)
-
-                for key in children:
-                    self.redis.expire(key, expire_time)
-
-                self.logger.debug('All %s child keys will be expiring in %s '
-                                  'seconds.', len(children), expire_time)
-
-                self.logger.info('Processed all %s images of zipfile `%s` in %s',
-                                 len(children), hvals.get('input_file_name'),
-                                 timeit.default_timer() - start)
+        self.logger.info('Processed all %s images of zipfile `%s` in %s',
+                         len(children), hvals.get('input_file_name'),
+                         timeit.default_timer() - start)
 
 
 class TrackingConsumer(Consumer):
