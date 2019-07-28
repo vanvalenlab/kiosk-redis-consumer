@@ -812,7 +812,6 @@ class ZipFileConsumer(Consumer):
                           'seconds.', len(children), expire_time)
 
     def _consume(self, redis_hash):
-        start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
         self.logger.debug('Found hash to process `%s` with status `%s`.',
                           redis_hash, hvals.get('status'))
@@ -820,11 +819,6 @@ class ZipFileConsumer(Consumer):
         key_separator = ','  # char to separate child keys in Redis
 
         self.update_key(redis_hash)  # refresh timestamp
-
-        # check to see which child keys have been processed
-        children = set(hvals.get('children', '').split(key_separator))
-        done = set(hvals.get('children:done', '').split(key_separator))
-        failed = set(hvals.get('children:failed', '').split(key_separator))
 
         if hvals.get('status') == 'new':
             # download the zip file, upload the contents, and enter into Redis
@@ -841,6 +835,11 @@ class ZipFileConsumer(Consumer):
 
         elif hvals.get('status') == 'waiting':
             # this key was previously processed by a ZipConsumer
+            # check to see which child keys have already been processed
+            children = set(hvals.get('children', '').split(key_separator))
+            done = set(hvals.get('children:done', '').split(key_separator))
+            failed = set(hvals.get('children:failed', '').split(key_separator))
+
             # get keys that have not yet reached a completed status
             remaining_children = children - done - failed
             for child in remaining_children:
@@ -857,21 +856,12 @@ class ZipFileConsumer(Consumer):
 
             # if there are no remaining children, update status to cleanup
             self.update_key(redis_hash, {
-                'status': 'cleanup' if not remaining_children else 'waiting',
                 'children:done': key_separator.join(d for d in done if d),
                 'children:failed': key_separator.join(f for f in failed if f),
             })
 
             if not remaining_children:
                 self._cleanup(redis_hash, children, done, failed)
-
-        elif hvals.get('status') == 'cleanup':
-            # In case the pod got killed during last cleanup
-            self._cleanup(redis_hash, children, done, failed)
-
-        self.logger.info('Processed all %s images of zipfile `%s` in %s',
-                         len(children), hvals.get('input_file_name'),
-                         timeit.default_timer() - start)
 
 
 class TrackingConsumer(Consumer):
