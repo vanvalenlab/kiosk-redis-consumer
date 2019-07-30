@@ -908,12 +908,12 @@ class TrackingConsumer(Consumer):
         features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
         tracker = tracking.cell_tracker(raw, segmented,
                                         tracking_model,
-                                        max_distance=50,
-                                        track_length=5,
-                                        division=0.9,
-                                        birth=0.95,
-                                        death=0.95,
-                                        neighborhood_scale_size=30,
+                                        max_distance=settings.MAX_DISTANCE,
+                                        track_length=settings.TRACK_LENGTH,
+                                        division=settings.DIVISION,
+                                        birth=settings.BIRTH,
+                                        death=settings.DEATH,
+                                        neighborhood_scale_size=settings.NEIGHBORHOOD_SCALE_SIZE,
                                         features=features)
 
         self.logger.debug('Created tracker!')
@@ -980,10 +980,10 @@ class TrackingConsumer(Consumer):
                     'identity_upload': self.hostname,
                     'input_file_name': upload_file_name,
                     'original_name': segment_fname,
-                    'model_name': 'HeLaS3watershed',
-                    'model_version': 2,
-                    'postprocess_function': 'watershed',
-                    'cuts': 0,
+                    'model_name': settings.MODEL_NAME,
+                    'model_version': settings.MODEL_VERSION,
+                    'postprocess_function': settings.POSTPROCESS_FUNCTION,
+                    'cuts': settings.CUTS,
                     'status': 'new',
                     'created_at': current_timestamp,
                     'updated_at': current_timestamp,
