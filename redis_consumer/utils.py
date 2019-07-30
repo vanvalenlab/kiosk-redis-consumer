@@ -149,7 +149,8 @@ def cd(newdir, cleanup=lambda: True):
 def get_tempdir():
     dirpath = tempfile.mkdtemp()
 
-    def cleanup(): return shutil.rmtree(dirpath)
+    def cleanup():
+        return shutil.rmtree(dirpath)
     with cd(dirpath, cleanup):
         yield dirpath
 
@@ -166,7 +167,8 @@ def iter_image_archive(zip_path, destination):
     """
     archive = zipfile.ZipFile(zip_path, 'r', allowZip64=True)
 
-    def is_valid(x): return os.path.splitext(x)[1] and '__MACOSX' not in x
+    def is_valid(x):
+        return os.path.splitext(x)[1] and '__MACOSX' not in x
     for info in archive.infolist():
         extracted = archive.extract(info, path=destination)
         if os.path.isfile(extracted):
@@ -186,10 +188,10 @@ def get_image_files_from_dir(fname, destination=None):
     """
     if zipfile.is_zipfile(fname):
         archive = iter_image_archive(fname, destination)
-        image_files = [f for f in archive]
+        for f in archive:
+            yield f
     else:
-        image_files = [fname]
-    return image_files
+        yield fname
 
 
 def get_image(filepath):
@@ -250,6 +252,13 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
     Returns:
         out_paths: list of all saved image paths
     """
+    logger.debug('Saving array of size {}'.format(arr.shape))
+
+    if len(arr.shape) == 2:
+        arr = np.expand_dims(arr, -1)
+        logger.debug('Expanding dimension of array to include channel '
+                     'dimension. New shape is %s', arr.shape)
+
     start = timeit.default_timer()
     output_dir = output_dir if output_dir is None else output_dir
     if subdir.startswith(os.path.sep):
