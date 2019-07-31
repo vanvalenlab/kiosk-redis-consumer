@@ -685,14 +685,22 @@ class ZipFileConsumer(Consumer):
         fname = None
         retries = 3
         for _ in range(retries):
-            fname = self.redis.hget(key, 'output_file_name')
+            # sometimes this field is missing, gotta get the truth!
+            fname = self.redis._redis_master.hget(key, 'output_file_name')
             if fname is None:
-                if not self.redis.exists(key):
+                ttl = self.redis.ttl(key)
+
+                if ttl == -2:
                     raise ValueError('Key `%s` does not exist' % key)
 
-                ttl = self.redis.ttl(key)
-                self.logger.warning('Key `%s` exists with TTL %s but has'
-                                    ' no output_file_name', key, ttl)
+                if ttl != -1:
+                    self.logger.warning('Key `%s` has a TTL of %s.'
+                                        'Why has it been expired already?',
+                                        key, ttl)
+                else:
+                    self.logger.warning('Key `%s` exists with TTL %s but has'
+                                        ' no output_file_name', key, ttl)
+
                 self.redis._update_masters_and_slaves()
                 time.sleep(3)
             else:

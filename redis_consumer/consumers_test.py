@@ -57,6 +57,7 @@ class DummyRedis(object):
         self.processing_queue = []
         self.prefix = '/'.join(x for x in prefix.split('/') if x)
         self.status = status
+        self._redis_master = self
         self.keys = [
             '{}:{}:{}'.format(self.prefix, 'x.tiff', self.status),
             '{}:{}:{}'.format(self.prefix, 'x.zip', 'other'),
