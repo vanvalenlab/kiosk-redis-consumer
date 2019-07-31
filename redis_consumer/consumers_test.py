@@ -169,9 +169,16 @@ class TestConsumer(object):
         settings.EMPTY_QUEUE_TIMEOUT = 0.01  # don't sleep too long
 
         queue_name = 'q'
+
         # test emtpy queue
         items = []
         redis_client = DummyRedis(items, prefix=queue_name)
+        consumer = consumers.Consumer(redis_client, None, queue_name)
+        rhash = consumer.get_redis_hash()
+        assert rhash is None
+
+        # LLEN somehow gives stale data, should still be None
+        redis_client.llen = lambda x: 1
         consumer = consumers.Consumer(redis_client, None, queue_name)
         rhash = consumer.get_redis_hash()
         assert rhash is None
@@ -182,13 +189,21 @@ class TestConsumer(object):
 
         consumer = consumers.Consumer(redis_client, None, queue_name)
         consumer.is_valid_hash = lambda x: x == 'item1'
-        print(redis_client.work_queue)
 
         rhash = consumer.get_redis_hash()
-        print(redis_client.work_queue)
         assert rhash == items[0]
         assert redis_client.work_queue == items[1:]
         assert redis_client.processing_queue == items[0:1]
+
+    def test_purge_processing_queue(self):
+        queue_name = 'q'
+        items = []
+        redis_client = DummyRedis(items, prefix=queue_name)
+        consumer = consumers.Consumer(redis_client, None, queue_name)
+
+        redis_client.processing_queue = list(range(5))
+        consumer.purge_processing_queue()
+        assert not redis_client.processing_queue
 
     def test_update_key(self):
         global _redis_values
@@ -228,6 +243,25 @@ class TestConsumer(object):
         assert isinstance(_redis_values, dict)
         assert 'status' in _redis_values and 'reason' in _redis_values
         assert _redis_values.get('status') == 'failed'
+
+    def test__put_back_hash(self):
+        queue_name = 'q'
+
+        # test emtpy queue
+        redis_client = DummyRedis([], prefix=queue_name)
+        consumer = consumers.Consumer(redis_client, None, queue_name)
+        consumer._put_back_hash('DNE')  # should be None, shows warning
+
+        # put back the proper item
+        item = 'redis_hash1'
+        redis_client.processing_queue = [item]
+        consumer = consumers.Consumer(redis_client, None, queue_name)
+        consumer._put_back_hash(item)
+
+        # put back the wrong item
+        redis_client.processing_queue = [item, 'otherhash']
+        consumer = consumers.Consumer(redis_client, None, queue_name)
+        consumer._put_back_hash(item)
 
     def test_consume(self):
         queue_name = 'q'
