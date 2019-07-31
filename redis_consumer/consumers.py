@@ -590,7 +590,9 @@ class ImageFileConsumer(Consumer):
             self.update_key(redis_hash, {'status': 'post-processing'})
 
             post_funcs = hvals.get('postprocess_function', '').split(',')
-            image = self.postprocess(image, post_funcs, True)
+            # image[:-1] is targeted at a two semantic head panoptic model
+            # TODO This may need to be modified and generalized in the future
+            image = self.postprocess(image[:-1], post_funcs, True)
 
             # Save the post-processed results to a file
             _ = timeit.default_timer()
