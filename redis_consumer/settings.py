@@ -112,6 +112,9 @@ HOSTNAME = config('HOSTNAME', default='host-unkonwn')
 # Redis queue
 QUEUE = config('QUEUE', default='predict')
 
+# Configure expiration time for child keys
+EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
+
 # Pre- and Post-processing settings
 PROCESSING_FUNCTIONS = {
     'pre': {
@@ -121,7 +124,7 @@ PROCESSING_FUNCTIONS = {
         'deepcell': processing.deepcell,
         'mibi': processing.mibi,
         'watershed': processing.watershed,
-        'retinanet': processing.retinanet_to_label_image
+        'retinanet': processing.retinanet_to_label_image,
     },
 }
 

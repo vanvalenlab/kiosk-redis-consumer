@@ -134,8 +134,6 @@ class RedisClient(object):
 
     def _update_masters_and_slaves(self):
         try:
-            self._sentinel.sentinel_masters()
-
             sentinel_masters = self._sentinel.sentinel_masters()
 
             for master_set in sentinel_masters:
@@ -156,26 +154,28 @@ class RedisClient(object):
             self.logger.warning('Encountered Error: %s. Using sentinel as '
                                 'primary redis client.', err)
 
-    def _get_redis_client(self, host, port):  # pylint: disable=R0201
+    @classmethod
+    def _get_redis_client(cls, host, port):
         return redis.StrictRedis(host=host, port=port,
                                  decode_responses=True,
                                  charset='utf-8')
 
     def __getattr__(self, name):
-        if name in REDIS_READONLY_COMMANDS:
-            redis_client = random.choice(self._redis_slaves)
-        else:
-            redis_client = self._redis_master
-
-        redis_function = getattr(redis_client, name)
 
         def wrapper(*args, **kwargs):
             values = list(args) + list(kwargs.values())
             values = [str(v) for v in values]
             while True:
                 try:
+                    if name in REDIS_READONLY_COMMANDS:
+                        redis_client = random.choice(self._redis_slaves)
+                    else:
+                        redis_client = self._redis_master
+
+                    redis_function = getattr(redis_client, name)
                     return redis_function(*args, **kwargs)
                 except redis.exceptions.ConnectionError as err:
+                    self._update_masters_and_slaves()
                     self.logger.warning('Encountered %s: %s when calling '
                                         '`%s %s`. Retrying in %s seconds.',
                                         type(err).__name__, err,
