@@ -127,3 +127,17 @@ PROCESSING_FUNCTIONS = {
         'retinanet': processing.retinanet_to_label_image,
     },
 }
+
+# Tracking settings
+MODEL_NAME = config('MODEL_NAME', default='HeLaS3watershed')
+MODEL_VERSION = config('MODEL_VERSION', default=2)
+POSTPROCESS_FUNCTION = config('POSTPROCESS_FUNCTION', default='watershed')
+CUTS = config('CUTS', default=0)
+
+# tracking.cell_tracker settings
+MAX_DISTANCE = config('MAX_DISTANCE', default=50)
+TRACK_LENGTH = config('TRACK_LENGTH', default=5)
+DIVISION = config('DIVISION', default=0.9)
+BIRTH = config('BIRTH', default=0.95)
+DEATH = config('DEATH', default=0.95)
+NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30)

@@ -56,6 +56,7 @@ class GrpcClient(object):
     Arguments:
         host: string, the hostname and port of the server (`localhost:8080`)
     """
+
     def __init__(self, host):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.host = host
@@ -87,6 +88,7 @@ class PredictClient(GrpcClient):
         model_name: string, name of model served by tensorflow-serving
         model_version: integer, version of the named model
     """
+
     def __init__(self, host, model_name, model_version):
         super(PredictClient, self).__init__(host)
         self.model_name = model_name
@@ -157,6 +159,7 @@ class ProcessClient(GrpcClient):
         process_type: string, pre or post processing
         function_name: string, name of processing function
     """
+
     def __init__(self, host, process_type, function_name):
         super(ProcessClient, self).__init__(host)
         self.process_type = process_type
@@ -297,6 +300,7 @@ class TrackingClient(GrpcClient):
         model_name: string, name of model served by tensorflow-serving
         model_version: integer, version of the named model
     """
+
     def __init__(self, host, redis_hash, model_name, model_version, progress_callback):
         super(TrackingClient, self).__init__(host)
         self.redis_hash = redis_hash
@@ -328,7 +332,6 @@ class TrackingClient(GrpcClient):
         num_preds = data[0].shape[0]
 
         predictions = []
-        self.logger.debug('Sending %i requests...', num_preds)
         for data_i in range(num_preds):
             request = PredictRequest()
             request.model_spec.name = self.model_name  # pylint: disable=E1101
@@ -341,7 +344,8 @@ class TrackingClient(GrpcClient):
                 tensor_proto = make_tensor_proto(model_input, 'DT_FLOAT')
                 request.inputs["input{}".format(i)].CopyFrom(tensor_proto)
 
-            predictions.append(self._single_request(stub, request))
+            # Select only last dimension in order to drop batch axis
+            predictions.append(self._single_request(stub, request)[-1])
 
         self.logger.info('Predicting everything took: %s seconds',
                          timeit.default_timer() - t)
