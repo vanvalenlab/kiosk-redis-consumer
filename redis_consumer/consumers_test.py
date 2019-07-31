@@ -170,7 +170,6 @@ class TestConsumer(object):
         settings.EMPTY_QUEUE_TIMEOUT = 0.01  # don't sleep too long
 
         queue_name = 'q'
-
         # test emtpy queue
         items = []
         redis_client = DummyRedis(items, prefix=queue_name)
@@ -190,6 +189,7 @@ class TestConsumer(object):
 
         consumer = consumers.Consumer(redis_client, None, queue_name)
         consumer.is_valid_hash = lambda x: x == 'item1'
+        print(redis_client.work_queue)
 
         rhash = consumer.get_redis_hash()
         assert rhash == items[0]
@@ -361,6 +361,19 @@ class TestImageFileConsumer(object):
         with pytest.raises(ValueError):
             consumer._get_processing_function('valid', 'invalid')
 
+    def test_process(self):
+        settings.PROCESSING_FUNCTIONS = {
+            'valid': {
+                'valid': lambda x: x
+            }
+        }
+
+        img = np.zeros((1, 32, 32, 1))
+        redis_client = DummyRedis([])
+        consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
+        output = consumer.process(img, 'valid', 'valid')
+        assert img.shape[1:] == output.shape
+
     def test_process_big_image(self):
         name = 'model'
         version = 0
@@ -501,7 +514,7 @@ class TestZipFileConsumer(object):
         # test `status` = "cleanup"
         status = 'cleanup'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
-        consumer._upload_finished_children = lambda x, y: (x, y)
+        consumer._upload_finished_children = lambda x, y, z: (x, y)
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)

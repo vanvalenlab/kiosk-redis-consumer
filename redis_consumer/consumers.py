@@ -223,6 +223,18 @@ class Consumer(object):
 class ImageFileConsumer(Consumer):
     """Consumes image files and uploads the results"""
 
+    def __init__(self,
+                 redis_client,
+                 storage_client,
+                 queue,
+                 final_status='done'):
+        # Create some attributes only used during consume()
+        self._redis_hash = None
+        self._redis_values = dict()
+        super(ImageFileConsumer, self).__init__(
+            redis_client, storage_client,
+            queue, final_status)
+
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
             return False
@@ -484,6 +496,12 @@ class ImageFileConsumer(Consumer):
                                   timeit.default_timer() - t)
 
                 prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
+                results = [prediction[k] for k in sorted(prediction.keys())
+                           if k.startswith('prediction')]
+
+                if len(results) == 1:
+                    results = results[0]
+
                 retrying = False
                 results = prediction['prediction']
 
@@ -588,8 +606,14 @@ class ImageFileConsumer(Consumer):
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
 
-            outpaths = utils.save_numpy_array(
-                image, name=name, subdir=subdir, output_dir=tempdir)
+            if isinstance(image, list):
+                outpaths = []
+                for i in image:
+                    outpaths.extend(utils.save_numpy_array(
+                        image, name=name, subdir=subdir, output_dir=tempdir))
+            else:
+                outpaths = utils.save_numpy_array(
+                    image, name=name, subdir=subdir, output_dir=tempdir)
 
             # Save each prediction image as zip file
             zip_file = utils.zip_files(outpaths, tempdir)
