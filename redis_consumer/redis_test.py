@@ -63,20 +63,6 @@ class DummyRedis(object):
         n = random.randint(1, 4)
         return [{'ip': 'slave', 'port': 6379} for i in range(n)]
 
-    def sentinel_masters(self):
-        return {'mymaster': {'ip': 'master', 'port': 6379}}
-
-    def sentinel_slaves(self, _):
-        n = random.randint(1, 4)
-        return [{'ip': 'slave', 'port': 6379} for i in range(n)]
-
-    def sentinel_masters(self):
-        return {'mymaster': {'ip': 'master', 'port': 6379}}
-
-    def sentinel_slaves(self, _):
-        n = random.randint(1, 4)
-        return [{'ip': 'slave', 'port': 6379} for i in range(n)]
-
 
 class TestRedis(object):
 
