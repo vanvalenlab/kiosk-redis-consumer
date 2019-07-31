@@ -241,9 +241,8 @@ class ImageFileConsumer(Consumer):
                              'processing.  Got %s.' % cat)
 
         if name not in settings.PROCESSING_FUNCTIONS[cat]:
-            if cat not in settings.PROCESSING_FUNCTIONS:
-                raise ValueError('"%s" is not a valid %s-processing function'
-                                 % (name, cat))
+            raise ValueError('"%s" is not a valid %s-processing function'
+                             % (name, cat))
         return settings.PROCESSING_FUNCTIONS[cat][name]
 
     # def _process(self, image, key, process_type, streaming=False):

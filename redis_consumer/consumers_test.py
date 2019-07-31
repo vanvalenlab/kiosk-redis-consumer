@@ -341,6 +341,25 @@ class TestImageFileConsumer(object):
         assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
         assert consumer.is_valid_hash('predict:1234567890:file.png') is True
 
+    def test__get_processing_function(self):
+        settings.PROCESSING_FUNCTIONS = {
+            'valid': {
+                'valid': lambda x: True
+            }
+        }
+
+        consumer = consumers.ImageFileConsumer(None, None, 'q')
+
+        x = consumer._get_processing_function('VaLiD', 'vAlId')
+        y = consumer._get_processing_function('vAlId', 'VaLiD')
+        assert x == y
+
+        with pytest.raises(ValueError):
+            consumer._get_processing_function('invalid', 'valid')
+
+        with pytest.raises(ValueError):
+            consumer._get_processing_function('valid', 'invalid')
+
     def test_process_big_image(self):
         name = 'model'
         version = 0
