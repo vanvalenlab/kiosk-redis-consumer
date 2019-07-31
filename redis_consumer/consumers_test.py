@@ -57,6 +57,7 @@ class DummyRedis(object):
         self.processing_queue = []
         self.prefix = '/'.join(x for x in prefix.split('/') if x)
         self.status = status
+        self._redis_master = self
         self.keys = [
             '{}:{}:{}'.format(self.prefix, 'x.tiff', self.status),
             '{}:{}:{}'.format(self.prefix, 'x.zip', 'other'),
@@ -176,6 +177,12 @@ class TestConsumer(object):
         rhash = consumer.get_redis_hash()
         assert rhash is None
 
+        # LLEN somehow gives stale data, should still be None
+        redis_client.llen = lambda x: 1
+        consumer = consumers.Consumer(redis_client, None, queue_name)
+        rhash = consumer.get_redis_hash()
+        assert rhash is None
+
         # test some valid/invalid items
         items = ['item%s' % x for x in range(1, 4)]
         redis_client = DummyRedis(items, prefix=queue_name)
@@ -185,10 +192,19 @@ class TestConsumer(object):
         print(redis_client.work_queue)
 
         rhash = consumer.get_redis_hash()
-        print(redis_client.work_queue)
         assert rhash == items[0]
         assert redis_client.work_queue == items[1:]
         assert redis_client.processing_queue == items[0:1]
+
+    def test_purge_processing_queue(self):
+        queue_name = 'q'
+        items = []
+        redis_client = DummyRedis(items, prefix=queue_name)
+        consumer = consumers.Consumer(redis_client, None, queue_name)
+
+        redis_client.processing_queue = list(range(5))
+        consumer.purge_processing_queue()
+        assert not redis_client.processing_queue
 
     def test_update_key(self):
         global _redis_values
@@ -228,6 +244,25 @@ class TestConsumer(object):
         assert isinstance(_redis_values, dict)
         assert 'status' in _redis_values and 'reason' in _redis_values
         assert _redis_values.get('status') == 'failed'
+
+    def test__put_back_hash(self):
+        queue_name = 'q'
+
+        # test emtpy queue
+        redis_client = DummyRedis([], prefix=queue_name)
+        consumer = consumers.Consumer(redis_client, None, queue_name)
+        consumer._put_back_hash('DNE')  # should be None, shows warning
+
+        # put back the proper item
+        item = 'redis_hash1'
+        redis_client.processing_queue = [item]
+        consumer = consumers.Consumer(redis_client, None, queue_name)
+        consumer._put_back_hash(item)
+
+        # put back the wrong item
+        redis_client.processing_queue = [item, 'otherhash']
+        consumer = consumers.Consumer(redis_client, None, queue_name)
+        consumer._put_back_hash(item)
 
     def test_consume(self):
         queue_name = 'q'
@@ -306,6 +341,25 @@ class TestImageFileConsumer(object):
         assert consumer.is_valid_hash('predict:123456789:file.zip') is False
         assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
         assert consumer.is_valid_hash('predict:1234567890:file.png') is True
+
+    def test__get_processing_function(self):
+        settings.PROCESSING_FUNCTIONS = {
+            'valid': {
+                'valid': lambda x: True
+            }
+        }
+
+        consumer = consumers.ImageFileConsumer(None, None, 'q')
+
+        x = consumer._get_processing_function('VaLiD', 'vAlId')
+        y = consumer._get_processing_function('vAlId', 'VaLiD')
+        assert x == y
+
+        with pytest.raises(ValueError):
+            consumer._get_processing_function('invalid', 'valid')
+
+        with pytest.raises(ValueError):
+            consumer._get_processing_function('valid', 'invalid')
 
     def test_process_big_image(self):
         name = 'model'
@@ -403,7 +457,7 @@ class TestZipFileConsumer(object):
         storage = DummyStorage(num=N)
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         path, url = consumer._upload_finished_children(
-            finished_children, 'predict:redis_hash:f.zip', 0)
+            finished_children, 'predict:redis_hash:f.zip')
         assert path and url
 
     def test__parse_failures(self):

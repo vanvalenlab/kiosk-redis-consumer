@@ -36,7 +36,6 @@ import timeit
 
 import grpc
 from grpc import RpcError
-
 import grpc.beta.implementations
 from grpc._cython import cygrpc
 
@@ -68,10 +67,13 @@ class GrpcClient(object):
             channel: grpc.insecure channel object
         """
         t = timeit.default_timer()
-        channel = grpc.insecure_channel(
-            target=self.host,
-            options=[(cygrpc.ChannelArgKey.max_send_message_length, -1),
-                     (cygrpc.ChannelArgKey.max_receive_message_length, -1)])
+        options = [
+            (cygrpc.ChannelArgKey.max_send_message_length, -1),
+            (cygrpc.ChannelArgKey.max_receive_message_length, -1),
+            ('grpc.default_compression_algorithm', cygrpc.CompressionAlgorithm.gzip),
+            ('grpc.grpc.default_compression_level', cygrpc.CompressionLevel.high)
+        ]
+        channel = grpc.insecure_channel(target=self.host, options=options)
         self.logger.debug('Establishing insecure channel took: %s',
                           timeit.default_timer() - t)
         return channel
@@ -135,14 +137,15 @@ class PredictClient(GrpcClient):
             keys = [k for k in predict_response_dict]
             self.logger.info('Got TensorFlowServingResponse with keys: %s ',
                              keys)
-
+            channel.close()
             return predict_response_dict
 
         except RpcError as err:
-            self.logger.error(err)
-            self.logger.error('Prediction failed!')
+            self.logger.error('Prediction failed due to: %s', err)
+            channel.close()
             raise err
 
+        channel.close()
         return {}
 
 
@@ -204,14 +207,15 @@ class ProcessClient(GrpcClient):
 
             keys = [k for k in response_dict]
             self.logger.debug('Got processing_response with keys: %s', keys)
-
+            channel.close()
             return response_dict
 
         except RpcError as err:
-            self.logger.error(err)
-            self.logger.error('Processing failed!')
+            self.logger.error('Processing failed due to: %s', err)
+            channel.close()
             raise err
 
+        channel.close()
         return {}
 
     def stream_process(self, request_data, request_timeout=10):
@@ -273,14 +277,15 @@ class ProcessClient(GrpcClient):
                              ' to a numpy array of shape %s in %s seconds.',
                              len(npbytes), results.shape,
                              timeit.default_timer() - t)
-
+            channel.close()
             return {'results': results}
 
         except RpcError as err:
-            self.logger.error(err)
-            self.logger.error('Processing failed!')
+            self.logger.error('Processing failed due to: %s', err)
+            channel.close()
             raise err
 
+        channel.close()
         return {}
 
 
@@ -340,7 +345,7 @@ class TrackingClient(GrpcClient):
 
         self.logger.info('Predicting everything took: %s seconds',
                          timeit.default_timer() - t)
-
+        channel.close()
         return predictions
 
     def predict(self, data):
