@@ -54,15 +54,15 @@ class DummyGoogleClient(object):
         return self
 
     def upload_from_filename(self, dest, **_):
-        if self.fail_count < self.fail_tolerance:
-            self.fail_count += 1
-            raise TooManyRequests('thrown-on-purpose')
+        # if self.fail_count < self.fail_tolerance:
+        #     self.fail_count += 1
+        #     raise TooManyRequests('thrown-on-purpose')
         assert os.path.exists(dest)
 
     def download_to_filename(self, dest, **_):
-        if self.fail_count < self.fail_tolerance:
-            self.fail_count += 1
-            raise TooManyRequests('thrown-on-purpose')
+        # if self.fail_count < self.fail_tolerance:
+        #     self.fail_count += 1
+        #     raise TooManyRequests('thrown-on-purpose')
         assert dest.endswith('/test/file.txt')
 
 

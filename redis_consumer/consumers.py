@@ -45,7 +45,7 @@ import pytz
 import skimage
 
 from redis_consumer.grpc_clients import PredictClient
-from redis_consumer.grpc_clients import ProcessClient
+# from redis_consumer.grpc_clients import ProcessClient
 from redis_consumer.grpc_clients import TrackingClient
 from redis_consumer import utils
 from redis_consumer import tracking
@@ -79,23 +79,25 @@ class Consumer(object):
 
     def _put_back_hash(self, redis_hash):
         """Put the hash back into the work queue"""
-        queue_size = self.redis.llen(self.processing_queue)
-        if queue_size == 1:
-            key = self.redis.rpoplpush(self.processing_queue, self.queue)
-            if key != redis_hash:
-                self.logger.warning('`RPOPLPUSH %s %s` popped key %s but'
-                                    'expected key to be %s',
-                                    self.processing_queue, self.queue,
-                                    key, redis_hash)
+        key = self.redis.rpoplpush(self.processing_queue, self.queue)
+        if key is None:
+            self.logger.error('RPOPLPUSH got None (%s is empty), key %s was '
+                              'removed somehow. Weird!',
+                              self.processing_queue, redis_hash)
+        elif key != redis_hash:
+            self.logger.error('Whoops! RPOPLPUSH sent key %s to %s instead of '
+                              '%s. Trying to put it back again.',
+                              key, self.queue, redis_hash)
+            self._put_back_hash(redis_hash)
         else:
-            self.logger.warning('Expected `%s` would have 1 item, but has %s. '
-                                'restarting the key the old way',
-                                self.processing_queue, queue_size)
-            self.redis.lrem(self.processing_queue, 1, redis_hash)
-            self.redis.lpush(self.queue, redis_hash)
+            pass  # success
 
     def get_redis_hash(self):
         while True:
+
+            if self.redis.llen(self.queue) == 0:
+                return None
+
             redis_hash = self.redis.rpoplpush(self.queue, self.processing_queue)
 
             # if queue is empty, return None
@@ -112,8 +114,6 @@ class Consumer(object):
             # remove it from processing, and push it back to the work queue.
             self._put_back_hash(redis_hash)
 
-            time.sleep(settings.EMPTY_QUEUE_TIMEOUT)
-
     def _handle_error(self, err, redis_hash):
         """Update redis with failure information, and log errors.
 
@@ -126,8 +126,8 @@ class Consumer(object):
             'status': 'failed',
             'reason': logging.Formatter().formatException(sys.exc_info()),
         })
-        self.logger.exception('Failed to process redis key %s due to %s: %s',
-                              redis_hash, type(err).__name__, err)
+        self.logger.error('Failed to process redis key %s due to %s: %s',
+                          redis_hash, type(err).__name__, err)
 
     def is_valid_hash(self, redis_hash):  # pylint: disable=unused-argument
         """Returns True if the consumer should work on the item"""
@@ -136,6 +136,16 @@ class Consumer(object):
     def get_current_timestamp(self):
         """Helper function, returns ISO formatted UTC timestamp"""
         return datetime.datetime.now(pytz.UTC).isoformat()
+
+    def purge_processing_queue(self):
+        """Move all items from the processing queue to the work queue"""
+        while True:
+            key = self.redis.rpoplpush(self.processing_queue, self.queue)
+            if key is None:
+                break
+            self.logger.debug('Found stranded key `%s` in queue `%s`. '
+                              'Moving it back to `%s`.',
+                              key, self.processing_queue, self.queue)
 
     def update_key(self, redis_hash, data=None):
         """Update the hash with `data` and updated_by & updated_at stamps.
@@ -162,6 +172,10 @@ class Consumer(object):
     def consume(self):
         """Find a redis key and process it"""
         start = timeit.default_timer()
+
+        # Purge the processing queue in case of stranded keys
+        self.purge_processing_queue()
+
         redis_hash = self.get_redis_hash()
 
         if redis_hash is not None:  # popped something off the queue
@@ -171,7 +185,16 @@ class Consumer(object):
                 # log the error and update redis with details
                 self._handle_error(err, redis_hash)
 
-            hvals = self.redis.hgetall(redis_hash)
+            required_fields = [
+                'status',
+                'model_name',
+                'model_version',
+                'preprocess_function',
+                'postprocess_function',
+            ]
+
+            result = self.redis.hmget(redis_hash, *required_fields)
+            hvals = {f: v for f, v in zip(required_fields, result)}
             if hvals.get('status') == self.final_status:
                 self.logger.debug('Consumed key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s) '
@@ -185,6 +208,7 @@ class Consumer(object):
             if hvals.get('status') in {self.final_status, 'failed'}:
                 # this key is done. remove the key from the processing queue.
                 self.redis.lrem(self.processing_queue, 1, redis_hash)
+
             else:
                 # this key is not done yet.
                 # remove it from processing and push it back to the work queue.
@@ -206,97 +230,146 @@ class ImageFileConsumer(Consumer):
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
         return not fname.lower().endswith('.zip')
 
-    def _process(self, image, key, process_type, streaming=False):
-        """Apply each processing function to image.
+    def _get_processing_function(self, process_type, function_name):
+        """Based on the function category and name, return the function"""
+        clean = lambda x: str(x).lower()
+        # first, verify the route parameters
+        name = clean(function_name)
+        cat = clean(process_type)
+        if cat not in settings.PROCESSING_FUNCTIONS:
+            raise ValueError('Processing functions are either "pre" or "post" '
+                             'processing.  Got %s.' % cat)
 
-        Args:
-            image: numpy array of image data
-            key: function to apply to image
-            process_type: pre or post processing
-            streaming: boolean. if True, streams data in multiple requests
+        if name not in settings.PROCESSING_FUNCTIONS[cat]:
+            raise ValueError('"%s" is not a valid %s-processing function'
+                             % (name, cat))
+        return settings.PROCESSING_FUNCTIONS[cat][name]
 
-        Returns:
-            list of processed image data
-        """
-        # Squeeze out batch dimension if unnecessary
-        if image.shape[0] == 1:
-            image = np.squeeze(image, axis=0)
+    # def _process(self, image, key, process_type, streaming=False):
+    #     """Apply each processing function to image.
+    #
+    #     Args:
+    #         image: numpy array of image data
+    #         key: function to apply to image
+    #         process_type: pre or post processing
+    #         streaming: boolean. if True, streams data in multiple requests
+    #
+    #     Returns:
+    #         list of processed image data
+    #     """
+    #     # Squeeze out batch dimension if unnecessary
+    #     if image.shape[0] == 1:
+    #         image = np.squeeze(image, axis=0)
+    #
+    #     if not key:
+    #         return image
+    #
+    #     self.logger.debug('Starting %s %s-processing image of shape %s',
+    #                       key, process_type, image.shape)
+    #
+    #     retrying = True
+    #     count = 0
+    #     start = timeit.default_timer()
+    #     while retrying:
+    #         try:
+    #             key = str(key).lower()
+    #             process_type = str(process_type).lower()
+    #             hostname = '{}:{}'.format(settings.DP_HOST, settings.DP_PORT)
+    #             client = ProcessClient(hostname, process_type, key)
+    #
+    #             if streaming:
+    #                 dtype = 'DT_STRING'
+    #             else:
+    #                 dtype = settings.TF_TENSOR_DTYPE
+    #
+    #             req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
+    #                          'in_tensor_dtype': dtype,
+    #                          'data': np.expand_dims(image, axis=0)}]
+    #
+    #             if streaming:
+    #                 results = client.stream_process(req_data, settings.GRPC_TIMEOUT)
+    #             else:
+    #                 results = client.process(req_data, settings.GRPC_TIMEOUT)
+    #
+    #             finished = timeit.default_timer() - start
+    #
+    #             self.update_key(self._redis_hash, {
+    #                 '{}process_time'.format(process_type): finished
+    #             })
+    #
+    #             self.logger.debug('%s-processed key %s (model %s:%s, '
+    #                               'preprocessing: %s, postprocessing: %s)'
+    #                               ' (%s retries)  in %s seconds.',
+    #                               process_type.capitalize(), self._redis_hash,
+    #                               self._redis_values.get('model_name'),
+    #                               self._redis_values.get('model_version'),
+    #                               self._redis_values.get('preprocess_function'),
+    #                               self._redis_values.get('postprocess_function'),
+    #                               count, finished)
+    #
+    #             results = results['results']
+    #             # Again, squeeze out batch dimension if unnecessary
+    #             if results.shape[0] == 1:
+    #                 results = np.squeeze(results, axis=0)
+    #
+    #             retrying = False
+    #             return results
+    #         except grpc.RpcError as err:
+    #             # pylint: disable=E1101
+    #             if err.code() in settings.GRPC_RETRY_STATUSES:
+    #                 count += 1
+    #                 temp_status = 'retry-processing - {} - {}'.format(
+    #                     count, err.code().name)
+    #                 self.update_key(self._redis_hash, {
+    #                     'status': temp_status,
+    #                     'process_retries': count,
+    #                 })
+    #                 self.logger.warning('%sException `%s: %s` during %s '
+    #                                     '%s-processing request.  Waiting %s '
+    #                                     'seconds before retrying.',
+    #                                     type(err).__name__, err.code().name,
+    #                                     err.details(), key, process_type,
+    #                                     settings.GRPC_BACKOFF)
+    #                 self.logger.debug('Waiting for %s seconds before retrying',
+    #                                   settings.GRPC_BACKOFF)
+    #                 time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
+    #                 retrying = True  # Unneccessary but explicit
+    #             else:
+    #                 retrying = False
+    #                 raise err
+    #         except Exception as err:
+    #             retrying = False
+    #             self.logger.error('Encountered %s during %s %s-processing: %s',
+    #                               type(err).__name__, key, process_type, err)
+    #             raise err
 
+    def process(self, image, key, process_type):
+        start = timeit.default_timer()
         if not key:
             return image
 
-        self.logger.debug('Starting %s %s-processing image of shape %s',
-                          key, process_type, image.shape)
+        f = self._get_processing_function(process_type, key)
+        results = f(image)
 
-        retrying = True
-        count = 0
-        start = timeit.default_timer()
-        while retrying:
-            try:
-                key = str(key).lower()
-                process_type = str(process_type).lower()
-                hostname = '{}:{}'.format(settings.DP_HOST, settings.DP_PORT)
-                client = ProcessClient(hostname, process_type, key)
+        if results.shape[0] == 1:
+            results = np.squeeze(results, axis=0)
 
-                if streaming:
-                    dtype = 'DT_STRING'
-                else:
-                    dtype = settings.TF_TENSOR_DTYPE
+        finished = timeit.default_timer() - start
 
-                req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
-                             'in_tensor_dtype': dtype,
-                             'data': np.expand_dims(image, axis=0)}]
+        self.update_key(self._redis_hash, {
+            '{}process_time'.format(process_type): finished
+        })
 
-                if streaming:
-                    results = client.stream_process(req_data, settings.GRPC_TIMEOUT)
-                else:
-                    results = client.process(req_data, settings.GRPC_TIMEOUT)
+        self.logger.debug('%s-processed key %s (model %s:%s, preprocessing: %s,'
+                          ' postprocessing: %s) in %s seconds.',
+                          process_type.capitalize(), self._redis_hash,
+                          self._redis_values.get('model_name'),
+                          self._redis_values.get('model_version'),
+                          self._redis_values.get('preprocess_function'),
+                          self._redis_values.get('postprocess_function'),
+                          finished)
 
-                self.logger.debug('%s-processed key %s (model %s:%s, '
-                                  'preprocessing: %s, postprocessing: %s)'
-                                  ' (%s retries)  in %s seconds.',
-                                  process_type.capitalize(), self._redis_hash,
-                                  self._redis_values.get('model_name'),
-                                  self._redis_values.get('model_version'),
-                                  self._redis_values.get('preprocess_function'),
-                                  self._redis_values.get('postprocess_function'),
-                                  count, timeit.default_timer() - start)
-
-                results = results['results']
-                # Again, squeeze out batch dimension if unnecessary
-                if results.shape[0] == 1:
-                    results = np.squeeze(results, axis=0)
-
-                retrying = False
-                return results
-            except grpc.RpcError as err:
-                # pylint: disable=E1101
-                if err.code() in settings.GRPC_RETRY_STATUSES:
-                    count += 1
-                    temp_status = 'retry-processing - {} - {}'.format(
-                        count, err.code().name)
-                    self.update_key(self._redis_hash, {
-                        'status': temp_status,
-                        'process_retries': count,
-                    })
-                    self.logger.warning('%sException `%s: %s` during %s '
-                                        '%s-processing request.  Waiting %s '
-                                        'seconds before retrying.',
-                                        type(err).__name__, err.code().name,
-                                        err.details(), key, process_type,
-                                        settings.GRPC_BACKOFF)
-                    self.logger.debug('Waiting for %s seconds before retrying',
-                                      settings.GRPC_BACKOFF)
-                    time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
-                    retrying = True  # Unneccessary but explicit
-                else:
-                    retrying = False
-                    raise err
-            except Exception as err:
-                retrying = False
-                self.logger.error('Encountered %s during %s %s-processing: %s',
-                                  type(err).__name__, key, process_type, err)
-                raise err
+        return results
 
     def preprocess(self, image, keys, streaming=False):
         """Wrapper for _process_image but can only call with type="pre".
@@ -312,7 +385,8 @@ class ImageFileConsumer(Consumer):
         pre = None
         for key in keys:
             x = pre if pre else image
-            pre = self._process(x, key, 'pre', streaming)
+            # pre = self._process(x, key, 'pre', streaming)
+            pre = self.process(x, key, 'pre')
         return pre
 
     def postprocess(self, image, keys, streaming=False):
@@ -329,7 +403,8 @@ class ImageFileConsumer(Consumer):
         post = None
         for key in keys:
             x = post if post else image
-            post = self._process(x, key, 'post', streaming)
+            # post = self._process(x, key, 'post', streaming)
+            post = self.process(x, key, 'post')
         return post
 
     def process_big_image(self,
@@ -411,13 +486,19 @@ class ImageFileConsumer(Consumer):
                 prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
                 retrying = False
                 results = prediction['prediction']
+
+                finished = timeit.default_timer() - start
+                self.update_key(self._redis_hash, {
+                    'prediction_time': finished,
+                    'predict_retries': count,
+                })
                 self.logger.debug('Segmented key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s)'
                                   ' (%s retries) in %s seconds.',
                                   self._redis_hash, model_name, model_version,
                                   self._redis_values.get('preprocess_function'),
                                   self._redis_values.get('postprocess_function'),
-                                  count, timeit.default_timer() - start)
+                                  count, finished)
                 return results
             except grpc.RpcError as err:
                 # pylint: disable=E1101
@@ -432,12 +513,10 @@ class ImageFileConsumer(Consumer):
                     })
                     self.logger.warning('%sException `%s: %s` during '
                                         'PredictClient request to model %s:%s.'
-                                        'Waiting %s seconds before retrying.',
+                                        ' Waiting %s seconds before retrying.',
                                         type(err).__name__, err.code().name,
                                         err.details(), model_name,
                                         model_version, settings.GRPC_BACKOFF)
-                    self.logger.debug('Waiting for %s seconds before retrying',
-                                      settings.GRPC_BACKOFF)
                     time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
                     retrying = True  # Unneccessary but explicit
                 else:
@@ -451,6 +530,7 @@ class ImageFileConsumer(Consumer):
                 raise err
 
     def _consume(self, redis_hash):
+        start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
         # hold on to the redis hash/values for logging purposes
         self._redis_hash = redis_hash
@@ -469,13 +549,17 @@ class ImageFileConsumer(Consumer):
         field = hvals.get('field_size', '61')
 
         with utils.get_tempdir() as tempdir:
+            _ = timeit.default_timer()
             fname = self.storage.download(hvals.get('input_file_name'), tempdir)
             image = utils.get_image(fname)
 
             streaming = str(cuts).isdigit() and int(cuts) > 0
 
             # Pre-process data before sending to the model
-            self.update_key(redis_hash, {'status': 'pre-processing'})
+            self.update_key(redis_hash, {
+                'status': 'pre-processing',
+                'download_time': timeit.default_timer() - _,
+            })
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
             image = self.preprocess(image, pre_funcs, True)
@@ -496,6 +580,7 @@ class ImageFileConsumer(Consumer):
             image = self.postprocess(image, post_funcs, True)
 
             # Save the post-processed results to a file
+            _ = timeit.default_timer()
             self.update_key(redis_hash, {'status': 'saving-results'})
 
             # Save each result channel as an image file
@@ -519,23 +604,37 @@ class ImageFileConsumer(Consumer):
             self.update_key(redis_hash, {
                 'status': self.final_status,
                 'output_url': output_url,
+                'upload_time': timeit.default_timer() - _,
                 'output_file_name': dest,
-                'finished_at': self.get_current_timestamp(),
+                'total_jobs': 1,
+                'total_time': timeit.default_timer() - start,
+                'finished_at': self.get_current_timestamp()
             })
 
 
 class ZipFileConsumer(Consumer):
     """Consumes zip files and uploads the results"""
 
+    def __init__(self,
+                 redis_client,
+                 storage_client,
+                 queue,
+                 final_status='done'):
+        # zip files go in a new queue
+        zip_queue = '{}-zip'.format(queue)
+        self.child_queue = queue
+        super(ZipFileConsumer, self).__init__(
+            redis_client, storage_client,
+            zip_queue, final_status)
+
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
             return False
 
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-
         return fname.lower().endswith('.zip')
 
-    def _upload_archived_images(self, hvalues):
+    def _upload_archived_images(self, hvalues, redis_hash):
         """Extract all image files and upload them to storage and redis"""
         all_hashes = set()
         with utils.get_tempdir() as tempdir:
@@ -546,6 +645,8 @@ class ZipFileConsumer(Consumer):
                 # Save each result channel as an image file
                 subdir = os.path.dirname(clean_imfile)
                 dest, _ = self.storage.upload(imfile, subdir=subdir)
+
+                os.remove(imfile)  # remove the file to save some memory
 
                 new_hash = '{prefix}:{file}:{hash}'.format(
                     prefix=settings.HASH_PREFIX,
@@ -574,20 +675,51 @@ class ZipFileConsumer(Consumer):
                         del new_hvals[k]
 
                 self.redis.hmset(new_hash, new_hvals)
-                self.redis.lpush(self.queue, new_hash)
-                self.logger.debug('Added new hash %s of %s: `%s`',
-                                  i + 1, len(image_files), new_hash)
+                self.redis.lpush(self.child_queue, new_hash)
+                self.logger.debug('Added new hash %s: `%s`', i + 1, new_hash)
+                self.update_key(redis_hash)
                 all_hashes.add(new_hash)
         return all_hashes
 
-    def _upload_finished_children(self, finished_children, expire_time=3600):
+    def _get_output_file_name(self, key):
+        fname = None
+        retries = 3
+        for _ in range(retries):
+            # sometimes this field is missing, gotta get the truth!
+            fname = self.redis._redis_master.hget(key, 'output_file_name')
+            if fname is None:
+                ttl = self.redis.ttl(key)
+
+                if ttl == -2:
+                    raise ValueError('Key `%s` does not exist' % key)
+
+                if ttl != -1:
+                    self.logger.warning('Key `%s` has a TTL of %s.'
+                                        'Why has it been expired already?',
+                                        key, ttl)
+                else:
+                    self.logger.warning('Key `%s` exists with TTL %s but has'
+                                        ' no output_file_name', key, ttl)
+
+                self.redis._update_masters_and_slaves()
+                time.sleep(3)
+            else:
+                break
+        else:
+            raise ValueError('Key %s had no value for output_file_name'
+                             ' %s times in a row.' % (key, retries))
+        return fname
+
+    def _upload_finished_children(self, finished_children, redis_hash):
         saved_files = set()
         with utils.get_tempdir() as tempdir:
             # process each successfully completed key
             for key in finished_children:
                 if not key:
                     continue
-                fname = self.redis.hget(key, 'output_file_name')
+
+                fname = self._get_output_file_name(key)
+
                 local_fname = self.storage.download(fname, tempdir)
 
                 self.logger.info('Saved file: %s', local_fname)
@@ -596,12 +728,12 @@ class ZipFileConsumer(Consumer):
                     image_files = utils.get_image_files_from_dir(
                         local_fname, tempdir)
                 else:
-                    image_files = [local_fname]
+                    image_files = (local_fname,)
 
                 for imfile in image_files:
                     saved_files.add(imfile)
 
-                self.redis.expire(key, expire_time)
+                self.update_key(redis_hash)
 
             # zip up all saved results
             zip_file = utils.zip_files(saved_files, tempdir)
@@ -611,20 +743,19 @@ class ZipFileConsumer(Consumer):
             self.logger.debug('Uploaded output to: `%s`', url)
             return path, url
 
-    def _parse_failures(self, failed_children, expire_time=3600):
+    def _parse_failures(self, failed_children):
         failed_hashes = {}
         for key in failed_children:
             if not key:
                 continue
             reason = self.redis.hget(key, 'reason')
             # one of the hashes failed to process
-            self.logger.error('Failed to process hash `%s`: %s',
-                              key, reason)
+            self.logger.error('Child key `%s` failed: %s', key, reason)
             failed_hashes[key] = reason
-            self.redis.expire(key, expire_time)
 
         if failed_hashes:
-            self.logger.warning('Failed to process hashes: %s',
+            self.logger.warning('%s child keys failed to process: %s',
+                                len(failed_hashes),
                                 json.dumps(failed_hashes, indent=4))
 
         # check python2 vs python3
@@ -635,21 +766,70 @@ class ZipFileConsumer(Consumer):
 
         return url_encode(failed_hashes)
 
+    def _cleanup(self, redis_hash, children, done, failed):
+        # get summary data for all finished children
+        summary_fields = [
+            # 'created_at',
+            # 'finished_at',
+            'prediction_time',
+            'postprocess_time',
+            'upload_time',
+            'download_time',
+            'total_time',
+        ]
+
+        summaries = dict()
+        for d in done:
+            results = self.redis.hmget(d, *summary_fields)
+            for field, result in zip(summary_fields, results):
+                try:
+                    if field not in summaries:
+                        summaries[field] = [float(result)]
+                    else:
+                        summaries[field].append(float(result))
+                except:
+                    self.logger.warning('Summary field `%s` is not a '
+                                        'float: %s', field, result)
+
+        for k in summaries:
+            summaries[k] = sum(summaries[k]) / len(summaries[k])
+
+        output_file_name, output_url = self._upload_finished_children(
+            done, redis_hash)
+
+        failures = self._parse_failures(failed)
+
+        summaries.update({
+            'status': self.final_status,
+            'finished_at': self.get_current_timestamp(),
+            'output_url': output_url,
+            'failures': failures,
+            'total_jobs': len(children),
+            'output_file_name': output_file_name
+        })
+
+        # Update redis with the results
+        self.update_key(redis_hash, summaries)
+
+        expire_time = settings.EXPIRE_TIME
+        for key in children:
+            self.redis.expire(key, expire_time)
+
+        self.logger.debug('All %s child keys will be expiring in %s '
+                          'seconds.', len(children), expire_time)
+
     def _consume(self, redis_hash):
-        start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
         self.logger.debug('Found hash to process `%s` with status `%s`.',
                           redis_hash, hvals.get('status'))
 
         key_separator = ','  # char to separate child keys in Redis
-        expire_time = 60 * 10  # expire finished child keys in ten minutes
 
-        # update without changing status, just to refresh timestamp
-        self.update_key(redis_hash, {'status': hvals.get('status')})
+        self.update_key(redis_hash)  # refresh timestamp
 
         if hvals.get('status') == 'new':
             # download the zip file, upload the contents, and enter into Redis
-            all_hashes = self._upload_archived_images(hvals)
+            all_hashes = self._upload_archived_images(hvals, redis_hash)
             self.logger.info('Uploaded %s child keys for key `%s`. Waiting for'
                              ' ImageConsumers.', len(all_hashes), redis_hash)
 
@@ -662,7 +842,7 @@ class ZipFileConsumer(Consumer):
 
         elif hvals.get('status') == 'waiting':
             # this key was previously processed by a ZipConsumer
-            # check to see which child keys have been processed
+            # check to see which child keys have already been processed
             children = set(hvals.get('children', '').split(key_separator))
             done = set(hvals.get('children:done', '').split(key_separator))
             failed = set(hvals.get('children:failed', '').split(key_separator))
@@ -683,34 +863,12 @@ class ZipFileConsumer(Consumer):
 
             # if there are no remaining children, update status to cleanup
             self.update_key(redis_hash, {
-                'status': 'cleanup' if not remaining_children else 'waiting',
                 'children:done': key_separator.join(d for d in done if d),
                 'children:failed': key_separator.join(f for f in failed if f),
             })
 
-        elif hvals.get('status') == 'cleanup':
-            # clean up children with status `done` and `failed`
-            children = set(hvals.get('children', '').split(key_separator))
-            done = set(hvals.get('children:done', '').split(key_separator))
-            failed = set(hvals.get('children:failed', '').split(key_separator))
-
-            output_file_name, output_url = self._upload_finished_children(
-                done, expire_time)
-
-            failures = self._parse_failures(failed, expire_time)
-
-            # Update redis with the results
-            self.update_key(redis_hash, {
-                'status': self.final_status,
-                'finished_at': self.get_current_timestamp(),
-                'output_url': output_url,
-                'failures': failures,
-                'output_file_name': output_file_name
-            })
-
-            self.logger.info('Processed all %s images of zipfile `%s` in %s',
-                             len(children), hvals.get('input_file_name'),
-                             timeit.default_timer() - start)
+            if not remaining_children:
+                self._cleanup(redis_hash, children, done, failed)
 
 
 class TrackingConsumer(Consumer):
