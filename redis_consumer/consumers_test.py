@@ -361,6 +361,19 @@ class TestImageFileConsumer(object):
         with pytest.raises(ValueError):
             consumer._get_processing_function('valid', 'invalid')
 
+    def test_process(self):
+        settings.PROCESSING_FUNCTIONS = {
+            'valid': {
+                'valid': lambda x: x
+            }
+        }
+
+        img = np.zeros((1, 32, 32, 1))
+        redis_client = DummyRedis([])
+        consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
+        output = consumer.process(img, 'valid', 'valid')
+        assert img.shape[1:] == output.shape
+
     def test_process_big_image(self):
         name = 'model'
         version = 0

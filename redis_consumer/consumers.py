@@ -223,6 +223,18 @@ class Consumer(object):
 class ImageFileConsumer(Consumer):
     """Consumes image files and uploads the results"""
 
+    def __init__(self,
+                 redis_client,
+                 storage_client,
+                 queue,
+                 final_status='done'):
+        # Create some attributes only used during consume()
+        self._redis_hash = None
+        self._redis_values = dict()
+        super(ImageFileConsumer, self).__init__(
+            redis_client, storage_client,
+            queue, final_status)
+
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
             return False
