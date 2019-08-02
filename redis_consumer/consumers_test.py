@@ -51,6 +51,11 @@ def _get_image(img_h=300, img_w=300):
     return img
 
 
+class Bunch(object):
+    def __init__(self, **kwds):
+        self.__dict__.update(kwds)
+
+
 class DummyRedis(object):
     def __init__(self, items=[], prefix='predict', status='new'):
         self.work_queue = copy.copy(items)
@@ -382,6 +387,22 @@ class TestImageFileConsumer(object):
             consumer._get_predict_client('model_name', 'model_version')
 
         client = consumer._get_predict_client('model_name', 1)
+
+    def test_grpc_image(self):
+        redis_client = DummyRedis([])
+        consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
+
+        def _get_predict_client(model_name, model_version):
+            return Bunch(predict=lambda x, y: {
+                'prediction': x[0]['data']
+            })
+
+        consumer._get_predict_client = _get_predict_client
+
+        img = np.zeros((1, 32, 32, 3))
+        out = consumer.grpc_image(img, 'f16model', 1)
+        assert img.shape == out.shape[1:]
+        assert img.sum() == out.sum()
 
     def test_process_big_image(self):
         name = 'model'
