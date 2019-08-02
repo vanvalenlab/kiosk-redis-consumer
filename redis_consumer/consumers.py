@@ -472,6 +472,14 @@ class ImageFileConsumer(Consumer):
                           tf_results.shape, timeit.default_timer() - start)
         return tf_results
 
+    def _get_predict_client(self, model_name, model_version):
+        t = timeit.default_timer()
+        hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
+        client = PredictClient(hostname, model_name, int(model_version))
+        self.logger.debug('Created the PredictClient in %s seconds.',
+                          timeit.default_timer() - t)
+        return client
+
     def grpc_image(self, img, model_name, model_version):
         count = 0
         start = timeit.default_timer()
@@ -486,14 +494,12 @@ class ImageFileConsumer(Consumer):
                     # TODO: seems like should cast to "half"
                     # but the model rejects the type, wants "int" or "long"
                     img = img.astype('int')
-                hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
+
                 req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
                              'in_tensor_dtype': floatx,
                              'data': np.expand_dims(img, axis=0)}]
-                t = timeit.default_timer()
-                client = PredictClient(hostname, model_name, int(model_version))
-                self.logger.debug('Created the PredictClient in %s seconds.',
-                                  timeit.default_timer() - t)
+
+                client = self._get_predict_client(model_name, model_version)
 
                 prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
                 results = [prediction[k] for k in sorted(prediction.keys())

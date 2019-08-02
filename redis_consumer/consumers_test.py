@@ -374,6 +374,15 @@ class TestImageFileConsumer(object):
         output = consumer.process(img, 'valid', 'valid')
         assert img.shape[1:] == output.shape
 
+    def test__get_predict_client(self):
+        redis_client = DummyRedis([])
+        consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
+
+        with pytest.raises(ValueError):
+            consumer._get_predict_client('model_name', 'model_version')
+
+        client = consumer._get_predict_client('model_name', 1)
+
     def test_process_big_image(self):
         name = 'model'
         version = 0
