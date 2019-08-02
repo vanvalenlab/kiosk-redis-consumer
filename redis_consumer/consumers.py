@@ -617,7 +617,7 @@ class ImageFileConsumer(Consumer):
                 outpaths = []
                 for i in image:
                     outpaths.extend(utils.save_numpy_array(
-                        image, name=name, subdir=subdir, output_dir=tempdir))
+                        i, name=name, subdir=subdir, output_dir=tempdir))
             else:
                 outpaths = utils.save_numpy_array(
                     image, name=name, subdir=subdir, output_dir=tempdir)
