@@ -402,11 +402,11 @@ class TestImageFileConsumer(object):
         np.testing.assert_equal(res, img)
 
     def test__consume(self):
-        prefix = 'prefix'
+        prefix = 'predict'
         status = 'new'
         redis_client = DummyRedis(prefix, status)
         storage = DummyStorage()
-        consumer = consumers.ImageFileConsumer(redis_client, storage, 'predict')
+        consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
 
         def _handle_error(err, rhash):  # pylint: disable=W0613
             raise err
@@ -425,7 +425,7 @@ class TestImageFileConsumer(object):
             return data
 
         # test with cuts > 0
-        redis.hgetall = lambda x: {
+        redis_client.hgetall = lambda x: {
             'model_name': 'model',
             'model_version': '0',
             'field': '61',
@@ -436,10 +436,21 @@ class TestImageFileConsumer(object):
             'input_file_name': 'test_image.tiff',
             'output_file_name': 'test_image.tiff'
         }
-        redis.hmset = lambda x, y: True
-        consumer = consumers.ImageFileConsumer(redis, storage, 'predict')
+        redis_client.hmset = lambda x, y: True
+        consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
         consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image
+        consumer._consume(dummyhash)
+
+        # test with multiple outputs from model and cuts == 0
+
+        def grpc_image_list(data, *args, **kwargs):  # pylint: disable=W0613
+            return [data, data]
+
+        redis_client = DummyRedis(prefix, status)
+        consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
+        consumer._handle_error = _handle_error
+        consumer.grpc_image = grpc_image_list
         consumer._consume(dummyhash)
 
 
