@@ -503,7 +503,6 @@ class ImageFileConsumer(Consumer):
                     results = results[0]
 
                 retrying = False
-                results = prediction['prediction']
 
                 finished = timeit.default_timer() - start
                 self.update_key(self._redis_hash, {
