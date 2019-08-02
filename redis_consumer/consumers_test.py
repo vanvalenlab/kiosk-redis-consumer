@@ -500,7 +500,8 @@ class TestZipFileConsumer(object):
         storage = DummyStorage(num=N)
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         hsh = consumer._upload_archived_images(
-            {'input_file_name': 'test.zip'}, 'predict:redis_hash:f.zip')
+            {'input_file_name': 'test.zip', 'children': ''},
+            'predict:redis_hash:f.zip')
         assert len(hsh) == N
 
     def test__upload_finished_children(self):
@@ -513,6 +514,30 @@ class TestZipFileConsumer(object):
         path, url = consumer._upload_finished_children(
             finished_children, 'predict:redis_hash:f.zip')
         assert path and url
+
+    def test__get_output_file_name(self):
+        settings.GRPC_BACKOFF = 0
+        redis_client = DummyRedis([])
+        redis_client.ttl = lambda x: -1  # key is missing
+        redis_client._update_masters_and_slaves = lambda: True
+
+        redis_client._redis_master = Bunch(hget=lambda x, y: None)
+        consumer = consumers.ZipFileConsumer(redis_client, None, 'predict')
+
+        with pytest.raises(ValueError):
+            redis_client.ttl = lambda x: -2  # key is missing
+            consumer = consumers.ZipFileConsumer(redis_client, None, 'predict')
+            consumer._get_output_file_name('randomkey')
+
+        with pytest.raises(ValueError):
+            redis_client.ttl = lambda x: 1  # key is expired
+            consumer = consumers.ZipFileConsumer(redis_client, None, 'predict')
+            consumer._get_output_file_name('randomkey')
+
+        with pytest.raises(ValueError):
+            redis_client.ttl = lambda x: -1  # key not expired
+            consumer = consumers.ZipFileConsumer(redis_client, None, 'predict')
+            consumer._get_output_file_name('randomkey')
 
     def test__parse_failures(self):
         N = 3
@@ -529,6 +554,24 @@ class TestZipFileConsumer(object):
         failed_children = ['item1', 'item2', '']
         parsed = consumer._parse_failures(failed_children)
         assert 'item1=reason' in parsed and 'item2=reason' in parsed
+
+    def test__cleanup(self):
+        N = 3
+        prefix = 'predict'
+        status = 'waiting'
+        items = ['item%s' % x for x in range(1, N + 1)]
+        redis_client = DummyRedis(items)
+        storage = DummyStorage(num=N)
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
+
+        children = list('abcdef')
+        done = ['{}:done'.format(c) for c in children[:3]]
+        failed = ['{}:failed'.format(c) for c in children[3:]]
+
+        key = '{queue}:{fname}.zip:{status}'.format(
+            queue='prefix', status=status, fname=status)
+
+        consumer._cleanup(items[0], children, done, failed)
 
     def test__consume(self):
         N = 3
@@ -548,14 +591,6 @@ class TestZipFileConsumer(object):
         # test `status` = "waiting"
         status = 'waiting'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
-        dummyhash = '{queue}:{fname}.zip:{status}'.format(
-            queue=prefix, status=status, fname=status)
-        consumer._consume(dummyhash)
-
-        # test `status` = "cleanup"
-        status = 'cleanup'
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
-        consumer._upload_finished_children = lambda x, y, z: (x, y)
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
         consumer._consume(dummyhash)
