@@ -733,7 +733,7 @@ class ZipFileConsumer(Consumer):
                                         ' no output_file_name', key, ttl)
 
                 self.redis._update_masters_and_slaves()
-                time.sleep(3)
+                time.sleep(settings.GRPC_BACKOFF)
             else:
                 break
         else:
