@@ -602,7 +602,10 @@ class ImageFileConsumer(Consumer):
             post_funcs = hvals.get('postprocess_function', '').split(',')
             # image[:-1] is targeted at a two semantic head panoptic model
             # TODO This may need to be modified and generalized in the future
-            image = self.postprocess(image[:-1], post_funcs, True)
+            if isinstance(image, list):
+                image = self.postprocess(image[:-1], post_funcs, True)
+            else:
+                image = self.postprocess(image, post_funcs, True)
 
             # Save the post-processed results to a file
             _ = timeit.default_timer()
