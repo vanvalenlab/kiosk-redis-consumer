@@ -854,6 +854,7 @@ class ZipFileConsumer(Consumer):
                           'seconds.', len(children), expire_time)
 
     def _consume(self, redis_hash):
+        start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
         self.logger.debug('Found hash to process `%s` with status `%s`.',
                           redis_hash, hvals.get('status'))
@@ -872,7 +873,8 @@ class ZipFileConsumer(Consumer):
             # Update Redis with child keys and put item back in queue
             self.update_key(redis_hash, {
                 'status': 'waiting',
-                'children': key_separator.join(all_hashes)
+                'children': key_separator.join(all_hashes),
+                'children_upload_time': timeit.default_timer() - start,
             })
 
         elif hvals.get('status') == 'waiting':
@@ -904,6 +906,9 @@ class ZipFileConsumer(Consumer):
 
             if not remaining_children:
                 self._cleanup(redis_hash, children, done, failed)
+                self.update_key(redis_hash, {
+                    'cleanup_time': timeit.default_timer() - start,
+                })
 
 
 class TrackingConsumer(Consumer):
