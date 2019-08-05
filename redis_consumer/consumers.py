@@ -810,6 +810,7 @@ class ZipFileConsumer(Consumer):
             'upload_time',
             'download_time',
             'total_time',
+            'predict_retries',
         ]
 
         summaries = dict()
