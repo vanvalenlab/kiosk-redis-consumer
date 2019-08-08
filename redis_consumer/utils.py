@@ -339,13 +339,19 @@ def zip_files(files, dest=None, prefix=None):
 
     filepath = os.path.join(dest, filename)
 
+    zip_kwargs = {
+        'mode': 'w',
+        'compression': zipfile.ZIP_DEFLATED,
+        'allowZip64': True,
+    }
+
     try:
-        logger.debug('Saving %s files to %s', len(files), filepath)
-        with zipfile.ZipFile(filepath, 'w', allowZip64=True) as zip_file:
+        logger.debug('Saving %s files to %s.', len(files), filepath)
+        with zipfile.ZipFile(filepath, **zip_kwargs) as zf:
             for f in files:  # writing each file one by one
                 name = f.replace(dest, '')
                 name = name[1:] if name.startswith(os.path.sep) else name
-                zip_file.write(f, arcname=name)
+                zf.write(f, arcname=name)
         logger.debug('Saved %s files to %s', len(files), filepath)
     except Exception as err:
         logger.error('Failed to write zipfile: %s', err)
