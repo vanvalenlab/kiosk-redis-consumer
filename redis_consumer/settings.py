@@ -118,13 +118,13 @@ EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
 # Pre- and Post-processing settings
 PROCESSING_FUNCTIONS = {
     'pre': {
-        'normalize': processing.noramlize,
+        'normalize': processing.noramlize
     },
     'post': {
         'deepcell': processing.deepcell,
         'mibi': processing.mibi,
         'watershed': processing.watershed,
-        'retinanet': processing.retinanet_to_label_image,
+        'retinanet': processing.retinanet_to_label_image
     },
 }
 
@@ -141,3 +141,7 @@ DIVISION = config('DIVISION', default=0.9)
 BIRTH = config('BIRTH', default=0.95)
 DEATH = config('DEATH', default=0.95)
 NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30)
+
+# Scale detection settings
+SCALE_DETECT_MODEL_NAME = config("SCALE_DETECT_MODEL_NAME", default="ScaleDetection")
+SCALE_DETECT_MODEL_VERSION = config("SCALE_DETECT_MODEL_VERSION", default=0)

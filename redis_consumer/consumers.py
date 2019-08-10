@@ -584,6 +584,18 @@ class ImageFileConsumer(Consumer):
                 'download_time': timeit.default_timer() - _,
             })
 
+            # TODO Detect scale of image using rescale model
+            # Will different input images be handeled flexibly?
+            # self.grpc_image, support streaming?
+            if streaming:
+                scale = self.process_big_image(
+                    cuts, image, field, settings.SCALE_DETECT_MODEL_NAME,
+                    settings.SCALE_DETECT_MODEL_VERSION)
+            else:
+                scale = self.grpc_image(image, settings.SCALE_DETECT_MODEL_NAME,
+                    settings.SCALE_DETECT_MODEL_VERSION)
+            image = skimage.transform.rescale(image, scale)
+
             pre_funcs = hvals.get('preprocess_function', '').split(',')
             image = self.preprocess(image, pre_funcs, True)
 
@@ -616,14 +628,17 @@ class ImageFileConsumer(Consumer):
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
 
+            # Rescale image to original size before sending back to user
             if isinstance(image, list):
                 outpaths = []
                 for i in image:
                     outpaths.extend(utils.save_numpy_array(
-                        i, name=name, subdir=subdir, output_dir=tempdir))
+                        skimage.transform.rescale(i, 1/scale), name=name,
+                        subdir=subdir, output_dir=tempdir))
             else:
                 outpaths = utils.save_numpy_array(
-                    image, name=name, subdir=subdir, output_dir=tempdir)
+                    skimage.transform.rescale(image, 1/scale), name=name,
+                    subdir=subdir, output_dir=tempdir)
 
             # Save each prediction image as zip file
             zip_file = utils.zip_files(outpaths, tempdir)
