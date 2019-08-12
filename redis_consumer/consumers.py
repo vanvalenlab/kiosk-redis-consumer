@@ -44,7 +44,7 @@ import numpy as np
 import pytz
 import skimage
 
-from redis_consumer.processing import reshape_matrix
+from redis_consumer.utils import reshape_matrix
 from redis_consumer.grpc_clients import PredictClient
 # from redis_consumer.grpc_clients import ProcessClient
 from redis_consumer.grpc_clients import TrackingClient
@@ -608,6 +608,7 @@ class ImageFileConsumer(Consumer):
                 self.logger.debug('Image scale detected: %s', scale)
                 self.update_key(redis_hash, {'scale': scale})
             else:
+                scale = float(scale)
                 self.logger.debug('Image scale already calculated: %s', scale)
             image = skimage.transform.rescale(image, scale)
 
@@ -966,7 +967,7 @@ class TrackingConsumer(Consumer):
     def grpc_image(self, img, model_name, model_version):
         count = 0
         start = timeit.default_timer()
-        self.logger.debug('Segmenting image of shape %s with model %s:%s',
+        self.logger.debug('Predicting image of shape %s with model %s:%s',
                           img.shape, model_name, model_version)
         retrying = True
         while retrying:
@@ -994,29 +995,15 @@ class TrackingConsumer(Consumer):
                 retrying = False
 
                 finished = timeit.default_timer() - start
-                self.update_key(self._redis_hash, {
-                    'prediction_time': finished,
-                    'predict_retries': count,
-                })
-                self.logger.debug('Segmented key %s (model %s:%s, '
-                                  'preprocessing: %s, postprocessing: %s)'
+                self.logger.debug('Predicting (model %s:%s, '
                                   ' (%s retries) in %s seconds.',
-                                  self._redis_hash, model_name, model_version,
-                                  self._redis_values.get('preprocess_function'),
-                                  self._redis_values.get('postprocess_function'),
+                                  model_name, model_version,
                                   count, finished)
                 return results
             except grpc.RpcError as err:
                 # pylint: disable=E1101
                 if err.code() in settings.GRPC_RETRY_STATUSES:
                     count += 1
-                    # write update to Redis
-                    temp_status = 'retry-predicting - {} - {}'.format(
-                        count, err.code().name)
-                    self.update_key(self._redis_hash, {
-                        'status': temp_status,
-                        'predict_retries': count,
-                    })
                     self.logger.warning('%sException `%s: %s` during '
                                         'PredictClient request to model %s:%s.'
                                         ' Waiting %s seconds before retrying.',
@@ -1038,15 +1025,16 @@ class TrackingConsumer(Consumer):
     def detect_scale(self, image):
         start = timeit.default_timer()
         # Rescale image for compatibility with scale model
-        image, _ = reshape_matrix(np.expand_dims(image, axis=0), np.expand_dims(image, axis=0),
-                                    reshape_size=216)
+        image = np.expand_dims(image, axis=-1)
+        if (image.shape[1]>=216) and (image.shape[2]>=216):
+            image, _ = reshape_matrix(image, image, reshape_size=216)
 
         # Loop over each image in the batch dimension for scale prediction
         Lscale = []
         for i in range(0, image.shape[0], settings.SCALE_DETECT_SAMPLE):
             Lscale.append(self.grpc_image(image[i], settings.SCALE_DETECT_MODEL_NAME,
-                                            settings.SCALE_DETECT_MODEL_VERSION))
-
+                                          settings.SCALE_DETECT_MODEL_VERSION))
+        self.logger.debug(Lscale)
         self.logger.debug('Scale detection complete in %s seconds', timeit.default_timer() - start)
         return np.mean(Lscale)
 
@@ -1107,17 +1095,17 @@ class TrackingConsumer(Consumer):
         # push a key per frame and let ImageFileConsumers segment
         raw = utils.get_image(os.path.join(subdir, fname))
 
-        # Calculate scale of a subset of raw
-        scale = self.detect_scale(raw)
-        self.logger.debug('Image scale detected: %s', scale)
-
         # remove the last dimensions added by `get_image`
-        tiff_stack = np.squeeze(raw, -1)
+        tiff_stack = np.squeeze(raw)
         if len(tiff_stack.shape) != 3:
             raise ValueError("This tiff file has shape {}, which is not 3 "
                              "dimensions. Tracking can only be done on images "
                              "with 3 dimensions, (time, width, height)".format(
                                  tiff_stack.shape))
+
+        # Calculate scale of a subset of raw
+        self.scale = self.detect_scale(tiff_stack)
+        self.logger.debug('Image scale detected: %s', self.scale)
 
         num_frames = len(tiff_stack)
         hash_to_frame = {}
@@ -1152,7 +1140,7 @@ class TrackingConsumer(Consumer):
                     'created_at': current_timestamp,
                     'updated_at': current_timestamp,
                     'url': upload_file_url,
-                    'scale': scale
+                    'scale': self.scale
                 }
 
                 self.logger.debug("Setting %s", frame_hvalues)
@@ -1219,7 +1207,7 @@ class TrackingConsumer(Consumer):
 
         frames = [frames[i] for i in range(num_frames)]
 
-        return {"X": raw, "y": np.array(frames)}
+        return {"X": np.squeeze(raw, axis=-1), "y": np.array(frames)}
 
     def _consume(self, redis_hash):
         hvalues = self.redis.hgetall(redis_hash)
