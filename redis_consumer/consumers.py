@@ -602,7 +602,7 @@ class ImageFileConsumer(Consumer):
 
             # Check if scale is already calculated
             scale = hvals.get('scale', None)
-            if scale == None:
+            if scale is None:
                 # Detect scale of image
                 scale = self.detect_scale(image)
                 self.logger.debug('Image scale detected: %s', scale)
@@ -955,6 +955,101 @@ class TrackingConsumer(Consumer):
 
         return valid_file
 
+    def _get_predict_client(self, model_name, model_version):
+        t = timeit.default_timer()
+        hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
+        client = PredictClient(hostname, model_name, int(model_version))
+        self.logger.debug('Created the PredictClient in %s seconds.',
+                          timeit.default_timer() - t)
+        return client
+
+    def grpc_image(self, img, model_name, model_version):
+        count = 0
+        start = timeit.default_timer()
+        self.logger.debug('Segmenting image of shape %s with model %s:%s',
+                          img.shape, model_name, model_version)
+        retrying = True
+        while retrying:
+            try:
+                floatx = settings.TF_TENSOR_DTYPE
+                if 'f16' in model_name:
+                    floatx = 'DT_HALF'
+                    # TODO: seems like should cast to "half"
+                    # but the model rejects the type, wants "int" or "long"
+                    img = img.astype('int')
+
+                req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
+                             'in_tensor_dtype': floatx,
+                             'data': np.expand_dims(img, axis=0)}]
+
+                client = self._get_predict_client(model_name, model_version)
+
+                prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
+                results = [prediction[k] for k in sorted(prediction.keys())
+                           if k.startswith('prediction')]
+
+                if len(results) == 1:
+                    results = results[0]
+
+                retrying = False
+
+                finished = timeit.default_timer() - start
+                self.update_key(self._redis_hash, {
+                    'prediction_time': finished,
+                    'predict_retries': count,
+                })
+                self.logger.debug('Segmented key %s (model %s:%s, '
+                                  'preprocessing: %s, postprocessing: %s)'
+                                  ' (%s retries) in %s seconds.',
+                                  self._redis_hash, model_name, model_version,
+                                  self._redis_values.get('preprocess_function'),
+                                  self._redis_values.get('postprocess_function'),
+                                  count, finished)
+                return results
+            except grpc.RpcError as err:
+                # pylint: disable=E1101
+                if err.code() in settings.GRPC_RETRY_STATUSES:
+                    count += 1
+                    # write update to Redis
+                    temp_status = 'retry-predicting - {} - {}'.format(
+                        count, err.code().name)
+                    self.update_key(self._redis_hash, {
+                        'status': temp_status,
+                        'predict_retries': count,
+                    })
+                    self.logger.warning('%sException `%s: %s` during '
+                                        'PredictClient request to model %s:%s.'
+                                        ' Waiting %s seconds before retrying.',
+                                        type(err).__name__, err.code().name,
+                                        err.details(), model_name,
+                                        model_version, settings.GRPC_BACKOFF)
+                    time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
+                    retrying = True  # Unneccessary but explicit
+                else:
+                    retrying = False
+                    raise err
+            except Exception as err:
+                retrying = False
+                self.logger.error('Encountered %s during tf-serving request to '
+                                  'model %s:%s: %s', type(err).__name__,
+                                  model_name, model_version, err)
+                raise err
+
+    def detect_scale(self, image):
+        start = timeit.default_timer()
+        # Rescale image for compatibility with scale model
+        image, _ = reshape_matrix(np.expand_dims(image, axis=0), np.expand_dims(image, axis=0),
+                                    reshape_size=216)
+
+        # Loop over each image in the batch dimension for scale prediction
+        Lscale = []
+        for i in range(0, image.shape[0], settings.SCALE_DETECT_SAMPLE):
+            Lscale.append(self.grpc_image(image[i], settings.SCALE_DETECT_MODEL_NAME,
+                                            settings.SCALE_DETECT_MODEL_VERSION))
+
+        self.logger.debug('Scale detection complete in %s seconds', timeit.default_timer() - start)
+        return np.mean(Lscale)
+
     def _get_model(self, redis_hash, hvalues):
         hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
 
@@ -1012,8 +1107,11 @@ class TrackingConsumer(Consumer):
         # push a key per frame and let ImageFileConsumers segment
         raw = utils.get_image(os.path.join(subdir, fname))
 
-        # remove the last dimensions added by `get_image`
+        # Calculate scale of a subset of raw
+        scale = self.detect_scale(raw)
+        self.logger.debug('Image scale detected: %s', scale)
 
+        # remove the last dimensions added by `get_image`
         tiff_stack = np.squeeze(raw, -1)
         if len(tiff_stack.shape) != 3:
             raise ValueError("This tiff file has shape {}, which is not 3 "
@@ -1053,7 +1151,8 @@ class TrackingConsumer(Consumer):
                     'status': 'new',
                     'created_at': current_timestamp,
                     'updated_at': current_timestamp,
-                    'url': upload_file_url
+                    'url': upload_file_url,
+                    'scale': scale
                 }
 
                 self.logger.debug("Setting %s", frame_hvalues)
@@ -1078,7 +1177,6 @@ class TrackingConsumer(Consumer):
             # pop is not random. This is fine, since we still need every
             # hash to finish before doing anything.
             frames = {}
-            scales = []
             while remaining_hashes:
                 finished_hashes = set()
 
@@ -1114,7 +1212,6 @@ class TrackingConsumer(Consumer):
 
                         frame_idx = hash_to_frame[segment_hash]
                         frames[frame_idx] = utils.get_image(frame_files[0])
-                        scales.append(self.redis.hget(segment_hash, 'scale'))
                         finished_hashes.add(segment_hash)
 
                 remaining_hashes -= finished_hashes
@@ -1122,7 +1219,7 @@ class TrackingConsumer(Consumer):
 
         frames = [frames[i] for i in range(num_frames)]
 
-        return {"X": raw, "y": np.array(frames), "scale": np.array(scales)}
+        return {"X": raw, "y": np.array(frames)}
 
     def _consume(self, redis_hash):
         hvalues = self.redis.hgetall(redis_hash)
