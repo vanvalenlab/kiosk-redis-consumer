@@ -145,3 +145,7 @@ NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30)
 # Scale detection settings
 SCALE_DETECT_MODEL_NAME = config("SCALE_DETECT_MODEL_NAME", default="ScaleDetection")
 SCALE_DETECT_MODEL_VERSION = config("SCALE_DETECT_MODEL_VERSION", default=0)
+
+# Type detection settings
+TYPE_DETECT_MODEL_NAME = config("TYPE_DETECT_MODEL_NAME", default="LabelDetection")
+TYPE_DETECT_MODEL_VERSION = config("TYPE_DETECT_MODEL_VERSION", default=0)

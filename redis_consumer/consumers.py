@@ -593,7 +593,8 @@ class ImageFileConsumer(Consumer):
                     settings.SCALE_DETECT_MODEL_VERSION)
             else:
                 scale = self.grpc_image(image, settings.SCALE_DETECT_MODEL_NAME,
-                    settings.SCALE_DETECT_MODEL_VERSION)
+                                        settings.SCALE_DETECT_MODEL_VERSION)
+            self.logger.debug('Image scale detected: %s %s', scale, scale.shape)
             image = skimage.transform.rescale(image, scale)
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
@@ -1013,6 +1014,14 @@ class TrackingConsumer(Consumer):
         self.logger.debug('Got tiffstack shape %s.', tiff_stack.shape)
         self.logger.debug('tiffstack num_frames %s.', num_frames)
 
+        # TODO Calculate scale of stack and take average of value predicted for each frame
+        # self.scale =
+        # TODO Rescale stack
+        # TODO Set redis hash value
+
+        # TODO Predict label type of stack, take vote
+        # TODO set redis hash value
+
         with utils.get_tempdir() as tempdir:
             for (i, img) in enumerate(tiff_stack):
                 # make a file name for this frame
@@ -1026,7 +1035,6 @@ class TrackingConsumer(Consumer):
                     segment_local_path)
 
                 # prepare hvalues for this frame's hash
-                # TODO: model info should not be hardcoded
                 current_timestamp = self.get_current_timestamp()
                 frame_hvalues = {
                     'identity_upload': self.hostname,
@@ -1135,6 +1143,9 @@ class TrackingConsumer(Consumer):
             tracker._track_cells()
 
             self.logger.debug('Tracking done!')
+
+            # TODO Rescale data back to original size
+            # Use self.scale value set in self.load_data
 
             # Save tracking result and upload
             save_name = os.path.join(
