@@ -838,12 +838,14 @@ class ZipFileConsumer(Consumer):
                         summaries[field] = [float(result)]
                     else:
                         summaries[field].append(float(result))
-                except:
+                except:  # pylint: disable=bare-except
                     self.logger.warning('Summary field `%s` is not a '
                                         'float: %s', field, result)
 
+        # array as joined string
         for k in summaries:
-            summaries[k] = sum(summaries[k]) / len(summaries[k])
+            summaries[k] = ','.join(str(s) for s in summaries[k])
+            # summaries[k] = sum(summaries[k]) / len(summaries[k])
 
         output_file_name, output_url = self._upload_finished_children(
             done, redis_hash)
