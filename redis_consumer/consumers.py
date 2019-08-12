@@ -44,6 +44,7 @@ import numpy as np
 import pytz
 import skimage
 
+from redis_consumer.processing import reshape_matrix
 from redis_consumer.grpc_clients import PredictClient
 # from redis_consumer.grpc_clients import ProcessClient
 from redis_consumer.grpc_clients import TrackingClient
@@ -552,6 +553,21 @@ class ImageFileConsumer(Consumer):
                                   model_name, model_version, err)
                 raise err
 
+    def detect_scale(self, image):
+        start = timeit.default_timer()
+        # Rescale image for compatibility with scale model
+        image, _ = reshape_matrix(np.expand_dims(image, axis=0), np.expand_dims(image, axis=0),
+                                  reshape_size=216)
+
+        # Loop over each image in the batch dimension for scale prediction
+        Lscale = []
+        for i in range(0, image.shape[0], settings.SCALE_DETECT_SAMPLE):
+            Lscale.append(self.grpc_image(image[i], settings.SCALE_DETECT_MODEL_NAME,
+                                          settings.SCALE_DETECT_MODEL_VERSION))
+
+        self.logger.debug('Scale detection complete in %s seconds', timeit.default_timer() - start)
+        return np.mean(Lscale)
+
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
@@ -584,17 +600,15 @@ class ImageFileConsumer(Consumer):
                 'download_time': timeit.default_timer() - _,
             })
 
-            # TODO Detect scale of image using rescale model
-            # Will different input images be handeled flexibly?
-            # self.grpc_image, support streaming?
-            if streaming:
-                scale = self.process_big_image(
-                    cuts, image, field, settings.SCALE_DETECT_MODEL_NAME,
-                    settings.SCALE_DETECT_MODEL_VERSION)
+            # Check if scale is already calculated
+            scale = hvals.get('scale', None)
+            if scale == None:
+                # Detect scale of image
+                scale = self.detect_scale(image)
+                self.logger.debug('Image scale detected: %s', scale)
+                self.update_key(redis_hash, {'scale': scale})
             else:
-                scale = self.grpc_image(image, settings.SCALE_DETECT_MODEL_NAME,
-                                        settings.SCALE_DETECT_MODEL_VERSION)
-            self.logger.debug('Image scale detected: %s %s', scale, scale.shape)
+                self.logger.debug('Image scale already calculated: %s', scale)
             image = skimage.transform.rescale(image, scale)
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
@@ -1014,14 +1028,6 @@ class TrackingConsumer(Consumer):
         self.logger.debug('Got tiffstack shape %s.', tiff_stack.shape)
         self.logger.debug('tiffstack num_frames %s.', num_frames)
 
-        # TODO Calculate scale of stack and take average of value predicted for each frame
-        # self.scale =
-        # TODO Rescale stack
-        # TODO Set redis hash value
-
-        # TODO Predict label type of stack, take vote
-        # TODO set redis hash value
-
         with utils.get_tempdir() as tempdir:
             for (i, img) in enumerate(tiff_stack):
                 # make a file name for this frame
@@ -1072,6 +1078,7 @@ class TrackingConsumer(Consumer):
             # pop is not random. This is fine, since we still need every
             # hash to finish before doing anything.
             frames = {}
+            scales = []
             while remaining_hashes:
                 finished_hashes = set()
 
@@ -1107,6 +1114,7 @@ class TrackingConsumer(Consumer):
 
                         frame_idx = hash_to_frame[segment_hash]
                         frames[frame_idx] = utils.get_image(frame_files[0])
+                        scales.append(self.redis.hget(segment_hash, 'scale'))
                         finished_hashes.add(segment_hash)
 
                 remaining_hashes -= finished_hashes
@@ -1114,7 +1122,7 @@ class TrackingConsumer(Consumer):
 
         frames = [frames[i] for i in range(num_frames)]
 
-        return {"X": raw, "y": np.array(frames)}
+        return {"X": raw, "y": np.array(frames), "scale": np.array(scales)}
 
     def _consume(self, redis_hash):
         hvalues = self.redis.hgetall(redis_hash)
