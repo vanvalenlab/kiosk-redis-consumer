@@ -87,8 +87,6 @@ def grpc_response_to_dict(grpc_response):
     for k in grpc_response.outputs:
         shape = [x.size for x in grpc_response.outputs[k].tensor_shape.dim]
 
-        logger.debug('Key: %s, shape: %s', k, shape)
-
         dtype_constant = grpc_response.outputs[k].dtype
 
         if dtype_constant not in number_to_dtype_value:
