@@ -353,3 +353,65 @@ def zip_files(files, dest=None, prefix=None):
     logger.debug('Zipped %s files into %s in %s seconds.',
                  len(files), filepath, timeit.default_timer() - start)
     return filepath
+
+
+def reshape_matrix(X, y, reshape_size=256):
+    """
+    Reshape matrix of dimension 4 to have x and y of size reshape_size.
+    Adds overlapping slices to batches.
+    E.g. reshape_size of 256 yields (1, 1024, 1024, 1) -> (16, 256, 256, 1)
+
+    Args:
+        X: raw 4D image tensor
+        y: label mask of 4D image data
+        reshape_size: size of the square output tensor
+
+    Returns:
+        reshaped `X` and `y` tensors in shape (`reshape_size`, `reshape_size`)
+    """
+    is_channels_first = False  # K.image_data_format() == 'channels_first'
+    if X.ndim != 4:
+        raise ValueError('reshape_matrix expects X dim to be 4, got', X.ndim)
+    elif y.ndim != 4:
+        raise ValueError('reshape_matrix expects y dim to be 4, got', y.ndim)
+
+    image_size_x, _ = X.shape[2:] if is_channels_first else X.shape[1:3]
+    rep_number = np.int(np.ceil(np.float(image_size_x) / np.float(reshape_size)))
+    new_batch_size = X.shape[0] * (rep_number) ** 2
+
+    if is_channels_first:
+        new_X_shape = (new_batch_size, X.shape[1], reshape_size, reshape_size)
+        new_y_shape = (new_batch_size, y.shape[1], reshape_size, reshape_size)
+    else:
+        new_X_shape = (new_batch_size, reshape_size, reshape_size, X.shape[3])
+        new_y_shape = (new_batch_size, reshape_size, reshape_size, y.shape[3])
+
+    new_X = np.zeros(new_X_shape, dtype='float32')
+    new_y = np.zeros(new_y_shape, dtype='int32')
+
+    counter = 0
+    for b in range(X.shape[0]):
+        for i in range(rep_number):
+            for j in range(rep_number):
+                if i != rep_number - 1:
+                    x_start, x_end = i * reshape_size, (i + 1) * reshape_size
+                else:
+                    x_start, x_end = -reshape_size, X.shape[2 if is_channels_first else 1]
+
+                if j != rep_number - 1:
+                    y_start, y_end = j * reshape_size, (j + 1) * reshape_size
+                else:
+                    y_start, y_end = -reshape_size, y.shape[3 if is_channels_first else 2]
+
+                if is_channels_first:
+                    new_X[counter] = X[b, :, x_start:x_end, y_start:y_end]
+                    new_y[counter] = y[b, :, x_start:x_end, y_start:y_end]
+                else:
+                    new_X[counter] = X[b, x_start:x_end, y_start:y_end, :]
+                    new_y[counter] = y[b, x_start:x_end, y_start:y_end, :]
+
+                counter += 1
+
+    print('Reshaped feature data from {} to {}'.format(y.shape, new_y.shape))
+    print('Reshaped training data from {} to {}'.format(X.shape, new_X.shape))
+    return new_X, new_y
