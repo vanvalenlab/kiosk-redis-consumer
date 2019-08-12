@@ -29,6 +29,7 @@ from __future__ import division
 from __future__ import print_function
 
 import datetime
+import hashlib
 import json
 import logging
 import os
@@ -745,35 +746,50 @@ class ZipFileConsumer(Consumer):
         return fname
 
     def _upload_finished_children(self, finished_children, redis_hash):
-        saved_files = set()
+        # saved_files = set()
         with utils.get_tempdir() as tempdir:
-            # process each successfully completed key
-            for key in finished_children:
-                if not key:
-                    continue
+            filename = '{}.zip'.format(
+                hashlib.md5(str(time.time()).encode('utf-8')).hexdigest())
 
-                fname = self._get_output_file_name(key)
+            zip_path = os.path.join(tempdir, filename)
 
-                local_fname = self.storage.download(fname, tempdir)
+            zip_kwargs = {
+                'compression': zipfile.ZIP_DEFLATED,
+                'allowZip64': True,
+            }
 
-                self.logger.info('Saved file: %s', local_fname)
+            with zipfile.ZipFile(zip_path, 'w', **zip_kwargs) as zf:
 
-                if zipfile.is_zipfile(local_fname):
-                    image_files = utils.get_image_files_from_dir(
-                        local_fname, tempdir)
-                else:
-                    image_files = (local_fname,)
+                # process each successfully completed key
+                for key in finished_children:
+                    if not key:
+                        continue
 
-                for imfile in image_files:
-                    saved_files.add(imfile)
+                    fname = self._get_output_file_name(key)
 
-                self.update_key(redis_hash)
+                    local_fname = self.storage.download(fname, tempdir)
+
+                    self.logger.info('Saved file: %s', local_fname)
+
+                    if zipfile.is_zipfile(local_fname):
+                        image_files = utils.get_image_files_from_dir(
+                            local_fname, tempdir)
+                    else:
+                        image_files = (local_fname,)
+
+                    for imfile in image_files:
+                        name = imfile.replace(tempdir, '')
+                        name = name[1:] if name.startswith(os.path.sep) else name
+                        zf.write(imfile, arcname=name)
+                        os.remove(imfile)
+
+                    self.update_key(redis_hash)
 
             # zip up all saved results
-            zip_file = utils.zip_files(saved_files, tempdir)
+            # zip_path = utils.zip_files(saved_files, tempdir)
 
             # Upload the zip file to cloud storage bucket
-            path, url = self.storage.upload(zip_file)
+            path, url = self.storage.upload(zip_path)
             self.logger.debug('Uploaded output to: `%s`', url)
             return path, url
 
@@ -906,8 +922,10 @@ class ZipFileConsumer(Consumer):
 
             if not remaining_children:
                 self._cleanup(redis_hash, children, done, failed)
+                t = timeit.default_timer() - start
+                self.logger.debug('Cleaned up results in %s seconds.', t)
                 self.update_key(redis_hash, {
-                    'cleanup_time': timeit.default_timer() - start,
+                    'cleanup_time': t,
                 })
 
 
