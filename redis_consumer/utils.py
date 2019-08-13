@@ -413,3 +413,14 @@ def reshape_matrix(X, y, reshape_size=256):
     print('Reshaped feature data from {} to {}'.format(y.shape, new_y.shape))
     print('Reshaped training data from {} to {}'.format(X.shape, new_X.shape))
     return new_X, new_y
+
+
+def rescale(image, scale):
+    return skimage.transform.rescale(
+        image, scale,
+        mode='edge',
+        anti_aliasing=False,
+        anti_aliasing_sigma=None,
+        preserve_range=True,
+        order=0
+    )

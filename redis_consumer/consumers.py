@@ -44,7 +44,6 @@ import numpy as np
 import pytz
 import skimage
 
-from redis_consumer.utils import reshape_matrix
 from redis_consumer.grpc_clients import PredictClient
 # from redis_consumer.grpc_clients import ProcessClient
 from redis_consumer.grpc_clients import TrackingClient
@@ -556,7 +555,7 @@ class ImageFileConsumer(Consumer):
     def detect_scale(self, image):
         start = timeit.default_timer()
         # Rescale image for compatibility with scale model
-        image, _ = reshape_matrix(np.expand_dims(image, axis=0), np.expand_dims(image, axis=0),
+        image, _ = utils.reshape_matrix(np.expand_dims(image, axis=0), np.expand_dims(image, axis=0),
                                   reshape_size=216)
 
         # Loop over each image in the batch dimension for scale prediction
@@ -610,7 +609,7 @@ class ImageFileConsumer(Consumer):
             else:
                 scale = float(scale)
                 self.logger.debug('Image scale already calculated: %s', scale)
-            image = skimage.transform.rescale(image, scale)
+            image = utils.rescale(image, scale)
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
             image = self.preprocess(image, pre_funcs, True)
@@ -649,11 +648,11 @@ class ImageFileConsumer(Consumer):
                 outpaths = []
                 for i in image:
                     outpaths.extend(utils.save_numpy_array(
-                        skimage.transform.rescale(i, 1/scale), name=name,
+                        utils.rescale(i, 1/scale), name=name,
                         subdir=subdir, output_dir=tempdir))
             else:
                 outpaths = utils.save_numpy_array(
-                    skimage.transform.rescale(image, 1/scale), name=name,
+                    utils.rescale(image, 1/scale), name=name,
                     subdir=subdir, output_dir=tempdir)
 
             # Save each prediction image as zip file
@@ -1027,7 +1026,7 @@ class TrackingConsumer(Consumer):
         # Rescale image for compatibility with scale model
         image = np.expand_dims(image, axis=-1)
         if (image.shape[1]>=216) and (image.shape[2]>=216):
-            image, _ = reshape_matrix(image, image, reshape_size=216)
+            image, _ = utils.reshape_matrix(image, image, reshape_size=216)
 
         # Loop over each image in the batch dimension for scale prediction
         Lscale = []
