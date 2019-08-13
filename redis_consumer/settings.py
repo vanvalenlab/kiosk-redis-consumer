@@ -148,5 +148,14 @@ SCALE_DETECT_MODEL_VERSION = config("SCALE_DETECT_MODEL_VERSION", default=0)
 SCALE_DETECT_SAMPLE = config("SCALE_DETECT_SAMPLE", default=3)
 
 # Type detection settings
-TYPE_DETECT_MODEL_NAME = config("TYPE_DETECT_MODEL_NAME", default="LabelDetection")
-TYPE_DETECT_MODEL_VERSION = config("TYPE_DETECT_MODEL_VERSION", default=0)
+LABEL_DETECT_MODEL_NAME = config("LABEL_DETECT_MODEL_NAME", default="LabelDetection")
+LABEL_DETECT_MODEL_VERSION = config("LABEL_DETECT_MODEL_VERSION", default=0)
+LABEL_DETECT_SAMPLE = config("LABEL_DETECT_SAMPLE", default=3)
+
+# Set default models based on label type
+PHASE_MODEL_NAME = config("PHASE_MODEL_NAME", default='panoptic')
+PHASE_MODEL_VERSION = config("PHASE_MODEL_VERSION", default=1)
+CYTOPLASM_MODEL_NAME = config("CYTOPLASM_MODEL_NAME", default='panoptic')
+CYTOPLASM_MODEL_VERSION = config("CYTOPLASM_MODEL_VERSION", default=1)
+NUCLEAR_MODEL_NAME = config("NUCLEAR_MODEL_NAME", default='panoptic')
+NUCLEAR_MODEL_VERSION = config("NUCLEAR_MODEL_VERSION", default=1)

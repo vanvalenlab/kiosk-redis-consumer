@@ -555,8 +555,9 @@ class ImageFileConsumer(Consumer):
     def detect_scale(self, image):
         start = timeit.default_timer()
         # Rescale image for compatibility with scale model
-        image, _ = utils.reshape_matrix(np.expand_dims(image, axis=0), np.expand_dims(image, axis=0),
-                                  reshape_size=216)
+        image = np.expand_dims(image, axis=-1)
+        if (image.shape[1] >= 216) and (image.shape[2] >= 216):
+            image, _ = utils.reshape_matrix(image, image, reshape_size=216)
 
         # Loop over each image in the batch dimension for scale prediction
         Lscale = []
@@ -566,6 +567,26 @@ class ImageFileConsumer(Consumer):
 
         self.logger.debug('Scale detection complete in %s seconds', timeit.default_timer() - start)
         return np.mean(Lscale)
+
+    def detect_label(self, image):
+        start = timeit.default_timer()
+        # Rescale for model compatibility
+        image = np.expand_dims(image, axis=-1)
+        if (image.shape[1] >= 216) and (image.shape[2] >= 216):
+            image, _ = utils.reshape_matrix(image, image, reshape_size=216)
+
+        # Loop over each image in batch
+        Llabel = []
+        for i in range(0, image.shape[0], settings.LABEL_DETECT_SAMPLE):
+            Llabel.append(self.grpc_image(image[i], settings.LABEL_DETECT_MODEL_NAME,
+                                          settings.LABEL_DETECT_MODEL_VERSION))
+
+        Llabel = np.array(Llabel)
+        vote = Llabel.sum(axis=0)
+        maj = vote.max()
+
+        self.logger.debug('Label detection complete %s seconds', timeit.default_timer() - start)
+        return np.where(vote == maj)[0][0]
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
@@ -599,6 +620,7 @@ class ImageFileConsumer(Consumer):
                 'download_time': timeit.default_timer() - _,
             })
 
+            # Calculate scale of image and rescale
             # Check if scale is already calculated
             scale = hvals.get('scale', None)
             if scale is None:
@@ -610,6 +632,28 @@ class ImageFileConsumer(Consumer):
                 scale = float(scale)
                 self.logger.debug('Image scale already calculated: %s', scale)
             image = utils.rescale(image, scale)
+
+            # Detect image label type
+            label = hvals.get('label', None)
+            if label is None:
+                label = self.detect_label(image)
+                self.logger.debug('Image label detected: %s', label)
+                self.update_key(redis_hash, {'label': label})
+            else:
+                self.logger.debug('Image label already calculated: %s', label)
+
+            # Identify appropriate model for label type
+            if label == 0:
+                model_name = settings.NUCLEAR_MODEL_NAME
+                model_version = settings.NUCLEAR_MODEL_VERSION
+            elif label == 1:
+                model_name = settings.PHASE_MODEL_NAME
+                model_version = settings.PHASE_MODEL_VERSION
+            elif label == 2:
+                model_name = settings.CYTOPLASM_MODEL_NAME
+                model_version = settings.CYTOPLASM_MODEL_VERSION
+            else:
+                self.logger.error('Label type %s is not supported', label)
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
             image = self.preprocess(image, pre_funcs, True)
