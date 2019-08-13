@@ -555,7 +555,7 @@ class ImageFileConsumer(Consumer):
     def detect_scale(self, image):
         start = timeit.default_timer()
         # Rescale image for compatibility with scale model
-        image = np.expand_dims(image, axis=-1)
+        image = np.expand_dims(image, axis=0)
         if (image.shape[1] >= 216) and (image.shape[2] >= 216):
             image, _ = utils.reshape_matrix(image, image, reshape_size=216)
 
@@ -571,7 +571,7 @@ class ImageFileConsumer(Consumer):
     def detect_label(self, image):
         start = timeit.default_timer()
         # Rescale for model compatibility
-        image = np.expand_dims(image, axis=-1)
+        image = np.expand_dims(image, axis=0)
         if (image.shape[1] >= 216) and (image.shape[2] >= 216):
             image, _ = utils.reshape_matrix(image, image, reshape_size=216)
 
@@ -638,9 +638,10 @@ class ImageFileConsumer(Consumer):
             if label is None:
                 label = self.detect_label(image)
                 self.logger.debug('Image label detected: %s', label)
-                self.update_key(redis_hash, {'label': label})
+                self.update_key(redis_hash, {'label': str(label)})
             else:
                 self.logger.debug('Image label already calculated: %s', label)
+            label = int(label)
 
             # Identify appropriate model for label type
             if label == 0:
