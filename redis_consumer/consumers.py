@@ -1206,7 +1206,7 @@ class TrackingConsumer(Consumer):
 
         frames = [frames[i] for i in range(num_frames)]
 
-        return {"X": np.squeeze(raw, axis=-1), "y": np.array(frames)}
+        return {"X": np.expand_dims(tiff_stack, axis=-1), "y": np.array(frames)}
 
     def _consume(self, redis_hash):
         hvalues = self.redis.hgetall(redis_hash)
