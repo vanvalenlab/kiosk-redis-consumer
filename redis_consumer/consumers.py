@@ -220,7 +220,219 @@ class Consumer(object):
             time.sleep(settings.EMPTY_QUEUE_TIMEOUT)
 
 
-class ImageFileConsumer(Consumer):
+class TensorFlowServingConsumer(Consumer):
+    '''Adds tf-serving basic functionality for predict calls'''
+
+    def __init__(self,
+                 redis_client,
+                 storage_client,
+                 queue,
+                 final_status='done'):
+        # Create some attributes only used during consume()
+        self._redis_hash = None
+        self._redis_values = dict()
+        super(TensorFlowServingConsumer, self).__init__(
+            redis_client, storage_client,
+            queue, final_status)
+
+    def _consume(self, redis_hash):
+        raise NotImplementedError
+
+    def _get_predict_client(self, model_name, model_version):
+        t = timeit.default_timer()
+        hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
+        client = PredictClient(hostname, model_name, int(model_version))
+        self.logger.debug('Created the PredictClient in %s seconds.',
+                            timeit.default_timer() - t)
+        return client
+
+    def grpc_image(self, img, model_name, model_version):
+        count = 0
+        start = timeit.default_timer()
+        self.logger.debug('Segmenting image of shape %s with model %s:%s',
+                          img.shape, model_name, model_version)
+        retrying = True
+        while retrying:
+            try:
+                floatx = settings.TF_TENSOR_DTYPE
+                if 'f16' in model_name:
+                    floatx = 'DT_HALF'
+                    # TODO: seems like should cast to "half"
+                    # but the model rejects the type, wants "int" or "long"
+                    img = img.astype('int')
+
+                req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
+                             'in_tensor_dtype': floatx,
+                             'data': np.expand_dims(img, axis=0)}]
+
+                client = self._get_predict_client(model_name, model_version)
+
+                prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
+                results = [prediction[k] for k in sorted(prediction.keys())
+                           if k.startswith('prediction')]
+
+                if len(results) == 1:
+                    results = results[0]
+
+                retrying = False
+
+                finished = timeit.default_timer() - start
+                if self._redis_hash is not None:
+                    self.update_key(self._redis_hash, {
+                        'prediction_time': finished,
+                        'predict_retries': count,
+                    })
+                self.logger.debug('Segmented key %s (model %s:%s, '
+                                  'preprocessing: %s, postprocessing: %s)'
+                                  ' (%s retries) in %s seconds.',
+                                  self._redis_hash, model_name, model_version,
+                                  self._redis_values.get('preprocess_function'),
+                                  self._redis_values.get('postprocess_function'),
+                                  count, finished)
+                return results
+            except grpc.RpcError as err:
+                # pylint: disable=E1101
+                if err.code() in settings.GRPC_RETRY_STATUSES:
+                    count += 1
+                    # write update to Redis
+                    temp_status = 'retry-predicting - {} - {}'.format(
+                        count, err.code().name)
+                    if self._redis_hash is not None:
+                        self.update_key(self._redis_hash, {
+                            'status': temp_status,
+                            'predict_retries': count,
+                        })
+                    self.logger.warning('%sException `%s: %s` during '
+                                        'PredictClient request to model %s:%s.'
+                                        ' Waiting %s seconds before retrying.',
+                                        type(err).__name__, err.code().name,
+                                        err.details(), model_name,
+                                        model_version, settings.GRPC_BACKOFF)
+                    time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
+                    retrying = True  # Unneccessary but explicit
+                else:
+                    retrying = False
+                    raise err
+            except Exception as err:
+                retrying = False
+                self.logger.error('Encountered %s during tf-serving request to '
+                                  'model %s:%s: %s', type(err).__name__,
+                                  model_name, model_version, err)
+                raise err
+
+    def process_big_image(self,
+                          cuts,
+                          img,
+                          field,
+                          model_name,
+                          model_version):
+        """Slice big image into smaller images for prediction,
+        then stitches all the smaller images back together.
+
+        Args:
+        cuts: number of cuts in x and y to slice smaller images
+        img: image data as numpy array
+        field: receptive field size of model, changes padding sizes
+        model_name: hosted model to send image data
+        model_version: model version to query
+
+        Returns:
+        tf_results: single numpy array of predictions on big input image
+        """
+        start = timeit.default_timer()
+        cuts = int(cuts)
+        field = int(field)
+        winx, winy = (field - 1) // 2, (field - 1) // 2
+
+        def iter_cuts(img, cuts, field):
+            padded_img = utils.pad_image(img, field)
+            crop_x = img.shape[img.ndim - 3] // cuts
+            crop_y = img.shape[img.ndim - 2] // cuts
+            for i in range(cuts):
+                for j in range(cuts):
+                    a, b = i * crop_x, (i + 1) * crop_x
+                    c, d = j * crop_y, (j + 1) * crop_y
+                    data = padded_img[..., a:b + 2 * winx, c:d + 2 * winy, :]
+                    coord = (a, b, c, d)
+                    yield data, coord
+
+        slcs, coords = zip(*iter_cuts(img, cuts, field))
+        reqs = (self.grpc_image(s, model_name, model_version) for s in slcs)
+
+        tf_results = None
+        for resp, (a, b, c, d) in zip(reqs, coords):
+            # resp = await asyncio.ensure_future(req)
+            if tf_results is None:
+                tf_results = np.zeros(list(img.shape)[:-1] + [resp.shape[-1]])
+                self.logger.debug('Initialized output tensor of shape %s',
+                                    tf_results.shape)
+
+            tf_results[..., a:b, c:d, :] = resp[..., winx:-winx, winy:-winy, :]
+
+        self.logger.debug('Segmented image into shape %s in %s s',
+                          tf_results.shape, timeit.default_timer() - start)
+        return tf_results
+
+    def detect_scale(self, image):
+        start = timeit.default_timer()
+        # Rescale image for compatibility with scale model
+        if image.shape[-1] == 1:
+            image = np.expand_dims(image, axis=0)
+        else:
+            image = np.expand_dims(image, axis=-1)
+        if (image.shape[1] >= 216) and (image.shape[2] >= 216):
+            image, _ = utils.reshape_matrix(image, image, reshape_size=216)
+
+        # Loop over each image in the batch dimension for scale prediction
+        Lscale = []
+        for i in range(0, image.shape[0], settings.SCALE_DETECT_SAMPLE):
+            Lscale.append(self.grpc_image(image[i], settings.SCALE_DETECT_MODEL_NAME,
+                                          settings.SCALE_DETECT_MODEL_VERSION))
+
+        self.logger.debug('Scale detection complete in %s seconds', timeit.default_timer() - start)
+        return np.mean(Lscale)
+
+    def detect_label(self, image):
+        start = timeit.default_timer()
+        # Rescale for model compatibility
+        if image.shape[-1] == 1:
+            image = np.expand_dims(image, axis=0)
+        else:
+            image = np.expand_dims(image, axis=-1)
+        if (image.shape[1] >= 216) and (image.shape[2] >= 216):
+            image, _ = utils.reshape_matrix(image, image, reshape_size=216)
+
+        # Loop over each image in batch
+        Llabel = []
+        for i in range(0, image.shape[0], settings.LABEL_DETECT_SAMPLE):
+            Llabel.append(self.grpc_image(image[i], settings.LABEL_DETECT_MODEL_NAME,
+                                          settings.LABEL_DETECT_MODEL_VERSION))
+
+        Llabel = np.array(Llabel)
+        vote = Llabel.sum(axis=0)
+        maj = vote.max()
+
+        self.logger.debug('Label detection complete %s seconds', timeit.default_timer() - start)
+        return np.where(vote == maj)[0][0]
+
+    def _pick_model(self, label):
+        # Identify appropriate model for label type
+        if label == 0:
+            model_name = settings.NUCLEAR_MODEL_NAME
+            model_version = settings.NUCLEAR_MODEL_VERSION
+        elif label == 1:
+            model_name = settings.PHASE_MODEL_NAME
+            model_version = settings.PHASE_MODEL_VERSION
+        elif label == 2:
+            model_name = settings.CYTOPLASM_MODEL_NAME
+            model_version = settings.CYTOPLASM_MODEL_VERSION
+        else:
+            self.logger.error('Label type %s is not supported', label)
+
+        return model_name, model_version
+
+
+class ImageFileConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
     def __init__(self,
@@ -419,175 +631,6 @@ class ImageFileConsumer(Consumer):
             post = self.process(x, key, 'post')
         return post
 
-    def process_big_image(self,
-                          cuts,
-                          img,
-                          field,
-                          model_name,
-                          model_version):
-        """Slice big image into smaller images for prediction,
-        then stitches all the smaller images back together.
-
-        Args:
-            cuts: number of cuts in x and y to slice smaller images
-            img: image data as numpy array
-            field: receptive field size of model, changes padding sizes
-            model_name: hosted model to send image data
-            model_version: model version to query
-
-        Returns:
-            tf_results: single numpy array of predictions on big input image
-        """
-        start = timeit.default_timer()
-        cuts = int(cuts)
-        field = int(field)
-        winx, winy = (field - 1) // 2, (field - 1) // 2
-
-        def iter_cuts(img, cuts, field):
-            padded_img = utils.pad_image(img, field)
-            crop_x = img.shape[img.ndim - 3] // cuts
-            crop_y = img.shape[img.ndim - 2] // cuts
-            for i in range(cuts):
-                for j in range(cuts):
-                    a, b = i * crop_x, (i + 1) * crop_x
-                    c, d = j * crop_y, (j + 1) * crop_y
-                    data = padded_img[..., a:b + 2 * winx, c:d + 2 * winy, :]
-                    coord = (a, b, c, d)
-                    yield data, coord
-
-        slcs, coords = zip(*iter_cuts(img, cuts, field))
-        reqs = (self.grpc_image(s, model_name, model_version) for s in slcs)
-
-        tf_results = None
-        for resp, (a, b, c, d) in zip(reqs, coords):
-            # resp = await asyncio.ensure_future(req)
-            if tf_results is None:
-                tf_results = np.zeros(list(img.shape)[:-1] + [resp.shape[-1]])
-                self.logger.debug('Initialized output tensor of shape %s',
-                                  tf_results.shape)
-
-            tf_results[..., a:b, c:d, :] = resp[..., winx:-winx, winy:-winy, :]
-
-        self.logger.debug('Segmented image into shape %s in %s s',
-                          tf_results.shape, timeit.default_timer() - start)
-        return tf_results
-
-    def _get_predict_client(self, model_name, model_version):
-        t = timeit.default_timer()
-        hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
-        client = PredictClient(hostname, model_name, int(model_version))
-        self.logger.debug('Created the PredictClient in %s seconds.',
-                          timeit.default_timer() - t)
-        return client
-
-    def grpc_image(self, img, model_name, model_version):
-        count = 0
-        start = timeit.default_timer()
-        self.logger.debug('Segmenting image of shape %s with model %s:%s',
-                          img.shape, model_name, model_version)
-        retrying = True
-        while retrying:
-            try:
-                floatx = settings.TF_TENSOR_DTYPE
-                if 'f16' in model_name:
-                    floatx = 'DT_HALF'
-                    # TODO: seems like should cast to "half"
-                    # but the model rejects the type, wants "int" or "long"
-                    img = img.astype('int')
-
-                req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
-                             'in_tensor_dtype': floatx,
-                             'data': np.expand_dims(img, axis=0)}]
-
-                client = self._get_predict_client(model_name, model_version)
-
-                prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
-                results = [prediction[k] for k in sorted(prediction.keys())
-                           if k.startswith('prediction')]
-
-                if len(results) == 1:
-                    results = results[0]
-
-                retrying = False
-
-                finished = timeit.default_timer() - start
-                self.update_key(self._redis_hash, {
-                    'prediction_time': finished,
-                    'predict_retries': count,
-                })
-                self.logger.debug('Segmented key %s (model %s:%s, '
-                                  'preprocessing: %s, postprocessing: %s)'
-                                  ' (%s retries) in %s seconds.',
-                                  self._redis_hash, model_name, model_version,
-                                  self._redis_values.get('preprocess_function'),
-                                  self._redis_values.get('postprocess_function'),
-                                  count, finished)
-                return results
-            except grpc.RpcError as err:
-                # pylint: disable=E1101
-                if err.code() in settings.GRPC_RETRY_STATUSES:
-                    count += 1
-                    # write update to Redis
-                    temp_status = 'retry-predicting - {} - {}'.format(
-                        count, err.code().name)
-                    self.update_key(self._redis_hash, {
-                        'status': temp_status,
-                        'predict_retries': count,
-                    })
-                    self.logger.warning('%sException `%s: %s` during '
-                                        'PredictClient request to model %s:%s.'
-                                        ' Waiting %s seconds before retrying.',
-                                        type(err).__name__, err.code().name,
-                                        err.details(), model_name,
-                                        model_version, settings.GRPC_BACKOFF)
-                    time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
-                    retrying = True  # Unneccessary but explicit
-                else:
-                    retrying = False
-                    raise err
-            except Exception as err:
-                retrying = False
-                self.logger.error('Encountered %s during tf-serving request to '
-                                  'model %s:%s: %s', type(err).__name__,
-                                  model_name, model_version, err)
-                raise err
-
-    def detect_scale(self, image):
-        start = timeit.default_timer()
-        # Rescale image for compatibility with scale model
-        image = np.expand_dims(image, axis=0)
-        if (image.shape[1] >= 216) and (image.shape[2] >= 216):
-            image, _ = utils.reshape_matrix(image, image, reshape_size=216)
-
-        # Loop over each image in the batch dimension for scale prediction
-        Lscale = []
-        for i in range(0, image.shape[0], settings.SCALE_DETECT_SAMPLE):
-            Lscale.append(self.grpc_image(image[i], settings.SCALE_DETECT_MODEL_NAME,
-                                          settings.SCALE_DETECT_MODEL_VERSION))
-
-        self.logger.debug('Scale detection complete in %s seconds', timeit.default_timer() - start)
-        return np.mean(Lscale)
-
-    def detect_label(self, image):
-        start = timeit.default_timer()
-        # Rescale for model compatibility
-        image = np.expand_dims(image, axis=0)
-        if (image.shape[1] >= 216) and (image.shape[2] >= 216):
-            image, _ = utils.reshape_matrix(image, image, reshape_size=216)
-
-        # Loop over each image in batch
-        Llabel = []
-        for i in range(0, image.shape[0], settings.LABEL_DETECT_SAMPLE):
-            Llabel.append(self.grpc_image(image[i], settings.LABEL_DETECT_MODEL_NAME,
-                                          settings.LABEL_DETECT_MODEL_VERSION))
-
-        Llabel = np.array(Llabel)
-        vote = Llabel.sum(axis=0)
-        maj = vote.max()
-
-        self.logger.debug('Label detection complete %s seconds', timeit.default_timer() - start)
-        return np.where(vote == maj)[0][0]
-
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
@@ -621,7 +664,6 @@ class ImageFileConsumer(Consumer):
             })
 
             # Calculate scale of image and rescale
-            # Check if scale is already calculated
             scale = hvals.get('scale', None)
             if scale is None:
                 # Detect scale of image
@@ -643,18 +685,8 @@ class ImageFileConsumer(Consumer):
                 self.logger.debug('Image label already calculated: %s', label)
             label = int(label)
 
-            # Identify appropriate model for label type
-            if label == 0:
-                model_name = settings.NUCLEAR_MODEL_NAME
-                model_version = settings.NUCLEAR_MODEL_VERSION
-            elif label == 1:
-                model_name = settings.PHASE_MODEL_NAME
-                model_version = settings.PHASE_MODEL_VERSION
-            elif label == 2:
-                model_name = settings.CYTOPLASM_MODEL_NAME
-                model_version = settings.CYTOPLASM_MODEL_VERSION
-            else:
-                self.logger.error('Label type %s is not supported', label)
+            # Grap appropriate model
+            model_name, model_version = self._pick_model(label)
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
             image = self.preprocess(image, pre_funcs, True)
@@ -980,7 +1012,7 @@ class ZipFileConsumer(Consumer):
                 self._cleanup(redis_hash, children, done, failed)
 
 
-class TrackingConsumer(Consumer):
+class TrackingConsumer(TensorFlowServingConsumer):
     """Consumes some unspecified file format, tracks the images,
        and uploads the results
     """
@@ -999,88 +1031,6 @@ class TrackingConsumer(Consumer):
         self.logger.debug('Got key %s and decided %s', redis_hash, valid_file)
 
         return valid_file
-
-    def _get_predict_client(self, model_name, model_version):
-        t = timeit.default_timer()
-        hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
-        client = PredictClient(hostname, model_name, int(model_version))
-        self.logger.debug('Created the PredictClient in %s seconds.',
-                          timeit.default_timer() - t)
-        return client
-
-    def grpc_image(self, img, model_name, model_version):
-        count = 0
-        start = timeit.default_timer()
-        self.logger.debug('Predicting image of shape %s with model %s:%s',
-                          img.shape, model_name, model_version)
-        retrying = True
-        while retrying:
-            try:
-                floatx = settings.TF_TENSOR_DTYPE
-                if 'f16' in model_name:
-                    floatx = 'DT_HALF'
-                    # TODO: seems like should cast to "half"
-                    # but the model rejects the type, wants "int" or "long"
-                    img = img.astype('int')
-
-                req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
-                             'in_tensor_dtype': floatx,
-                             'data': np.expand_dims(img, axis=0)}]
-
-                client = self._get_predict_client(model_name, model_version)
-
-                prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
-                results = [prediction[k] for k in sorted(prediction.keys())
-                           if k.startswith('prediction')]
-
-                if len(results) == 1:
-                    results = results[0]
-
-                retrying = False
-
-                finished = timeit.default_timer() - start
-                self.logger.debug('Predicting (model %s:%s, '
-                                  ' (%s retries) in %s seconds.',
-                                  model_name, model_version,
-                                  count, finished)
-                return results
-            except grpc.RpcError as err:
-                # pylint: disable=E1101
-                if err.code() in settings.GRPC_RETRY_STATUSES:
-                    count += 1
-                    self.logger.warning('%sException `%s: %s` during '
-                                        'PredictClient request to model %s:%s.'
-                                        ' Waiting %s seconds before retrying.',
-                                        type(err).__name__, err.code().name,
-                                        err.details(), model_name,
-                                        model_version, settings.GRPC_BACKOFF)
-                    time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
-                    retrying = True  # Unneccessary but explicit
-                else:
-                    retrying = False
-                    raise err
-            except Exception as err:
-                retrying = False
-                self.logger.error('Encountered %s during tf-serving request to '
-                                  'model %s:%s: %s', type(err).__name__,
-                                  model_name, model_version, err)
-                raise err
-
-    def detect_scale(self, image):
-        start = timeit.default_timer()
-        # Rescale image for compatibility with scale model
-        image = np.expand_dims(image, axis=-1)
-        if (image.shape[1]>=216) and (image.shape[2]>=216):
-            image, _ = utils.reshape_matrix(image, image, reshape_size=216)
-
-        # Loop over each image in the batch dimension for scale prediction
-        Lscale = []
-        for i in range(0, image.shape[0], settings.SCALE_DETECT_SAMPLE):
-            Lscale.append(self.grpc_image(image[i], settings.SCALE_DETECT_MODEL_NAME,
-                                          settings.SCALE_DETECT_MODEL_VERSION))
-        self.logger.debug(Lscale)
-        self.logger.debug('Scale detection complete in %s seconds', timeit.default_timer() - start)
-        return np.mean(Lscale)
 
     def _get_model(self, redis_hash, hvalues):
         hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
@@ -1151,6 +1101,12 @@ class TrackingConsumer(Consumer):
         self.scale = self.detect_scale(tiff_stack)
         self.logger.debug('Image scale detected: %s', self.scale)
 
+        # Predict label type
+        label = self.detect_label(tiff_stack)
+
+        # Grap appropriate model
+        model_name, model_version = self._pick_model(label)
+
         num_frames = len(tiff_stack)
         hash_to_frame = {}
         remaining_hashes = set()
@@ -1176,15 +1132,16 @@ class TrackingConsumer(Consumer):
                     'identity_upload': self.hostname,
                     'input_file_name': upload_file_name,
                     'original_name': segment_fname,
-                    'model_name': settings.MODEL_NAME,
-                    'model_version': settings.MODEL_VERSION,
+                    'model_name': model_name,
+                    'model_version': model_version,
                     'postprocess_function': settings.POSTPROCESS_FUNCTION,
                     'cuts': settings.CUTS,
                     'status': 'new',
                     'created_at': current_timestamp,
                     'updated_at': current_timestamp,
                     'url': upload_file_url,
-                    'scale': self.scale
+                    'scale': self.scale,
+                    'label': str(label)
                 }
 
                 self.logger.debug("Setting %s", frame_hvalues)
