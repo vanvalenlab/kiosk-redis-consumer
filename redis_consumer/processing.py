@@ -305,7 +305,7 @@ def retinanet_to_label_image(retinanet_outputs,
             # Remove misshapen watershed cells
             props = regionprops(segments_semantic)
             for prop in props:
-                if prop.perimeter ** 2/prop.area > perimeter_area_threshold*4*np.pi:
+                if prop.perimeter ** 2 / prop.area > perimeter_area_threshold * 4 * np.pi:
                     segments_semantic[segments_semantic == prop.label] = 0
 
             masks_semantic = np.zeros((np.amax(segments_semantic).astype(int),
