@@ -243,7 +243,7 @@ class TensorFlowServingConsumer(Consumer):
         hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
         client = PredictClient(hostname, model_name, int(model_version))
         self.logger.debug('Created the PredictClient in %s seconds.',
-                            timeit.default_timer() - t)
+                        timeit.default_timer() - t)
         return client
 
     def grpc_image(self, img, model_name, model_version):
@@ -365,7 +365,7 @@ class TensorFlowServingConsumer(Consumer):
             if tf_results is None:
                 tf_results = np.zeros(list(img.shape)[:-1] + [resp.shape[-1]])
                 self.logger.debug('Initialized output tensor of shape %s',
-                                    tf_results.shape)
+                                tf_results.shape)
 
             tf_results[..., a:b, c:d, :] = resp[..., winx:-winx, winy:-winy, :]
 
@@ -417,6 +417,8 @@ class TensorFlowServingConsumer(Consumer):
 
     def _pick_model(self, label):
         # Identify appropriate model for label type
+        model_name, model_version = None, None
+
         if label == 0:
             model_name = settings.NUCLEAR_MODEL_NAME
             model_version = settings.NUCLEAR_MODEL_VERSION
