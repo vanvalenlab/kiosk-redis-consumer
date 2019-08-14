@@ -35,7 +35,7 @@ import pytest
 import tarfile
 import tempfile
 import zipfile
-from tensorflow.python.platform import test
+from unittest import TestCase
 
 from keras_preprocessing.image import array_to_img
 from skimage.external import tifffile as tiff
@@ -274,7 +274,7 @@ def test_zip_files():
             zip_path = utils.zip_files(paths, bad_dest, prefix)
 
 
-class TestDataUtils(test.TestCase):
+class TestDataUtils(TestCase):
 
     def test_reshape_matrix(self):
         # K.set_image_data_format('channels_last')
@@ -318,7 +318,7 @@ class TestDataUtils(test.TestCase):
         new_size = 4
 
         # test resize to smaller image, divisible
-        new_X, new_y = utils.reshape_matrix(X, y, new_size)
+        new_X, new_y = utils.reshape_matrix(X, y, new_size, is_channels_first=True)
         new_batch = np.ceil(16 / new_size) ** 2
         self.assertEqual(new_X.shape, (new_batch, 3, new_size, new_size))
         self.assertEqual(new_y.shape, (new_batch, 1, new_size, new_size))
@@ -326,6 +326,6 @@ class TestDataUtils(test.TestCase):
         # test reshape with non-divisible values.
         new_size = 5
         new_batch = np.ceil(16 / new_size) ** 2
-        new_X, new_y = utils.reshape_matrix(X, y, new_size)
+        new_X, new_y = utils.reshape_matrix(X, y, new_size, is_channels_first=True)
         self.assertEqual(new_X.shape, (new_batch, 3, new_size, new_size))
         self.assertEqual(new_y.shape, (new_batch, 1, new_size, new_size))

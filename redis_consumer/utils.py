@@ -353,7 +353,7 @@ def zip_files(files, dest=None, prefix=None):
     return filepath
 
 
-def reshape_matrix(X, y, reshape_size=256):
+def reshape_matrix(X, y, reshape_size=256, is_channels_first=False):
     """
     Reshape matrix of dimension 4 to have x and y of size reshape_size.
     Adds overlapping slices to batches.
@@ -363,11 +363,11 @@ def reshape_matrix(X, y, reshape_size=256):
         X: raw 4D image tensor
         y: label mask of 4D image data
         reshape_size: size of the square output tensor
+        is_channels_first: default False for channel dimension last
 
     Returns:
         reshaped `X` and `y` tensors in shape (`reshape_size`, `reshape_size`)
     """
-    is_channels_first = False  # K.image_data_format() == 'channels_first'
     if X.ndim != 4:
         raise ValueError('reshape_matrix expects X dim to be 4, got', X.ndim)
     elif y.ndim != 4:
