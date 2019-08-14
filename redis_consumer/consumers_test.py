@@ -362,7 +362,7 @@ class TestTensorFlowServingConsumer(object):
         field = 11
         cuts = 2
 
-        img = np.expand_dims(_get_image(300, 300), axis=-1)
+        img = np.expand_dims(_get_image(100, 100), axis=-1)
         img = np.expand_dims(img, axis=0)
 
         redis_client = None
