@@ -35,6 +35,7 @@ import pytest
 import tarfile
 import tempfile
 import zipfile
+from tensorflow.python.platform import test
 
 from keras_preprocessing.image import array_to_img
 from skimage.external import tifffile as tiff
@@ -273,56 +274,58 @@ def test_zip_files():
             zip_path = utils.zip_files(paths, bad_dest, prefix)
 
 
-def test_reshape_matrix(self):
-    # K.set_image_data_format('channels_last')
-    X = np.zeros((1, 16, 16, 3))
-    y = np.zeros((1, 16, 16, 1))
-    new_size = 4
+class TestDataUtils(test.TestCase):
 
-    # test resize to smaller image, divisible
-    new_X, new_y = data_utils.reshape_matrix(X, y, new_size)
-    new_batch = np.ceil(16 / new_size) ** 2
-    self.assertEqual(new_X.shape, (new_batch, new_size, new_size, 3))
-    self.assertEqual(new_y.shape, (new_batch, new_size, new_size, 1))
+    def test_reshape_matrix(self):
+        # K.set_image_data_format('channels_last')
+        X = np.zeros((1, 16, 16, 3))
+        y = np.zeros((1, 16, 16, 1))
+        new_size = 4
 
-    # test reshape with non-divisible values.
-    new_size = 5
-    new_batch = np.ceil(16 / new_size) ** 2
-    new_X, new_y = data_utils.reshape_matrix(X, y, new_size)
-    self.assertEqual(new_X.shape, (new_batch, new_size, new_size, 3))
-    self.assertEqual(new_y.shape, (new_batch, new_size, new_size, 1))
+        # test resize to smaller image, divisible
+        new_X, new_y = utils.reshape_matrix(X, y, new_size)
+        new_batch = np.ceil(16 / new_size) ** 2
+        self.assertEqual(new_X.shape, (new_batch, new_size, new_size, 3))
+        self.assertEqual(new_y.shape, (new_batch, new_size, new_size, 1))
 
-    # test reshape to bigger size
-    with self.assertRaises(ValueError):
-        new_X, new_y = data_utils.reshape_matrix(X, y, 32)
+        # test reshape with non-divisible values.
+        new_size = 5
+        new_batch = np.ceil(16 / new_size) ** 2
+        new_X, new_y = utils.reshape_matrix(X, y, new_size)
+        self.assertEqual(new_X.shape, (new_batch, new_size, new_size, 3))
+        self.assertEqual(new_y.shape, (new_batch, new_size, new_size, 1))
 
-    # test wrong dimensions
-    bigger = np.zeros((1, 16, 16, 3, 1))
-    smaller = np.zeros((1, 16, 16))
-    with self.assertRaises(ValueError):
-        new_X, new_y = data_utils.reshape_matrix(smaller, y, new_size)
-    with self.assertRaises(ValueError):
-        new_X, new_y = data_utils.reshape_matrix(bigger, y, new_size)
-    with self.assertRaises(ValueError):
-        new_X, new_y = data_utils.reshape_matrix(X, smaller, new_size)
-    with self.assertRaises(ValueError):
-        new_X, new_y = data_utils.reshape_matrix(X, bigger, new_size)
+        # test reshape to bigger size
+        with self.assertRaises(ValueError):
+            new_X, new_y = utils.reshape_matrix(X, y, 32)
 
-    # channels_first
-    # K.set_image_data_format('channels_first')
-    X = np.zeros((1, 3, 16, 16))
-    y = np.zeros((1, 1, 16, 16))
-    new_size = 4
+        # test wrong dimensions
+        bigger = np.zeros((1, 16, 16, 3, 1))
+        smaller = np.zeros((1, 16, 16))
+        with self.assertRaises(ValueError):
+            new_X, new_y = utils.reshape_matrix(smaller, y, new_size)
+        with self.assertRaises(ValueError):
+            new_X, new_y = utils.reshape_matrix(bigger, y, new_size)
+        with self.assertRaises(ValueError):
+            new_X, new_y = utils.reshape_matrix(X, smaller, new_size)
+        with self.assertRaises(ValueError):
+            new_X, new_y = utils.reshape_matrix(X, bigger, new_size)
 
-    # test resize to smaller image, divisible
-    new_X, new_y = data_utils.reshape_matrix(X, y, new_size)
-    new_batch = np.ceil(16 / new_size) ** 2
-    self.assertEqual(new_X.shape, (new_batch, 3, new_size, new_size))
-    self.assertEqual(new_y.shape, (new_batch, 1, new_size, new_size))
+        # channels_first
+        # K.set_image_data_format('channels_first')
+        X = np.zeros((1, 3, 16, 16))
+        y = np.zeros((1, 1, 16, 16))
+        new_size = 4
 
-    # test reshape with non-divisible values.
-    new_size = 5
-    new_batch = np.ceil(16 / new_size) ** 2
-    new_X, new_y = data_utils.reshape_matrix(X, y, new_size)
-    self.assertEqual(new_X.shape, (new_batch, 3, new_size, new_size))
-    self.assertEqual(new_y.shape, (new_batch, 1, new_size, new_size))
+        # test resize to smaller image, divisible
+        new_X, new_y = utils.reshape_matrix(X, y, new_size)
+        new_batch = np.ceil(16 / new_size) ** 2
+        self.assertEqual(new_X.shape, (new_batch, 3, new_size, new_size))
+        self.assertEqual(new_y.shape, (new_batch, 1, new_size, new_size))
+
+        # test reshape with non-divisible values.
+        new_size = 5
+        new_batch = np.ceil(16 / new_size) ** 2
+        new_X, new_y = utils.reshape_matrix(X, y, new_size)
+        self.assertEqual(new_X.shape, (new_batch, 3, new_size, new_size))
+        self.assertEqual(new_y.shape, (new_batch, 1, new_size, new_size))
