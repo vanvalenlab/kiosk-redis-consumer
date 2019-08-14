@@ -329,6 +329,52 @@ class TestConsumer(object):
             consumer._consume('predict:new:hash.tiff')
 
 
+class TestTensorFlowServingConsumer(object):
+
+    def test__get_predict_client(self):
+        redis_client = DummyRedis([])
+        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+
+        with pytest.raises(ValueError):
+            consumer._get_predict_client('model_name', 'model_version')
+
+        client = consumer._get_predict_client('model_name', 1)
+
+    def test_grpc_image(self):
+        redis_client = DummyRedis([])
+        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+
+        def _get_predict_client(model_name, model_version):
+            return Bunch(predict=lambda x, y: {
+                'prediction': x[0]['data']
+            })
+
+        consumer._get_predict_client = _get_predict_client
+
+        img = np.zeros((1, 32, 32, 3))
+        out = consumer.grpc_image(img, 'f16model', 1)
+        assert img.shape == out.shape[1:]
+        assert img.sum() == out.sum()
+
+    def test_process_big_image(self):
+        name = 'model'
+        version = 0
+        field = 11
+        cuts = 2
+
+        img = np.expand_dims(_get_image(300, 300), axis=-1)
+        img = np.expand_dims(img, axis=0)
+
+        redis_client = None
+        storage = None
+        consumer = consumers.TensorFlowServingConsumer(redis_client, storage, 'predict')
+
+        # image should be chopped into cuts**2 pieces and reassembled
+        consumer.grpc_image = lambda x, y, z: x
+        res = consumer.process_big_image(cuts, img, field, name, version)
+        np.testing.assert_equal(res, img)
+
+
 class TestImageFileConsumer(object):
 
     def test_is_valid_hash(self):
@@ -378,49 +424,6 @@ class TestImageFileConsumer(object):
         consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
         output = consumer.process(img, 'valid', 'valid')
         assert img.shape[1:] == output.shape
-
-    def test__get_predict_client(self):
-        redis_client = DummyRedis([])
-        consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
-
-        with pytest.raises(ValueError):
-            consumer._get_predict_client('model_name', 'model_version')
-
-        client = consumer._get_predict_client('model_name', 1)
-
-    def test_grpc_image(self):
-        redis_client = DummyRedis([])
-        consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
-
-        def _get_predict_client(model_name, model_version):
-            return Bunch(predict=lambda x, y: {
-                'prediction': x[0]['data']
-            })
-
-        consumer._get_predict_client = _get_predict_client
-
-        img = np.zeros((1, 32, 32, 3))
-        out = consumer.grpc_image(img, 'f16model', 1)
-        assert img.shape == out.shape[1:]
-        assert img.sum() == out.sum()
-
-    def test_process_big_image(self):
-        name = 'model'
-        version = 0
-        field = 11
-        cuts = 2
-
-        img = np.expand_dims(_get_image(300, 300), axis=-1)
-        img = np.expand_dims(img, axis=0)
-
-        redis_client = None
-        storage = None
-        consumer = consumers.ImageFileConsumer(redis_client, storage, 'predict')
-
-        # image should be chopped into cuts**2 pieces and reassembled
-        consumer.grpc_image = lambda x, y, z: x
-        res = consumer.process_big_image(cuts, img, field, name, version)
-        np.testing.assert_equal(res, img)
 
     def test__consume(self):
         prefix = 'predict'
