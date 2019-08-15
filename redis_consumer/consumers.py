@@ -921,7 +921,7 @@ class ZipFileConsumer(Consumer):
             })
             return next_status
 
-        elif status == 'waiting':
+        if status == 'waiting':
             # this key was previously processed by a ZipConsumer
             # check to see which child keys have already been processed
             children = set(hvals.get('children', '').split(key_separator))
@@ -951,7 +951,9 @@ class ZipFileConsumer(Consumer):
             if not remaining_children:
                 self._cleanup(redis_hash, children, done, failed)
                 return self.final_status
+
             return status
+
         self.logger.error('Found strange status for key `%s`: %s.',
                           redis_hash, status)
         return status
