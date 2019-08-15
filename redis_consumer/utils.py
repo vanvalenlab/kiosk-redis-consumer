@@ -51,6 +51,7 @@ import PIL
 from redis_consumer.pbs.types_pb2 import DESCRIPTOR
 from redis_consumer.pbs.tensor_pb2 import TensorProto
 from redis_consumer.pbs.tensor_shape_pb2 import TensorShapeProto
+from redis_consumer import settings
 
 
 logger = logging.getLogger('redis_consumer.utils')
@@ -427,9 +428,9 @@ def rescale(image, scale):
 
 
 def _pick_model(label):
-
-    model = settings.MODEL_CHOICES.get(label, None)
+    model = settings.MODEL_CHOICES.get(label)
     if model is None:
-        self.logger.error('Label type %s is not supported', label)
+        logger.error('Label type %s is not supported', label)
+        raise ValueError('Label type {} is not supported'.format(label))
 
     return model.split(':')
