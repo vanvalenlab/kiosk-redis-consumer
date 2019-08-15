@@ -820,6 +820,7 @@ class ZipFileConsumer(Consumer):
         return url_encode(failed_hashes)
 
     def _cleanup(self, redis_hash, children, done, failed):
+        start = timeit.default_timer()
         # get summary data for all finished children
         summary_fields = [
             # 'created_at',
@@ -855,12 +856,15 @@ class ZipFileConsumer(Consumer):
 
         failures = self._parse_failures(failed)
 
+        t = timeit.default_timer() - start
+
         summaries.update({
             'status': self.final_status,
             'finished_at': self.get_current_timestamp(),
             'output_url': output_url,
             'failures': failures,
             'total_jobs': len(children),
+            'cleanup_time': t,
             'output_file_name': output_file_name
         })
 
@@ -873,6 +877,7 @@ class ZipFileConsumer(Consumer):
 
         self.logger.debug('All %s child keys will be expiring in %s '
                           'seconds.', len(children), expire_time)
+        self.logger.debug('Cleaned up results in %s seconds.', t)
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
@@ -927,11 +932,6 @@ class ZipFileConsumer(Consumer):
 
             if not remaining_children:
                 self._cleanup(redis_hash, children, done, failed)
-                t = timeit.default_timer() - start
-                self.logger.debug('Cleaned up results in %s seconds.', t)
-                self.update_key(redis_hash, {
-                    'cleanup_time': t,
-                })
 
 
 class TrackingConsumer(Consumer):
