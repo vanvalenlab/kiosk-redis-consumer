@@ -215,7 +215,6 @@ def retinanet_to_label_image(retinanet_outputs,
 
     # Iterate over batches
     for i in range(boxes_batch.shape[0]):
-        print(i)
         boxes = boxes_batch[i]
         scores = scores_batch[i]
         labels = labels_batch[i]

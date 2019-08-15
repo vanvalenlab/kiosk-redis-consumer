@@ -424,3 +424,12 @@ def rescale(image, scale):
         preserve_range=True,
         order=0
     )
+
+
+def _pick_model(label):
+
+    model = settings.MODEL_CHOICES.get(label, None)
+    if model is None:
+        self.logger.error('Label type %s is not supported', label)
+
+    return model.split(':')

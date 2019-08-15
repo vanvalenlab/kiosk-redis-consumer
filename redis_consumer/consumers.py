@@ -221,7 +221,7 @@ class Consumer(object):
 
 
 class TensorFlowServingConsumer(Consumer):
-    '''Adds tf-serving basic functionality for predict calls'''
+    """Adds tf-serving basic functionality for predict calls"""
 
     def __init__(self,
                  redis_client,
@@ -375,6 +375,11 @@ class TensorFlowServingConsumer(Consumer):
 
     def detect_scale(self, image):
         start = timeit.default_timer()
+
+        if settings.SCALE_DETECT_ENABLED is False:
+            self.logger.debug('Scale detection disabled. Scale set to 1.')
+            return 1
+
         # Rescale image for compatibility with scale model
         if image.shape[-1] == 1:
             image = np.expand_dims(image, axis=0)
@@ -383,14 +388,15 @@ class TensorFlowServingConsumer(Consumer):
         if (image.shape[1] >= 216) and (image.shape[2] >= 216):
             image, _ = utils.reshape_matrix(image, image, reshape_size=216)
 
+        model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
+
         # Loop over each image in the batch dimension for scale prediction
-        Lscale = []
+        scales = []
         for i in range(0, image.shape[0], settings.SCALE_DETECT_SAMPLE):
-            Lscale.append(self.grpc_image(image[i], settings.SCALE_DETECT_MODEL_NAME,
-                                          settings.SCALE_DETECT_MODEL_VERSION))
+            scales.append(self.grpc_image(image[i], model_name, model_version))
 
         self.logger.debug('Scale detection complete in %s seconds', timeit.default_timer() - start)
-        return np.mean(Lscale)
+        return np.mean(scales)
 
     def detect_label(self, image):
         start = timeit.default_timer()
@@ -402,36 +408,19 @@ class TensorFlowServingConsumer(Consumer):
         if (image.shape[1] >= 216) and (image.shape[2] >= 216):
             image, _ = utils.reshape_matrix(image, image, reshape_size=216)
 
-        # Loop over each image in batch
-        Llabel = []
-        for i in range(0, image.shape[0], settings.LABEL_DETECT_SAMPLE):
-            Llabel.append(self.grpc_image(image[i], settings.LABEL_DETECT_MODEL_NAME,
-                                          settings.LABEL_DETECT_MODEL_VERSION))
+        model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
 
-        Llabel = np.array(Llabel)
-        vote = Llabel.sum(axis=0)
+        # Loop over each image in batch
+        labels = []
+        for i in range(0, image.shape[0], settings.LABEL_DETECT_SAMPLE):
+            labels.append(self.grpc_image(image[i], model_name, model_version))
+
+        labels = np.array(labels)
+        vote = labels.sum(axis=0)
         maj = vote.max()
 
         self.logger.debug('Label detection complete %s seconds', timeit.default_timer() - start)
         return np.where(vote == maj)[0][0]
-
-    def _pick_model(self, label):
-        # Identify appropriate model for label type
-        model_name, model_version = None, None
-
-        if label == 0:
-            model_name = settings.NUCLEAR_MODEL_NAME
-            model_version = settings.NUCLEAR_MODEL_VERSION
-        elif label == 1:
-            model_name = settings.PHASE_MODEL_NAME
-            model_version = settings.PHASE_MODEL_VERSION
-        elif label == 2:
-            model_name = settings.CYTOPLASM_MODEL_NAME
-            model_version = settings.CYTOPLASM_MODEL_VERSION
-        else:
-            self.logger.error('Label type %s is not supported', label)
-
-        return model_name, model_version
 
 
 class ImageFileConsumer(TensorFlowServingConsumer):
@@ -688,7 +677,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             label = int(label)
 
             # Grap appropriate model
-            model_name, model_version = self._pick_model(label)
+            model_name, model_version = utils._pick_model(label)
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
             image = self.preprocess(image, pre_funcs, True)
@@ -1107,7 +1096,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
         label = self.detect_label(tiff_stack)
 
         # Grap appropriate model
-        model_name, model_version = self._pick_model(label)
+        model_name, model_version = utils._pick_model(label)
 
         num_frames = len(tiff_stack)
         hash_to_frame = {}

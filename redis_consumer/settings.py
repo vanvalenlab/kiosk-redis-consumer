@@ -143,19 +143,21 @@ DEATH = config('DEATH', default=0.95)
 NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30)
 
 # Scale detection settings
-SCALE_DETECT_MODEL_NAME = config("SCALE_DETECT_MODEL_NAME", default="ScaleDetection")
-SCALE_DETECT_MODEL_VERSION = config("SCALE_DETECT_MODEL_VERSION", default=0)
+SCALE_DETECT_MODEL = config("SCALE_DETECT_MODEL", default="ScaleDetection:0")
 SCALE_DETECT_SAMPLE = config("SCALE_DETECT_SAMPLE", default=3)
+SCALE_DETECT_ENABLED = config("SCALE_DETECT_ENABLED", default=True)
 
 # Type detection settings
-LABEL_DETECT_MODEL_NAME = config("LABEL_DETECT_MODEL_NAME", default="LabelDetection")
-LABEL_DETECT_MODEL_VERSION = config("LABEL_DETECT_MODEL_VERSION", default=0)
+LABEL_DETECT_MODEL = config("LABEL_DETECT_MODEL", default="LabelDetection:0")
 LABEL_DETECT_SAMPLE = config("LABEL_DETECT_SAMPLE", default=3)
 
 # Set default models based on label type
-PHASE_MODEL_NAME = config("PHASE_MODEL_NAME", default='panoptic')
-PHASE_MODEL_VERSION = config("PHASE_MODEL_VERSION", default=1)
-CYTOPLASM_MODEL_NAME = config("CYTOPLASM_MODEL_NAME", default='panoptic')
-CYTOPLASM_MODEL_VERSION = config("CYTOPLASM_MODEL_VERSION", default=1)
-NUCLEAR_MODEL_NAME = config("NUCLEAR_MODEL_NAME", default='panoptic')
-NUCLEAR_MODEL_VERSION = config("NUCLEAR_MODEL_VERSION", default=1)
+PHASE_MODEL = config("PHASE_MODEL", default='panoptic:3')
+CYTOPLASM_MODEL = config("CYTOPLASM_MODEL", default='panoptic:3')
+NUCLEAR_MODEL = config("NUCLEAR_MODEL", default='panoptic:3')
+
+MODEL_CHOICES = {
+    0: NUCLEAR_MODEL,
+    1: PHASE_MODEL,
+    2: CYTOPLASM_MODEL
+}
