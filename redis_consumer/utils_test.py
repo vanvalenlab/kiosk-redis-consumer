@@ -273,14 +273,14 @@ def test_zip_files():
             zip_path = utils.zip_files(paths, bad_dest, prefix)
 
 
-def test_reshape_matrix(self):
+def test_reshape_matrix():
     # K.set_image_data_format('channels_last')
     X = np.zeros((1, 16, 16, 3))
     y = np.zeros((1, 16, 16, 1))
     new_size = 4
 
     # test resize to smaller image, divisible
-    new_X, new_y = data_utils.reshape_matrix(X, y, new_size)
+    new_X, new_y = utils.reshape_matrix(X, y, new_size)
     new_batch = np.ceil(16 / new_size) ** 2
     assert new_X.shape == (new_batch, new_size, new_size, 3)
     assert new_y.shape == (new_batch, new_size, new_size, 1)
@@ -288,25 +288,25 @@ def test_reshape_matrix(self):
     # test reshape with non-divisible values.
     new_size = 5
     new_batch = np.ceil(16 / new_size) ** 2
-    new_X, new_y = data_utils.reshape_matrix(X, y, new_size)
+    new_X, new_y = utils.reshape_matrix(X, y, new_size)
     assert new_X.shape == (new_batch, new_size, new_size, 3)
     assert new_y.shape == (new_batch, new_size, new_size, 1)
 
     # test reshape to bigger size
     with pytest.raises(ValueError):
-        new_X, new_y = data_utils.reshape_matrix(X, y, 32)
+        new_X, new_y = utils.reshape_matrix(X, y, 32)
 
     # test wrong dimensions
     bigger = np.zeros((1, 16, 16, 3, 1))
     smaller = np.zeros((1, 16, 16))
     with pytest.raises(ValueError):
-        new_X, new_y = data_utils.reshape_matrix(smaller, y, new_size)
+        new_X, new_y = utils.reshape_matrix(smaller, y, new_size)
     with pytest.raises(ValueError):
-        new_X, new_y = data_utils.reshape_matrix(bigger, y, new_size)
+        new_X, new_y = utils.reshape_matrix(bigger, y, new_size)
     with pytest.raises(ValueError):
-        new_X, new_y = data_utils.reshape_matrix(X, smaller, new_size)
+        new_X, new_y = utils.reshape_matrix(X, smaller, new_size)
     with pytest.raises(ValueError):
-        new_X, new_y = data_utils.reshape_matrix(X, bigger, new_size)
+        new_X, new_y = utils.reshape_matrix(X, bigger, new_size)
 
     # channels_first
     # K.set_image_data_format('channels_first')
@@ -315,7 +315,7 @@ def test_reshape_matrix(self):
     new_size = 4
 
     # test resize to smaller image, divisible
-    new_X, new_y = data_utils.reshape_matrix(X, y, new_size)
+    new_X, new_y = utils.reshape_matrix(X, y, new_size, True)
     new_batch = np.ceil(16 / new_size) ** 2
     assert new_X.shape == (new_batch, 3, new_size, new_size)
     assert new_y.shape == (new_batch, 1, new_size, new_size)
@@ -323,6 +323,6 @@ def test_reshape_matrix(self):
     # test reshape with non-divisible values.
     new_size = 5
     new_batch = np.ceil(16 / new_size) ** 2
-    new_X, new_y = data_utils.reshape_matrix(X, y, new_size)
+    new_X, new_y = utils.reshape_matrix(X, y, new_size, True)
     assert new_X.shape == (new_batch, 3, new_size, new_size)
     assert new_y.shape == (new_batch, 1, new_size, new_size)
