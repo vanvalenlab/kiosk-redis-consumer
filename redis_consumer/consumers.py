@@ -420,7 +420,7 @@ class TensorFlowServingConsumer(Consumer):
         maj = vote.max()
 
         self.logger.debug('Label detection complete %s seconds', timeit.default_timer() - start)
-        return np.where(vote == maj)[0][0]
+        return np.where(vote == maj)[-1][0]
 
 
 class ImageFileConsumer(TensorFlowServingConsumer):
