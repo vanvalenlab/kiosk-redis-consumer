@@ -188,6 +188,7 @@ class Consumer(object):
             except Exception as err:  # pylint: disable=broad-except
                 # log the error and update redis with details
                 self._handle_error(err, redis_hash)
+                status = self.failed_status
 
             if status == self.final_status:
                 required_fields = [
