@@ -184,22 +184,20 @@ class Consumer(object):
 
         if redis_hash is not None:  # popped something off the queue
             try:
-                self._consume(redis_hash)
+                status = self._consume(redis_hash)
             except Exception as err:  # pylint: disable=broad-except
                 # log the error and update redis with details
                 self._handle_error(err, redis_hash)
 
-            required_fields = [
-                'status',
-                'model_name',
-                'model_version',
-                'preprocess_function',
-                'postprocess_function',
-            ]
-
-            result = self.redis.hmget(redis_hash, *required_fields)
-            hvals = {f: v for f, v in zip(required_fields, result)}
-            if hvals.get('status') == self.final_status:
+            if status == self.final_status:
+                required_fields = [
+                    'model_name',
+                    'model_version',
+                    'preprocess_function',
+                    'postprocess_function',
+                ]
+                result = self.redis.hmget(redis_hash, *required_fields)
+                hvals = {f: v for f, v in zip(required_fields, result)}
                 self.logger.debug('Consumed key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s) '
                                   '(%s retries) in %s seconds.',
@@ -209,7 +207,7 @@ class Consumer(object):
                                   hvals.get('postprocess_function'),
                                   0, timeit.default_timer() - start)
 
-            if hvals.get('status') in self.finished_statuses:
+            if status in self.finished_statuses:
                 # this key is done. remove the key from the processing queue.
                 self.redis.lrem(self.processing_queue, 1, redis_hash)
 
@@ -639,15 +637,17 @@ class ImageFileConsumer(Consumer):
             dest, output_url = self.storage.upload(zip_file, subdir=subdir)
 
             # Update redis with the final results
+            t = timeit.default_timer() - start
             self.update_key(redis_hash, {
                 'status': self.final_status,
                 'output_url': output_url,
                 'upload_time': timeit.default_timer() - _,
                 'output_file_name': dest,
                 'total_jobs': 1,
-                'total_time': timeit.default_timer() - start,
+                'total_time': t,
                 'finished_at': self.get_current_timestamp()
             })
+        return self.final_status
 
 
 class ZipFileConsumer(Consumer):
@@ -882,6 +882,7 @@ class ZipFileConsumer(Consumer):
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
+        status = hvals.get('status')
         self.logger.debug('Found hash to process `%s` with status `%s`.',
                           redis_hash, hvals.get('status'))
 
@@ -889,7 +890,7 @@ class ZipFileConsumer(Consumer):
 
         self.update_key(redis_hash)  # refresh timestamp
 
-        if hvals.get('status') == 'new':
+        if status == 'new':
             # download the zip file, upload the contents, and enter into Redis
             all_hashes = self._upload_archived_images(hvals, redis_hash)
             self.logger.info('Uploaded %s child keys for key `%s`. Waiting for'
@@ -897,13 +898,15 @@ class ZipFileConsumer(Consumer):
 
             # Now all images have been uploaded with new redis hashes
             # Update Redis with child keys and put item back in queue
+            next_status = 'waiting'
             self.update_key(redis_hash, {
-                'status': 'waiting',
+                'status': next_status,
                 'children': key_separator.join(all_hashes),
                 'children_upload_time': timeit.default_timer() - start,
             })
+            return next_status
 
-        elif hvals.get('status') == 'waiting':
+        elif status == 'waiting':
             # this key was previously processed by a ZipConsumer
             # check to see which child keys have already been processed
             children = set(hvals.get('children', '').split(key_separator))
@@ -913,10 +916,10 @@ class ZipFileConsumer(Consumer):
             # get keys that have not yet reached a completed status
             remaining_children = children - done - failed
             for child in remaining_children:
-                status = self.redis.hget(child, 'status')
-                if status == 'failed':
+                child_status = self.redis.hget(child, 'status')
+                if child_status == self.failed_status:
                     failed.add(child)
-                elif status == self.final_status:
+                elif child_status == self.final_status:
                     done.add(child)
 
             remaining_children = children - done - failed
@@ -932,6 +935,11 @@ class ZipFileConsumer(Consumer):
 
             if not remaining_children:
                 self._cleanup(redis_hash, children, done, failed)
+                return self.final_status
+            return status
+        self.logger.error('Found strange status for key `%s`: %s.',
+                          redis_hash, status)
+        return status
 
 
 class TrackingConsumer(Consumer):
@@ -1163,3 +1171,4 @@ class TrackingConsumer(Consumer):
                 'output_file_name': output_file_name,
                 'finished_at': self.get_current_timestamp(),
             })
+        return self.final_status
