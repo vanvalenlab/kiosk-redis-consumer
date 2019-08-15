@@ -560,6 +560,12 @@ class ImageFileConsumer(Consumer):
         # hold on to the redis hash/values for logging purposes
         self._redis_hash = redis_hash
         self._redis_values = hvals
+
+        if hvals.get('status') in self.finished_statuses:
+            self.logger.warning('Found completed hash `%s` with status %s.',
+                                redis_hash, hvals.get('status'))
+            return hvals.get('status')
+
         self.logger.debug('Found hash to process `%s` with status `%s`.',
                           redis_hash, hvals.get('status'))
 
@@ -883,6 +889,12 @@ class ZipFileConsumer(Consumer):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
         status = hvals.get('status')
+
+        if status in self.finished_statuses:
+            self.logger.warning('Found completed hash `%s` with status %s.',
+                                redis_hash, hvals.get('status'))
+            return status
+
         self.logger.debug('Found hash to process `%s` with status `%s`.',
                           redis_hash, hvals.get('status'))
 
@@ -1134,6 +1146,11 @@ class TrackingConsumer(Consumer):
         hvalues = self.redis.hgetall(redis_hash)
         self.logger.debug('Found `%s:*` hash to process "%s": %s',
                           self.queue, redis_hash, json.dumps(hvalues, indent=4))
+
+        if hvalues.get('status') in self.finished_statuses:
+            self.logger.warning('Found completed hash `%s` with status %s.',
+                                redis_hash, hvalues.get('status'))
+            return hvalues.get('status')
 
         # Set status and initial progress
         self.update_key(redis_hash, {
