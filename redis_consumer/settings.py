@@ -143,7 +143,7 @@ DEATH = config('DEATH', default=0.95)
 NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30)
 
 # Scale detection settings
-SCALE_DETECT_MODEL = config("SCALE_DETECT_MODEL", default="ScaleDetection:0")
+SCALE_DETECT_MODEL = config("SCALE_DETECT_MODEL", default="ScaleDetection:2")
 SCALE_DETECT_SAMPLE = config("SCALE_DETECT_SAMPLE", default=3)
 SCALE_DETECT_ENABLED = config("SCALE_DETECT_ENABLED", default=True)
 
@@ -152,8 +152,8 @@ LABEL_DETECT_MODEL = config("LABEL_DETECT_MODEL", default="LabelDetection:0")
 LABEL_DETECT_SAMPLE = config("LABEL_DETECT_SAMPLE", default=3)
 
 # Set default models based on label type
-PHASE_MODEL = config("PHASE_MODEL", default='panoptic:3')
-CYTOPLASM_MODEL = config("CYTOPLASM_MODEL", default='panoptic:3')
+PHASE_MODEL = config("PHASE_MODEL", default='panoptic_phase:0')
+CYTOPLASM_MODEL = config("CYTOPLASM_MODEL", default='panoptic_cytoplasm:0')
 NUCLEAR_MODEL = config("NUCLEAR_MODEL", default='panoptic:3')
 
 MODEL_CHOICES = {
