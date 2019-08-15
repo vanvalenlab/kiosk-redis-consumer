@@ -442,6 +442,9 @@ class TestImageFileConsumer(object):
         def detect_scale(_):
             return 1
 
+        def detect_label(_):
+            return 0
+
         dummyhash = '{}:test.tiff:{}'.format(prefix, status)
 
         # consumer._handle_error = _handle_error
@@ -469,6 +472,7 @@ class TestImageFileConsumer(object):
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
         consumer._handle_error = _handle_error
         consumer.detect_scale = detect_scale
+        consumer.detect_label = detect_label
         consumer.grpc_image = grpc_image
         consumer._consume(dummyhash)
 
@@ -481,6 +485,7 @@ class TestImageFileConsumer(object):
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
         consumer._handle_error = _handle_error
         consumer.detect_scale = detect_scale
+        consumer.detect_label = detect_label
         consumer.grpc_image = grpc_image_list
         consumer._consume(dummyhash)
 
