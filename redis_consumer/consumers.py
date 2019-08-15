@@ -114,9 +114,11 @@ class Consumer(object):
             if self.is_valid_hash(redis_hash):
                 return redis_hash
 
-            # this invalid hash should not be processed by this consumer.
-            # remove it from processing, and push it back to the work queue.
-            self._put_back_hash(redis_hash)
+            # hash is invalid. it should not be in this queue.
+            self.logger.warning('Found invalid hash in %s: `%s` with '
+                                'hvals: %s', self.queue, redis_hash,
+                                self.redis.hgetall(redis_hash))
+            self.redis.lrem(self.processing_queue, 1, redis_hash)
 
     def _handle_error(self, err, redis_hash):
         """Update redis with failure information, and log errors.
