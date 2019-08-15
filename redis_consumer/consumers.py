@@ -67,13 +67,16 @@ class Consumer(object):
                  redis_client,
                  storage_client,
                  queue,
-                 final_status='done'):
+                 final_status='done',
+                 failed_status='failed'):
         self.output_dir = settings.OUTPUT_DIR
         self.hostname = settings.HOSTNAME
         self.redis = redis_client
         self.storage = storage_client
         self.queue = str(queue).lower()
         self.final_status = final_status
+        self.failed_status = failed_status
+        self.finished_statuses = {final_status, failed_status}
         self.logger = logging.getLogger(str(self.__class__.__name__))
         self.processing_queue = 'processing-{queue}:{name}'.format(
             queue=self.queue, name=self.hostname)
@@ -124,7 +127,7 @@ class Consumer(object):
         """
         # Update redis with failed status
         self.update_key(redis_hash, {
-            'status': 'failed',
+            'status': self.failed_status,
             'reason': logging.Formatter().formatException(sys.exc_info()),
         })
         self.logger.error('Failed to process redis key %s due to %s: %s',
@@ -206,7 +209,7 @@ class Consumer(object):
                                   hvals.get('postprocess_function'),
                                   0, timeit.default_timer() - start)
 
-            if hvals.get('status') in {self.final_status, 'failed'}:
+            if hvals.get('status') in self.finished_statuses:
                 # this key is done. remove the key from the processing queue.
                 self.redis.lrem(self.processing_queue, 1, redis_hash)
 
