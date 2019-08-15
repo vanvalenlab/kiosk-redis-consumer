@@ -430,6 +430,7 @@ class TestImageFileConsumer(object):
         status = 'new'
         redis_client = DummyRedis(prefix, status)
         storage = DummyStorage()
+
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
 
         def _handle_error(err, rhash):  # pylint: disable=W0613
@@ -438,10 +439,14 @@ class TestImageFileConsumer(object):
         def grpc_image_multi(data, *args, **kwargs):  # pylint: disable=W0613
             return np.array(tuple(list(data.shape) + [2]))
 
+        def detect_scale(_):
+            return 1
+
         dummyhash = '{}:test.tiff:{}'.format(prefix, status)
 
         # consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image_multi
+        consumer.detect_scale = detect_scale
         consumer._consume(dummyhash)
 
         # test mutli-channel
@@ -463,6 +468,7 @@ class TestImageFileConsumer(object):
         redis_client.hmset = lambda x, y: True
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
         consumer._handle_error = _handle_error
+        consumer.detect_scale = detect_scale
         consumer.grpc_image = grpc_image
         consumer._consume(dummyhash)
 
@@ -474,6 +480,7 @@ class TestImageFileConsumer(object):
         redis_client = DummyRedis(prefix, status)
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
         consumer._handle_error = _handle_error
+        consumer.detect_scale = detect_scale
         consumer.grpc_image = grpc_image_list
         consumer._consume(dummyhash)
 
