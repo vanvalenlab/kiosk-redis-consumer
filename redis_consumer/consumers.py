@@ -844,6 +844,7 @@ class ZipFileConsumer(Consumer):
 
         summaries = dict()
         for d in done:
+            # TODO: stale data may still be Null, causing missing results.
             results = self.redis.hmget(d, *summary_fields)
             for field, result in zip(summary_fields, results):
                 try:
