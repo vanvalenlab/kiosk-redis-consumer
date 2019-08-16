@@ -169,6 +169,15 @@ class DummyStorage(object):
         return True
 
 
+class DummyTracker(object):
+
+    def _track_cells(self):
+        return None
+
+    def dump(*_, **__):
+        return None
+
+
 class TestConsumer(object):
 
     def test_get_redis_hash(self):
@@ -637,13 +646,14 @@ class TestZipFileConsumer(object):
 class TestTrackingConsumer(object):
 
     def test_is_valid_hash(self):
+        queue = 'track'
         items = ['item%s' % x for x in range(1, 4)]
 
         storage = DummyStorage()
         redis_client = DummyRedis(items)
         redis_client.hget = lambda *x: x[0]
 
-        consumer = consumers.TrackingConsumer(redis_client, storage, 'track')
+        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
         assert consumer.is_valid_hash(None) is False
         assert consumer.is_valid_hash('predict:123456789:file.png') is False
         assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
@@ -654,3 +664,31 @@ class TestTrackingConsumer(object):
         assert consumer.is_valid_hash('track:1234567890:file.tiff') is True
         assert consumer.is_valid_hash('track:1234567890:file.trk') is True
         assert consumer.is_valid_hash('track:1234567890:file.trks') is True
+
+    def test__consume(self):
+        queue = 'track'
+        items = ['item%s' % x for x in range(1, 4)]
+
+        storage = DummyStorage()
+        redis_client = DummyRedis(items)
+        redis_client.hget = lambda *x: x[0]
+
+        # test short-circuit _consume()
+        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
+
+        status = 'done'
+        dummyhash = '{queue}:{fname}.zip:{status}'.format(
+            queue=queue, status=status, fname=status)
+
+        result = consumer._consume(dummyhash)
+        assert result == status
+
+        # test valid _consume flow
+        status = 'new'
+        dummyhash = '{queue}:{fname}.zip:{status}'.format(
+            queue=queue, status=status, fname=status)
+        dummy_data = np.zeros((1, 1))
+        consumer._load_data = lambda *x: {'X': dummy_data, 'y': dummy_data}
+        consumer._get_tracker = lambda *args: DummyTracker()
+        result = consumer._consume(dummyhash)
+        assert result == consumer.final_status
