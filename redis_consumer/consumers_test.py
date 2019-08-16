@@ -188,17 +188,16 @@ class TestConsumer(object):
         rhash = consumer.get_redis_hash()
         assert rhash is None
 
-        # test some valid/invalid items
-        items = ['item%s' % x for x in range(1, 4)]
+        # test that invalid items are not processed and are removed.
+        items = ['item%s:file.tif:new' % x for x in range(1, 4)]
         redis_client = DummyRedis(items, prefix=queue_name)
 
         consumer = consumers.Consumer(redis_client, None, queue_name)
-        consumer.is_valid_hash = lambda x: x == 'item1'
-        print(redis_client.work_queue)
+        consumer.is_valid_hash = lambda x: x.startswith('item1')
 
         rhash = consumer.get_redis_hash()
         assert rhash == items[0]
-        assert redis_client.work_queue == items[1:]
+        assert redis_client.work_queue == []
         assert redis_client.processing_queue == items[0:1]
 
     def test_purge_processing_queue(self):
