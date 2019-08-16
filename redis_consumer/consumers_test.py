@@ -169,6 +169,15 @@ class DummyStorage(object):
         return True
 
 
+class DummyTracker(object):
+
+    def _track_cells(self):
+        return None
+
+    def dump(*_, **__):
+        return None
+
+
 class TestConsumer(object):
 
     def test_get_redis_hash(self):
@@ -282,6 +291,7 @@ class TestConsumer(object):
         def F(*_):
             global _processed
             _processed += 1
+            return 'done'
 
         consumer._consume = F
         consumer.consume()
@@ -438,7 +448,11 @@ class TestImageFileConsumer(object):
 
         # consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image_multi
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == consumer.final_status
+        # test with a finished hash
+        result = consumer._consume('{}:test.tiff:{}'.format(prefix, 'done'))
+        assert result == 'done'
 
         # test mutli-channel
         def grpc_image(data, *args, **kwargs):  # pylint: disable=W0613
@@ -460,7 +474,8 @@ class TestImageFileConsumer(object):
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
         consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == consumer.final_status
 
         # test with multiple outputs from model and cuts == 0
 
@@ -471,7 +486,8 @@ class TestImageFileConsumer(object):
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
         consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image_list
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == consumer.final_status
 
 
 class TestZipFileConsumer(object):
@@ -556,20 +572,26 @@ class TestZipFileConsumer(object):
 
     def test__cleanup(self):
         N = 3
-        prefix = 'predict'
+        queue = 'predict'
         status = 'waiting'
         items = ['item%s' % x for x in range(1, N + 1)]
         redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
+        consumer = consumers.ZipFileConsumer(redis_client, storage, queue)
 
         children = list('abcdef')
         done = ['{}:done'.format(c) for c in children[:3]]
         failed = ['{}:failed'.format(c) for c in children[3:]]
 
         key = '{queue}:{fname}.zip:{status}'.format(
-            queue='prefix', status=status, fname=status)
+            queue=queue, status=status, fname=status)
 
+        consumer._cleanup(items[0], children, done, failed)
+
+        # test non-float values
+        redis_client = DummyRedis(items)
+        redis_client.hmget = lambda *args: ['x' for a in args]
+        consumer = consumers.ZipFileConsumer(redis_client, storage, queue)
         consumer._cleanup(items[0], children, done, failed)
 
     def test__consume(self):
@@ -585,40 +607,53 @@ class TestZipFileConsumer(object):
         consumer._upload_archived_images = lambda x, y: items
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == 'waiting'
 
         # test `status` = "waiting"
         status = 'waiting'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == status
 
         # test `status` = "done"
         status = 'done'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == status
 
         # test `status` = "failed"
         status = 'failed'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == status
+
+        # test `status` = "other-status"
+        status = 'other-status'
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
+        dummyhash = '{queue}:{fname}.zip:{status}'.format(
+            queue=prefix, status=status, fname=status)
+        result = consumer._consume(dummyhash)
+        assert result == status
 
 
 class TestTrackingConsumer(object):
 
     def test_is_valid_hash(self):
+        queue = 'track'
         items = ['item%s' % x for x in range(1, 4)]
 
         storage = DummyStorage()
         redis_client = DummyRedis(items)
         redis_client.hget = lambda *x: x[0]
 
-        consumer = consumers.TrackingConsumer(redis_client, storage, 'track')
+        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
         assert consumer.is_valid_hash(None) is False
         assert consumer.is_valid_hash('predict:123456789:file.png') is False
         assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
@@ -629,3 +664,31 @@ class TestTrackingConsumer(object):
         assert consumer.is_valid_hash('track:1234567890:file.tiff') is True
         assert consumer.is_valid_hash('track:1234567890:file.trk') is True
         assert consumer.is_valid_hash('track:1234567890:file.trks') is True
+
+    def test__consume(self):
+        queue = 'track'
+        items = ['item%s' % x for x in range(1, 4)]
+
+        storage = DummyStorage()
+        redis_client = DummyRedis(items)
+        redis_client.hget = lambda *x: x[0]
+
+        # test short-circuit _consume()
+        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
+
+        status = 'done'
+        dummyhash = '{queue}:{fname}.zip:{status}'.format(
+            queue=queue, status=status, fname=status)
+
+        result = consumer._consume(dummyhash)
+        assert result == status
+
+        # test valid _consume flow
+        status = 'new'
+        dummyhash = '{queue}:{fname}.zip:{status}'.format(
+            queue=queue, status=status, fname=status)
+        dummy_data = np.zeros((1, 1))
+        consumer._load_data = lambda *x: {'X': dummy_data, 'y': dummy_data}
+        consumer._get_tracker = lambda *args: DummyTracker()
+        result = consumer._consume(dummyhash)
+        assert result == consumer.final_status
