@@ -282,6 +282,7 @@ class TestConsumer(object):
         def F(*_):
             global _processed
             _processed += 1
+            return 'done'
 
         consumer._consume = F
         consumer.consume()
@@ -438,7 +439,11 @@ class TestImageFileConsumer(object):
 
         # consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image_multi
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == consumer.final_status
+        # test with a finished hash
+        result = consumer._consume('{}:test.tiff:{}'.format(prefix, 'done'))
+        assert result == 'done'
 
         # test mutli-channel
         def grpc_image(data, *args, **kwargs):  # pylint: disable=W0613
@@ -460,7 +465,8 @@ class TestImageFileConsumer(object):
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
         consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == consumer.final_status
 
         # test with multiple outputs from model and cuts == 0
 
@@ -471,7 +477,8 @@ class TestImageFileConsumer(object):
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
         consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image_list
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == consumer.final_status
 
 
 class TestZipFileConsumer(object):
@@ -585,28 +592,40 @@ class TestZipFileConsumer(object):
         consumer._upload_archived_images = lambda x, y: items
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == 'waiting'
 
         # test `status` = "waiting"
         status = 'waiting'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == status
 
         # test `status` = "done"
         status = 'done'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == status
 
         # test `status` = "failed"
         status = 'failed'
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=prefix, status=status, fname=status)
-        consumer._consume(dummyhash)
+        result = consumer._consume(dummyhash)
+        assert result == status
+
+        # test `status` = "other-status"
+        status = 'other-status'
+        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
+        dummyhash = '{queue}:{fname}.zip:{status}'.format(
+            queue=prefix, status=status, fname=status)
+        result = consumer._consume(dummyhash)
+        assert result == status
 
 
 class TestTrackingConsumer(object):
