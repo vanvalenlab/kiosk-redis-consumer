@@ -563,20 +563,26 @@ class TestZipFileConsumer(object):
 
     def test__cleanup(self):
         N = 3
-        prefix = 'predict'
+        queue = 'predict'
         status = 'waiting'
         items = ['item%s' % x for x in range(1, N + 1)]
         redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
+        consumer = consumers.ZipFileConsumer(redis_client, storage, queue)
 
         children = list('abcdef')
         done = ['{}:done'.format(c) for c in children[:3]]
         failed = ['{}:failed'.format(c) for c in children[3:]]
 
         key = '{queue}:{fname}.zip:{status}'.format(
-            queue='prefix', status=status, fname=status)
+            queue=queue, status=status, fname=status)
 
+        consumer._cleanup(items[0], children, done, failed)
+
+        # test non-float values
+        redis_client = DummyRedis(items)
+        redis_client.hmget = lambda *args: ['x' for a in args]
+        consumer = consumers.ZipFileConsumer(redis_client, storage, queue)
         consumer._cleanup(items[0], children, done, failed)
 
     def test__consume(self):
