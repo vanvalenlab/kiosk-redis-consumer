@@ -390,6 +390,7 @@ class TensorFlowServingConsumer(Consumer):
             image = np.expand_dims(image, axis=0)
         else:
             image = np.expand_dims(image, axis=-1)
+
         if (image.shape[1] >= 216) and (image.shape[2] >= 216):
             image, _ = utils.reshape_matrix(image, image, reshape_size=216)
 
@@ -410,6 +411,7 @@ class TensorFlowServingConsumer(Consumer):
             image = np.expand_dims(image, axis=0)
         else:
             image = np.expand_dims(image, axis=-1)
+
         if (image.shape[1] >= 216) and (image.shape[2] >= 216):
             image, _ = utils.reshape_matrix(image, image, reshape_size=216)
 
@@ -424,7 +426,8 @@ class TensorFlowServingConsumer(Consumer):
         vote = labels.sum(axis=0)
         maj = vote.max()
 
-        self.logger.debug('Label detection complete %s seconds', timeit.default_timer() - start)
+        self.logger.debug('Label detection complete %s seconds.',
+                          timeit.default_timer() - start)
         return np.where(vote == maj)[-1][0]
 
 
@@ -675,6 +678,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             else:
                 scale = float(scale)
                 self.logger.debug('Image scale already calculated: %s', scale)
+
             image = utils.rescale(image, scale)
 
             # Detect image label type
@@ -685,6 +689,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
                 self.update_key(redis_hash, {'label': str(label)})
             else:
                 self.logger.debug('Image label already calculated: %s', label)
+
             label = int(label)
 
             # Grap appropriate model
