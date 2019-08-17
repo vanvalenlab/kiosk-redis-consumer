@@ -669,7 +669,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             })
 
             # Calculate scale of image and rescale
-            scale = hvals.get('scale', None)
+            scale = hvals.get('scale')
             if scale is None:
                 # Detect scale of image
                 scale = self.detect_scale(image)
@@ -682,7 +682,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             image = utils.rescale(image, scale)
 
             # Detect image label type
-            label = hvals.get('label', None)
+            label = hvals.get('label')
             if label is None:
                 label = self.detect_label(image)
                 self.logger.debug('Image label detected: %s', label)
