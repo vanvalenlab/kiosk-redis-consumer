@@ -121,6 +121,7 @@ PROCESSING_FUNCTIONS = {
         'normalize': processing.noramlize,
     },
     'post': {
+        'deepcell': processing.pixelwise,  # TODO: this is deprecated.
         'pixelwise': processing.pixelwise,
         'mibi': processing.mibi,
         'watershed': processing.watershed,
