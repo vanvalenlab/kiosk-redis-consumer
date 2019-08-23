@@ -57,7 +57,7 @@ def mibi(prediction, edge_threshold=.25, interior_threshold=.25):
     boundary is reached.
 
     Args:
-        prediction: output from a deepcell transform (edge, interior, bg)
+        prediction: output from a pixelwise transform (edge, interior, bg)
         edge_threshold: confidence threshold to determine edge pixels
         interior_threshold: confidence threshold to determine interior pixels
 
@@ -158,12 +158,12 @@ def watershed(image, min_distance=10, threshold_abs=0.05):
     return results
 
 
-def deepcell(prediction, threshold=.8):
-    """Post-processing for deepcell transform predictions.
+def pixelwise(prediction, threshold=.8):
+    """Post-processing for pixelwise transform predictions.
     Uses the interior predictions to uniquely label every instance.
 
     Args:
-        prediction: deepcell transform prediction
+        prediction: pixelwise transform prediction
         threshold: confidence threshold for interior predictions
 
     Returns:
