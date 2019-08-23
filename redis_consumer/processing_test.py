@@ -101,11 +101,11 @@ def test_mibi():
     np.testing.assert_equal(mibi_img.shape, (300, 300, 1))
 
 
-def test_deepcell():
+def test_pixelwise():
     channels = 4
     img = np.random.rand(300, 300, channels)
-    deepcell_img = processing.deepcell(img)
-    np.testing.assert_equal(deepcell_img.shape, (300, 300, 1))
+    pixelwise_img = processing.pixelwise(img)
+    np.testing.assert_equal(pixelwise_img.shape, (300, 300, 1))
 
 
 def test_watershed():
