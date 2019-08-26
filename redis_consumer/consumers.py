@@ -118,7 +118,8 @@ class Consumer(object):
             self.logger.warning('Found invalid hash in %s: `%s` with '
                                 'hvals: %s', self.queue, redis_hash,
                                 self.redis.hgetall(redis_hash))
-            self.redis.lrem(self.processing_queue, 1, redis_hash)
+            # self.redis.lrem(self.processing_queue, 1, redis_hash)
+            self._put_back_hash(redis_hash)
 
     def _handle_error(self, err, redis_hash):
         """Update redis with failure information, and log errors.
