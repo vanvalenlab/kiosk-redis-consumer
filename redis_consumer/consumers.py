@@ -381,22 +381,27 @@ class TensorFlowServingConsumer(Consumer):
     def detect_scale(self, image):
         start = timeit.default_timer()
 
-        if settings.SCALE_DETECT_ENABLED is False:
+        if not settings.SCALE_DETECT_ENABLED:
             self.logger.debug('Scale detection disabled. Scale set to 1.')
             return 1
 
         # Rescale image for compatibility with scale model
+        # TODO Generalize to prevent from breaking on new input data types
         if image.shape[-1] == 1:
             image = np.expand_dims(image, axis=0)
         else:
             image = np.expand_dims(image, axis=-1)
 
-        if (image.shape[1] >= 216) and (image.shape[2] >= 216):
-            image, _ = utils.reshape_matrix(image, image, reshape_size=216)
+        # Reshape data to match size of data that model was trained on
+        # TODO Generalize to support rectangular and other shapes
+        if (image.shape[1] >= settings.SCALE_RESHAPE_SIZE) and (image.shape[2] >= settings.SCALE_RESHAPE_SIZE):
+            image, _ = utils.reshape_matrix(image, image, reshape_size=settings.SCALE_RESHAPE_SIZE)
 
         model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
 
         # Loop over each image in the batch dimension for scale prediction
+        # TODO Calculate scale_detect_sample based on batch size
+        # Could be based on fraction or sampling a minimum set number of frames
         scales = []
         for i in range(0, image.shape[0], settings.SCALE_DETECT_SAMPLE):
             scales.append(self.grpc_image(image[i], model_name, model_version))
@@ -407,13 +412,16 @@ class TensorFlowServingConsumer(Consumer):
     def detect_label(self, image):
         start = timeit.default_timer()
         # Rescale for model compatibility
+        # TODO Generalize to prevent from breaking on new input data types
         if image.shape[-1] == 1:
             image = np.expand_dims(image, axis=0)
         else:
             image = np.expand_dims(image, axis=-1)
 
-        if (image.shape[1] >= 216) and (image.shape[2] >= 216):
-            image, _ = utils.reshape_matrix(image, image, reshape_size=216)
+        # TODO Generalize to support rectangular and other shapes
+        if (image.shape[1] >= settings.LABEL_RESHAPE_SIZE) and \
+            (image.shape[2] >= settings.LABEL_RESHAPE_SIZE):
+            image, _ = utils.reshape_matrix(image, image, reshape_size=settings.LABEL_RESHAPE_SIZE)
 
         model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
 
@@ -440,8 +448,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
                  queue,
                  final_status='done'):
         # Create some attributes only used during consume()
-        self._redis_hash = None
-        self._redis_values = dict()
         super(ImageFileConsumer, self).__init__(
             redis_client, storage_client,
             queue, final_status)
@@ -681,19 +687,19 @@ class ImageFileConsumer(TensorFlowServingConsumer):
 
             image = utils.rescale(image, scale)
 
-            # Detect image label type
-            label = hvals.get('label')
-            if label is None:
-                label = self.detect_label(image)
-                self.logger.debug('Image label detected: %s', label)
-                self.update_key(redis_hash, {'label': str(label)})
-            else:
-                self.logger.debug('Image label already calculated: %s', label)
+            if settings.LABEL_DETECT_ENABLED:
+                # Detect image label type
+                label = hvals.get('label')
+                if label is None:
+                    label = self.detect_label(image)
+                    self.logger.debug('Image label detected: %s', label)
+                    self.update_key(redis_hash, {'label': str(label)})
+                else:
+                    label = int(label)
+                    self.logger.debug('Image label already calculated: %s', label)
 
-            label = int(label)
-
-            # Grap appropriate model
-            model_name, model_version = utils._pick_model(label)
+                # Grap appropriate model
+                model_name, model_version = utils._pick_model(label)
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
             image = self.preprocess(image, pre_funcs, True)
@@ -710,7 +716,11 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             # Post-process model results
             self.update_key(redis_hash, {'status': 'post-processing'})
 
-            post_funcs = hvals.get('postprocess_function', '').split(',')
+            if settings.LABEL_DETECT_ENABLED:
+                post_funcs = utils._pick_postprocess(label)
+            else:
+                post_funcs = hvals.get('postprocess_function', '').split(',')
+
             # image[:-1] is targeted at a two semantic head panoptic model
             # TODO This may need to be modified and generalized in the future
             if isinstance(image, list):
@@ -1086,11 +1096,17 @@ class TrackingConsumer(TensorFlowServingConsumer):
     def _get_model(self, redis_hash, hvalues):
         hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
 
+        # Pick model based on redis or default setting
+        model = hvalues.get('model_name')
+        version = hvalues.get('model_version')
+        if (model is None) or (version is None):
+            model, version = settings.TRACKING_MODEL.split(':')
+
         t = timeit.default_timer()
         model = TrackingClient(hostname,
                                redis_hash,
-                               hvalues.get('model_name'),
-                               int(hvalues.get('model_version')),
+                               model,
+                               int(version),
                                progress_callback=self._update_progress)
 
         self.logger.debug('Created the TrackingClient in %s seconds.',
@@ -1152,11 +1168,17 @@ class TrackingConsumer(TensorFlowServingConsumer):
         self.scale = self.detect_scale(tiff_stack)
         self.logger.debug('Image scale detected: %s', self.scale)
 
-        # Predict label type
-        label = self.detect_label(tiff_stack)
+        # Pick model and postprocess based on either label or defaults
+        if settings.LABEL_DETECT_ENABLED:
+            # Predict label type
+            label = self.detect_label(tiff_stack)
 
-        # Grap appropriate model
-        model_name, model_version = utils._pick_model(label)
+            # Grap appropriate model and postprocess function
+            model_name, model_version = utils._pick_model(label)
+            postprocess_function = utils._pick_postprocess(label)
+        else:
+            model_name, model_version = settings.TRACKING_SEGMENT_MODEL.split(':')
+            postprocess_function = settings.TRACKING_POSTPROCESS_FUNCTION
 
         num_frames = len(tiff_stack)
         hash_to_frame = {}
@@ -1185,7 +1207,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
                     'original_name': segment_fname,
                     'model_name': model_name,
                     'model_version': model_version,
-                    'postprocess_function': settings.POSTPROCESS_FUNCTION,
+                    'postprocess_function': postprocess_function,
                     'cuts': settings.CUTS,
                     'status': 'new',
                     'created_at': current_timestamp,
@@ -1286,6 +1308,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
             self.logger.debug('X shape: %s', data['X'].shape)
             self.logger.debug('y shape: %s', data['y'].shape)
 
+            # TODO Add support for rescaling in the tracker
             tracker = self._get_tracker(redis_hash, hvalues,
                                         data["X"], data["y"])
             self.logger.debug('Trying to track...')
@@ -1293,9 +1316,6 @@ class TrackingConsumer(TensorFlowServingConsumer):
             tracker._track_cells()
 
             self.logger.debug('Tracking done!')
-
-            # TODO Rescale data back to original size
-            # Use self.scale value set in self.load_data
 
             # Save tracking result and upload
             save_name = os.path.join(

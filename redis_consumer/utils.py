@@ -423,6 +423,8 @@ def reshape_matrix(X, y, reshape_size=256, is_channels_first=False):
 
 
 def rescale(image, scale):
+    if scale == 1:
+        return image
     return skimage.transform.rescale(
         image, scale,
         mode='edge',
@@ -440,3 +442,12 @@ def _pick_model(label):
         raise ValueError('Label type {} is not supported'.format(label))
 
     return model.split(':')
+
+
+def _pick_postprocess(label):
+    func = settings.POSTPROCESS_CHOICES.get(label)
+    if func is None:
+        logger.error('Label type %s is not supported', label)
+        raise ValueError('Label type {} is not supported'.format(label))
+
+    return func
