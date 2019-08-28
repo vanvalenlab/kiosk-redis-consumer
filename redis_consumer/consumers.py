@@ -394,8 +394,9 @@ class TensorFlowServingConsumer(Consumer):
 
         # Reshape data to match size of data that model was trained on
         # TODO Generalize to support rectangular and other shapes
-        if (image.shape[1] >= settings.SCALE_RESHAPE_SIZE) and (image.shape[2] >= settings.SCALE_RESHAPE_SIZE):
-            image, _ = utils.reshape_matrix(image, image, reshape_size=settings.SCALE_RESHAPE_SIZE)
+        size = settings.SCALE_RESHAPE_SIZE
+        if (image.shape[1] >= size) and (image.shape[2] >= size):
+            image, _ = utils.reshape_matrix(image, image, reshape_size=size)
 
         model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
 
@@ -419,9 +420,9 @@ class TensorFlowServingConsumer(Consumer):
             image = np.expand_dims(image, axis=-1)
 
         # TODO Generalize to support rectangular and other shapes
-        if (image.shape[1] >= settings.LABEL_RESHAPE_SIZE) and \
-            (image.shape[2] >= settings.LABEL_RESHAPE_SIZE):
-            image, _ = utils.reshape_matrix(image, image, reshape_size=settings.LABEL_RESHAPE_SIZE)
+        size = settings.LABEL_RESHAPE_SIZE
+        if (image.shape[1] >= size) and (image.shape[2] >= size):
+            image, _ = utils.reshape_matrix(image, image, reshape_size=size)
 
         model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
 
