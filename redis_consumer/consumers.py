@@ -1179,7 +1179,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
             model_name, model_version = utils._pick_model(label)
             postprocess_function = utils._pick_postprocess(label)
         else:
-            label = 99 # Equivalent to none
+            label = 99  # Equivalent to none
             model_name, model_version = settings.TRACKING_SEGMENT_MODEL.split(':')
             postprocess_function = settings.TRACKING_POSTPROCESS_FUNCTION
 
