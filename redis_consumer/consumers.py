@@ -1040,7 +1040,7 @@ class TrackingConsumer(Consumer):
 
         # remove the last dimensions added by `get_image`
 
-        tiff_stack = np.squeeze(raw, -1)
+        tiff_stack = np.squeeze(raw, -1)  # TODO: required? check the ndim?
         if len(tiff_stack.shape) != 3:
             raise ValueError("This tiff file has shape {}, which is not 3 "
                              "dimensions. Tracking can only be done on images "
@@ -1115,7 +1115,7 @@ class TrackingConsumer(Consumer):
                     self.logger.debug('Hash %s has status %s',
                                       segment_hash, status)
 
-                    if status == 'failed':
+                    if status == self.failed_status:
                         reason = self.redis.hget(segment_hash, 'reason')
                         raise RuntimeError(
                             'Tracking failed during segmentation on frame {}.'
@@ -1186,7 +1186,8 @@ class TrackingConsumer(Consumer):
             save_name = os.path.join(
                 tempdir, hvalues.get('original_name', fname)) + '.trk'
 
-            tracker.dump(save_name, file_format='.trk')
+            # Post-process and save the output file
+            tracker.postprocess(save_name)
             output_file_name, output_url = self.storage.upload(save_name)
 
             self.update_key(redis_hash, {
