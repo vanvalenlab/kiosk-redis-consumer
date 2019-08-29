@@ -174,7 +174,10 @@ class DummyTracker(object):
     def _track_cells(self):
         return None
 
-    def dump(*_, **__):
+    def dump(self, *_, **__):
+        return None
+
+    def postprocess(self, *_, **__):
         return None
 
 
@@ -206,7 +209,7 @@ class TestConsumer(object):
 
         rhash = consumer.get_redis_hash()
         assert rhash == items[0]
-        assert redis_client.work_queue == []
+        assert redis_client.work_queue == items[1:]
         assert redis_client.processing_queue == items[0:1]
 
     def test_purge_processing_queue(self):
