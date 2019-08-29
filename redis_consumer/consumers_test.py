@@ -177,6 +177,9 @@ class DummyTracker(object):
     def dump(*_, **__):
         return None
 
+    def postprocess(*_, **__):
+        return None
+
 
 class TestConsumer(object):
 
