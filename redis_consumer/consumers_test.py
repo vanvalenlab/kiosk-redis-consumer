@@ -387,6 +387,20 @@ class TestTensorFlowServingConsumer(object):
         np.testing.assert_equal(res, img)
 
 
+    def test_detect_scale(self):
+        redis_client = DummyRedis([])
+        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+        image = _get_image(settings.SCALE_RESHAPE_SIZE * 2,
+                           settings.SCALE_RESHAPE_SIZE * 2)
+
+        settings.SCALE_DETECT_MODEL = 'dummymodel:1'
+
+        consumer.grpc_image = lambda *x: np.random.randint(0, 1, shape=(1, 3))
+
+        scale = consumer.detect_scale(image)
+        assert isinstance(scale, (float, int))
+
+
 class TestImageFileConsumer(object):
 
     def test_is_valid_hash(self):
