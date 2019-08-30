@@ -188,6 +188,15 @@ def test_save_numpy_array():
     z = np.random.randint(low=1, high=6)
 
     with utils.get_tempdir() as tempdir:
+        # 2D images without channel axis
+        img = _get_image(h, w, 1)
+        img = np.squeeze(img)
+        files = utils.save_numpy_array(img, 'name', '/a/b/', tempdir)
+        assert len(files) == 1
+        for f in files:
+            assert os.path.isfile(f)
+            assert f.startswith(os.path.join(tempdir, 'a', 'b'))
+
         # 2D images
         img = _get_image(h, w, c)
         files = utils.save_numpy_array(img, 'name', '/a/b/', tempdir)
@@ -271,3 +280,89 @@ def test_zip_files():
         with pytest.raises(Exception):
             bad_dest = os.path.join(temp_dir, 'does', 'not', 'exist')
             zip_path = utils.zip_files(paths, bad_dest, prefix)
+
+
+def test_reshape_matrix():
+    # K.set_image_data_format('channels_last')
+    X = np.zeros((1, 16, 16, 3))
+    y = np.zeros((1, 16, 16, 1))
+    new_size = 4
+
+    # test resize to smaller image, divisible
+    new_X, new_y = utils.reshape_matrix(X, y, new_size)
+    new_batch = np.ceil(16 / new_size) ** 2
+    assert new_X.shape == (new_batch, new_size, new_size, 3)
+    assert new_y.shape == (new_batch, new_size, new_size, 1)
+
+    # test reshape with non-divisible values.
+    new_size = 5
+    new_batch = np.ceil(16 / new_size) ** 2
+    new_X, new_y = utils.reshape_matrix(X, y, new_size)
+    assert new_X.shape == (new_batch, new_size, new_size, 3)
+    assert new_y.shape == (new_batch, new_size, new_size, 1)
+
+    # test reshape to bigger size
+    with pytest.raises(ValueError):
+        new_X, new_y = utils.reshape_matrix(X, y, 32)
+
+    # test wrong dimensions
+    bigger = np.zeros((1, 16, 16, 3, 1))
+    smaller = np.zeros((1, 16, 16))
+    with pytest.raises(ValueError):
+        new_X, new_y = utils.reshape_matrix(smaller, y, new_size)
+    with pytest.raises(ValueError):
+        new_X, new_y = utils.reshape_matrix(bigger, y, new_size)
+    with pytest.raises(ValueError):
+        new_X, new_y = utils.reshape_matrix(X, smaller, new_size)
+    with pytest.raises(ValueError):
+        new_X, new_y = utils.reshape_matrix(X, bigger, new_size)
+
+    # channels_first
+    # K.set_image_data_format('channels_first')
+    X = np.zeros((1, 3, 16, 16))
+    y = np.zeros((1, 1, 16, 16))
+    new_size = 4
+
+    # test resize to smaller image, divisible
+    new_X, new_y = utils.reshape_matrix(X, y, new_size, True)
+    new_batch = np.ceil(16 / new_size) ** 2
+    assert new_X.shape == (new_batch, 3, new_size, new_size)
+    assert new_y.shape == (new_batch, 1, new_size, new_size)
+
+    # test reshape with non-divisible values.
+    new_size = 5
+    new_batch = np.ceil(16 / new_size) ** 2
+    new_X, new_y = utils.reshape_matrix(X, y, new_size, True)
+    assert new_X.shape == (new_batch, 3, new_size, new_size)
+    assert new_y.shape == (new_batch, 1, new_size, new_size)
+
+
+def test_rescale():
+    shape = (4, 4, 5)
+    image = np.random.random(shape)
+    rescaled = utils.rescale(image, 1)
+    np.testing.assert_array_equal(rescaled, image)
+
+    rescaled = utils.rescale(image, .5)
+    expected_shape = (np.ceil(shape[0] / 2), np.ceil(shape[1] / 2), shape[2])
+    assert rescaled.shape == expected_shape
+
+
+def test__pick_model():
+    settings.MODEL_CHOICES = {0: 'dummymodel:0'}
+    res = utils._pick_model(0)
+    assert len(res) == 2
+    assert res[0] == 'dummymodel'
+    assert res[1] == '0'
+
+    with pytest.raises(ValueError):
+        utils._pick_model(-1)
+
+
+def test__pick_postprocess():
+    settings.POSTPROCESS_CHOICES = {0: 'post'}
+    res = utils._pick_postprocess(0)
+    assert res == 'post'
+
+    with pytest.raises(ValueError):
+        utils._pick_postprocess(-1)

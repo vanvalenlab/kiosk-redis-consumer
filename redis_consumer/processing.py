@@ -33,9 +33,10 @@ from scipy import ndimage
 from scipy.ndimage.morphology import distance_transform_edt
 from skimage import morphology
 from skimage.feature import peak_local_max
-from skimage.measure import label
+from skimage.measure import label, regionprops
 from skimage.transform import resize
 from skimage.segmentation import random_walker, relabel_sequential
+from keras_retinanet.utils.compute_overlap import compute_overlap
 
 
 def noramlize(image):
@@ -179,29 +180,28 @@ def pixelwise(prediction, threshold=.8):
     return labeled
 
 
+def compute_iou(boxes, mask_image):
+    overlaps = compute_overlap(boxes.astype('float64'), boxes.astype('float64'))
+    ind_x, ind_y = np.nonzero(overlaps)
+    ious = np.zeros(overlaps.shape)
+    for index in range(ind_x.shape[0]):
+        mask_a = mask_image[ind_x[index]]
+        mask_b = mask_image[ind_y[index]]
+        intersection = np.count_nonzero(np.logical_and(mask_a, mask_b))
+        union = np.count_nonzero(mask_a + mask_b)
+        if intersection > 0:
+            ious[ind_x[index], ind_y[index]] = intersection / union
+
+    return ious
+
+
 def retinanet_to_label_image(retinanet_outputs,
                              score_threshold=0.5,
                              multi_iou_threshold=0.25,
                              binarize_threshold=0.5,
                              watershed_threshold=0.5,
+                             perimeter_area_threshold=2,
                              small_objects_threshold=100):
-
-    def compute_iou(a, b):
-        """Computes the IoU overlap of boxes in a and b.
-        Args:
-            a: (N, H, W) ndarray of float
-            b: (K, H, W) ndarray of float
-        Returns
-            overlaps: (N, K) ndarray of overlap between boxes and query_boxes
-        """
-        intersection = np.zeros((a.shape[0], b.shape[0]))
-        union = np.zeros((a.shape[0], b.shape[0]))
-        for index, mask in enumerate(a):
-            intersection[index, :] = np.sum(np.count_nonzero(
-                np.logical_and(b, mask), axis=1), axis=1)
-            union[index, :] = np.sum(np.count_nonzero(b + mask, axis=1), axis=1)
-
-        return intersection / union
 
     boxes_batch = retinanet_outputs[-5]
     scores_batch = retinanet_outputs[-4]
@@ -239,7 +239,7 @@ def retinanet_to_label_image(retinanet_outputs,
             mask = (mask > binarize_threshold).astype('float32')
             mask_image[j, box[1]:box[3], box[0]:box[2]] = mask
 
-        ious = compute_iou(mask_image, mask_image)
+        ious = compute_iou(boxes, mask_image)
 
         # Identify all the masks with no overlaps and
         # add to the label matrix
@@ -300,6 +300,13 @@ def retinanet_to_label_image(retinanet_outputs,
             markers_semantic = label(local_maxi)
             distance = semantic_argmax
             segments_semantic = morphology.watershed(-distance, markers_semantic, mask=foreground)
+
+            # Remove misshapen watershed cells
+            props = regionprops(segments_semantic)
+            for prop in props:
+                if prop.perimeter ** 2 / prop.area > perimeter_area_threshold * 4 * np.pi:
+                    segments_semantic[segments_semantic == prop.label] = 0
+
             masks_semantic = np.zeros((np.amax(segments_semantic).astype(int),
                                        semantic.shape[0], semantic.shape[1]))
             for j in range(1, masks_semantic.shape[0] + 1):

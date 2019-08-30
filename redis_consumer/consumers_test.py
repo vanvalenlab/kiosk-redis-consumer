@@ -341,6 +341,84 @@ class TestConsumer(object):
             consumer._consume('predict:new:hash.tiff')
 
 
+class TestTensorFlowServingConsumer(object):
+
+    def test__get_predict_client(self):
+        redis_client = DummyRedis([])
+        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+
+        with pytest.raises(ValueError):
+            consumer._get_predict_client('model_name', 'model_version')
+
+        client = consumer._get_predict_client('model_name', 1)
+
+    def test_grpc_image(self):
+        redis_client = DummyRedis([])
+        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+
+        def _get_predict_client(model_name, model_version):
+            return Bunch(predict=lambda x, y: {
+                'prediction': x[0]['data']
+            })
+
+        consumer._get_predict_client = _get_predict_client
+
+        img = np.zeros((1, 32, 32, 3))
+        out = consumer.grpc_image(img, 'f16model', 1)
+        assert img.shape == out.shape[1:]
+        assert img.sum() == out.sum()
+
+    def test_process_big_image(self):
+        name = 'model'
+        version = 0
+        field = 11
+        cuts = 2
+
+        img = np.expand_dims(_get_image(100, 100), axis=-1)
+        img = np.expand_dims(img, axis=0)
+
+        redis_client = None
+        storage = None
+        consumer = consumers.TensorFlowServingConsumer(redis_client, storage, 'predict')
+
+        # image should be chopped into cuts**2 pieces and reassembled
+        consumer.grpc_image = lambda x, y, z: x
+        res = consumer.process_big_image(cuts, img, field, name, version)
+        np.testing.assert_equal(res, img)
+
+    def test_detect_label(self):
+        redis_client = DummyRedis([])
+        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+        image = _get_image(settings.LABEL_RESHAPE_SIZE * 2,
+                           settings.LABEL_RESHAPE_SIZE * 2)
+
+        settings.LABEL_DETECT_MODEL = 'dummymodel:1'
+
+        def dummydata(*_, **__):
+            data = np.zeros((3,))
+            i = np.random.randint(3)
+            data[i] = 1
+            return data
+
+        consumer.grpc_image = dummydata
+
+        label = consumer.detect_label(image)
+        assert label in set(list(range(4)))
+
+    def test_detect_scale(self):
+        redis_client = DummyRedis([])
+        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+        image = _get_image(settings.SCALE_RESHAPE_SIZE * 2,
+                           settings.SCALE_RESHAPE_SIZE * 2)
+
+        settings.SCALE_DETECT_MODEL = 'dummymodel:1'
+
+        consumer.grpc_image = lambda *x: np.random.randint(0, 1, shape=(1, 3))
+
+        scale = consumer.detect_scale(image)
+        assert isinstance(scale, (float, int))
+
+
 class TestImageFileConsumer(object):
 
     def test_is_valid_hash(self):
@@ -391,54 +469,12 @@ class TestImageFileConsumer(object):
         output = consumer.process(img, 'valid', 'valid')
         assert img.shape[1:] == output.shape
 
-    def test__get_predict_client(self):
-        redis_client = DummyRedis([])
-        consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
-
-        with pytest.raises(ValueError):
-            consumer._get_predict_client('model_name', 'model_version')
-
-        client = consumer._get_predict_client('model_name', 1)
-
-    def test_grpc_image(self):
-        redis_client = DummyRedis([])
-        consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
-
-        def _get_predict_client(model_name, model_version):
-            return Bunch(predict=lambda x, y: {
-                'prediction': x[0]['data']
-            })
-
-        consumer._get_predict_client = _get_predict_client
-
-        img = np.zeros((1, 32, 32, 3))
-        out = consumer.grpc_image(img, 'f16model', 1)
-        assert img.shape == out.shape[1:]
-        assert img.sum() == out.sum()
-
-    def test_process_big_image(self):
-        name = 'model'
-        version = 0
-        field = 11
-        cuts = 2
-
-        img = np.expand_dims(_get_image(300, 300), axis=-1)
-        img = np.expand_dims(img, axis=0)
-
-        redis_client = None
-        storage = None
-        consumer = consumers.ImageFileConsumer(redis_client, storage, 'predict')
-
-        # image should be chopped into cuts**2 pieces and reassembled
-        consumer.grpc_image = lambda x, y, z: x
-        res = consumer.process_big_image(cuts, img, field, name, version)
-        np.testing.assert_equal(res, img)
-
     def test__consume(self):
         prefix = 'predict'
         status = 'new'
         redis_client = DummyRedis(prefix, status)
         storage = DummyStorage()
+
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
 
         def _handle_error(err, rhash):  # pylint: disable=W0613
@@ -447,10 +483,17 @@ class TestImageFileConsumer(object):
         def grpc_image_multi(data, *args, **kwargs):  # pylint: disable=W0613
             return np.array(tuple(list(data.shape) + [2]))
 
+        def detect_scale(_):
+            return 1
+
+        def detect_label(_):
+            return 0
+
         dummyhash = '{}:test.tiff:{}'.format(prefix, status)
 
         # consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image_multi
+        consumer.detect_scale = detect_scale
         result = consumer._consume(dummyhash)
         assert result == consumer.final_status
         # test with a finished hash
@@ -476,6 +519,8 @@ class TestImageFileConsumer(object):
         redis_client.hmset = lambda x, y: True
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
         consumer._handle_error = _handle_error
+        consumer.detect_scale = detect_scale
+        consumer.detect_label = detect_label
         consumer.grpc_image = grpc_image
         result = consumer._consume(dummyhash)
         assert result == consumer.final_status
@@ -488,6 +533,8 @@ class TestImageFileConsumer(object):
         redis_client = DummyRedis(prefix, status)
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
         consumer._handle_error = _handle_error
+        consumer.detect_scale = detect_scale
+        consumer.detect_label = detect_label
         consumer.grpc_image = grpc_image_list
         result = consumer._consume(dummyhash)
         assert result == consumer.final_status

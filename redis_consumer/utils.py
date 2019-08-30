@@ -51,6 +51,7 @@ import PIL
 from redis_consumer.pbs.types_pb2 import DESCRIPTOR
 from redis_consumer.pbs.tensor_pb2 import TensorProto
 from redis_consumer.pbs.tensor_shape_pb2 import TensorShapeProto
+from redis_consumer import settings
 
 
 logger = logging.getLogger('redis_consumer.utils')
@@ -86,8 +87,6 @@ def grpc_response_to_dict(grpc_response):
 
     for k in grpc_response.outputs:
         shape = [x.size for x in grpc_response.outputs[k].tensor_shape.dim]
-
-        logger.debug('Key: %s, shape: %s', k, shape)
 
         dtype_constant = grpc_response.outputs[k].dtype
 
@@ -359,3 +358,96 @@ def zip_files(files, dest=None, prefix=None):
     logger.debug('Zipped %s files into %s in %s seconds.',
                  len(files), filepath, timeit.default_timer() - start)
     return filepath
+
+
+def reshape_matrix(X, y, reshape_size=256, is_channels_first=False):
+    """
+    Reshape matrix of dimension 4 to have x and y of size reshape_size.
+    Adds overlapping slices to batches.
+    E.g. reshape_size of 256 yields (1, 1024, 1024, 1) -> (16, 256, 256, 1)
+
+    Args:
+        X: raw 4D image tensor
+        y: label mask of 4D image data
+        reshape_size: size of the square output tensor
+        is_channels_first: default False for channel dimension last
+
+    Returns:
+        reshaped `X` and `y` tensors in shape (`reshape_size`, `reshape_size`)
+    """
+    if X.ndim != 4:
+        raise ValueError('reshape_matrix expects X dim to be 4, got', X.ndim)
+    elif y.ndim != 4:
+        raise ValueError('reshape_matrix expects y dim to be 4, got', y.ndim)
+
+    image_size_x, _ = X.shape[2:] if is_channels_first else X.shape[1:3]
+    rep_number = np.int(np.ceil(np.float(image_size_x) / np.float(reshape_size)))
+    new_batch_size = X.shape[0] * (rep_number) ** 2
+
+    if is_channels_first:
+        new_X_shape = (new_batch_size, X.shape[1], reshape_size, reshape_size)
+        new_y_shape = (new_batch_size, y.shape[1], reshape_size, reshape_size)
+    else:
+        new_X_shape = (new_batch_size, reshape_size, reshape_size, X.shape[3])
+        new_y_shape = (new_batch_size, reshape_size, reshape_size, y.shape[3])
+
+    new_X = np.zeros(new_X_shape, dtype='float32')
+    new_y = np.zeros(new_y_shape, dtype='int32')
+
+    counter = 0
+    for b in range(X.shape[0]):
+        for i in range(rep_number):
+            for j in range(rep_number):
+                if i != rep_number - 1:
+                    x_start, x_end = i * reshape_size, (i + 1) * reshape_size
+                else:
+                    x_start, x_end = -reshape_size, X.shape[2 if is_channels_first else 1]
+
+                if j != rep_number - 1:
+                    y_start, y_end = j * reshape_size, (j + 1) * reshape_size
+                else:
+                    y_start, y_end = -reshape_size, y.shape[3 if is_channels_first else 2]
+
+                if is_channels_first:
+                    new_X[counter] = X[b, :, x_start:x_end, y_start:y_end]
+                    new_y[counter] = y[b, :, x_start:x_end, y_start:y_end]
+                else:
+                    new_X[counter] = X[b, x_start:x_end, y_start:y_end, :]
+                    new_y[counter] = y[b, x_start:x_end, y_start:y_end, :]
+
+                counter += 1
+
+    print('Reshaped feature data from {} to {}'.format(y.shape, new_y.shape))
+    print('Reshaped training data from {} to {}'.format(X.shape, new_X.shape))
+    return new_X, new_y
+
+
+def rescale(image, scale):
+    if scale == 1:
+        return image
+    return skimage.transform.rescale(
+        image, scale,
+        mode='edge',
+        anti_aliasing=False,
+        anti_aliasing_sigma=None,
+        preserve_range=True,
+        order=0
+    )
+
+
+def _pick_model(label):
+    model = settings.MODEL_CHOICES.get(label)
+    if model is None:
+        logger.error('Label type %s is not supported', label)
+        raise ValueError('Label type {} is not supported'.format(label))
+
+    return model.split(':')
+
+
+def _pick_postprocess(label):
+    func = settings.POSTPROCESS_CHOICES.get(label)
+    if func is None:
+        logger.error('Label type %s is not supported', label)
+        raise ValueError('Label type {} is not supported'.format(label))
+
+    return func

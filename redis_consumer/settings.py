@@ -3,7 +3,7 @@
 # Google, & National Institutes of Health (NIH) under Grant U24CA224309-01.
 # All rights reserved.
 #
-# Licensed under a modified Apache License, Version 2.0 (the "License");
+# Licensed under a modified Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
@@ -18,7 +18,7 @@
 # prior written permission.
 #
 # Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
+# distributed under the License is distributed on an 'AS IS' BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
@@ -36,7 +36,7 @@ from decouple import config
 from redis_consumer import processing
 
 
-# remove leading/trailing "/"s from cloud bucket folder names
+# remove leading/trailing '/'s from cloud bucket folder names
 def _strip(x):
     return '/'.join(y for y in x.split('/') if y)
 
@@ -118,22 +118,24 @@ EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
 # Pre- and Post-processing settings
 PROCESSING_FUNCTIONS = {
     'pre': {
-        'normalize': processing.noramlize,
+        'normalize': processing.noramlize
     },
     'post': {
         'deepcell': processing.pixelwise,  # TODO: this is deprecated.
         'pixelwise': processing.pixelwise,
         'mibi': processing.mibi,
         'watershed': processing.watershed,
-        'retinanet': processing.retinanet_to_label_image,
+        'retinanet': processing.retinanet_to_label_image
     },
 }
 
 # Tracking settings
-MODEL_NAME = config('MODEL_NAME', default='HeLaS3watershed')
-MODEL_VERSION = config('MODEL_VERSION', default=2)
-POSTPROCESS_FUNCTION = config('POSTPROCESS_FUNCTION', default='watershed')
+TRACKING_SEGMENT_MODEL = config('TRACKING_SEGMENT_MODEL', default='panoptic:3')
+TRACKING_POSTPROCESS_FUNCTION = config('TRACKING_POSTPROCESS_FUNCTION', default='retinanet')
 CUTS = config('CUTS', default=0)
+
+TRACKING_MODEL = config(
+    'TRACKING_MODEL', default='tracking_model_benchmarking_757_step5_20epoch_80split_9tl:1')
 
 # tracking.cell_tracker settings
 MAX_DISTANCE = config('MAX_DISTANCE', default=50)
@@ -142,3 +144,37 @@ DIVISION = config('DIVISION', default=0.9)
 BIRTH = config('BIRTH', default=0.95)
 DEATH = config('DEATH', default=0.95)
 NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30)
+
+# Scale detection settings
+SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:2')
+SCALE_DETECT_SAMPLE = config('SCALE_DETECT_SAMPLE', default=3)
+# Not supported for tracking. Always detects scale
+SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False)
+SCALE_RESHAPE_SIZE = config('SCALE_RESHAPE_SIZE', default=216)
+
+# Type detection settings
+LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:0')
+LABEL_DETECT_SAMPLE = config('LABEL_DETECT_SAMPLE', default=3)
+LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False)
+LABEL_RESHAPE_SIZE = config('LABEL_RESHAPE_SIZE', default=216)
+
+# Set default models based on label type
+PHASE_MODEL = config('PHASE_MODEL', default='panoptic_phase:0')
+CYTOPLASM_MODEL = config('CYTOPLASM_MODEL', default='panoptic_cytoplasm:0')
+NUCLEAR_MODEL = config('NUCLEAR_MODEL', default='panoptic:3')
+
+MODEL_CHOICES = {
+    0: NUCLEAR_MODEL,
+    1: PHASE_MODEL,
+    2: CYTOPLASM_MODEL
+}
+
+PHASE_POSTPROCESS = config('PHASE_POSTPROCESS', default='retinanet')
+CYTOPLASM_POSTPROCESS = config('CYTOPLASM_POSTPROCESS', default='retinanet')
+NUCLEAR_POSTPROCESS = config('NUCLEAR_POSTPROCESS', default='retinanet')
+
+POSTPROCESS_CHOICES = {
+    0: NUCLEAR_POSTPROCESS,
+    1: PHASE_POSTPROCESS,
+    2: CYTOPLASM_POSTPROCESS
+}
