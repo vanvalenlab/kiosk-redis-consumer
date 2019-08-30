@@ -188,6 +188,15 @@ def test_save_numpy_array():
     z = np.random.randint(low=1, high=6)
 
     with utils.get_tempdir() as tempdir:
+        # 2D images without channel axis
+        img = _get_image(h, w, 1)
+        img = np.squeeze(img)
+        files = utils.save_numpy_array(img, 'name', '/a/b/', tempdir)
+        assert len(files) == 1
+        for f in files:
+            assert os.path.isfile(f)
+            assert f.startswith(os.path.join(tempdir, 'a', 'b'))
+
         # 2D images
         img = _get_image(h, w, c)
         files = utils.save_numpy_array(img, 'name', '/a/b/', tempdir)
@@ -326,3 +335,34 @@ def test_reshape_matrix():
     new_X, new_y = utils.reshape_matrix(X, y, new_size, True)
     assert new_X.shape == (new_batch, 3, new_size, new_size)
     assert new_y.shape == (new_batch, 1, new_size, new_size)
+
+
+def test_rescale():
+    shape = (4, 4, 5)
+    image = np.random.random(shape)
+    rescaled = utils.rescale(image, 1)
+    np.testing.assert_array_equal(rescaled, image)
+
+    rescaled = utils.rescale(image, .5)
+    expected_shape = (np.ceil(shape[0] / 2), np.ceil(shape[1] / 2), shape[2])
+    assert rescaled.shape == expected_shape
+
+
+def test__pick_model():
+    settings.MODEL_CHOICES = {0: 'dummymodel:0'}
+    res = utils._pick_model(0)
+    assert len(res) == 2
+    assert res[0] == 'dummymodel'
+    assert res[1] == '0'
+
+    with pytest.raises(ValueError):
+        utils._pick_model(-1)
+
+
+def test__pick_postprocess():
+    settings.POSTPROCESS_CHOICES = {0: 'post'}
+    res = utils._pick_postprocess(0)
+    assert res == 'post'
+
+    with pytest.raises(ValueError):
+        utils._pick_postprocess(-1)
