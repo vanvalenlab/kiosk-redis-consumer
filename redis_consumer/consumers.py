@@ -408,7 +408,8 @@ class TensorFlowServingConsumer(Consumer):
         for i in range(0, image.shape[0], settings.SCALE_DETECT_SAMPLE):
             scales.append(self.grpc_image(image[i], model_name, model_version))
 
-        self.logger.debug('Scale detection complete in %s seconds', timeit.default_timer() - start)
+        self.logger.debug('Scale detection complete in %s seconds',
+                          timeit.default_timer() - start)
         return np.mean(scales)
 
     def detect_label(self, image):
@@ -1172,10 +1173,9 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
         # Pick model and postprocess based on either label or defaults
         if settings.LABEL_DETECT_ENABLED:
-            # Predict label type
-            label = self.detect_label(tiff_stack)
+            label = self.detect_label(tiff_stack)  # Predict label type
 
-            # Grap appropriate model and postprocess function
+            # Get appropriate model and postprocess function for the label
             model_name, model_version = utils._pick_model(label)
             postprocess_function = utils._pick_postprocess(label)
         else:
