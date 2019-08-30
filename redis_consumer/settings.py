@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-'''Settings file to hold environment variabls and constants'''
+"""Settings file to hold environment variabls and constants"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
