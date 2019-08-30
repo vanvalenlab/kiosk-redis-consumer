@@ -386,6 +386,24 @@ class TestTensorFlowServingConsumer(object):
         res = consumer.process_big_image(cuts, img, field, name, version)
         np.testing.assert_equal(res, img)
 
+    def test_detect_label(self):
+        redis_client = DummyRedis([])
+        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+        image = _get_image(settings.LABEL_RESHAPE_SIZE * 2,
+                           settings.LABEL_RESHAPE_SIZE * 2)
+
+        settings.LABEL_DETECT_MODEL = 'dummymodel:1'
+
+        def dummydata(*_, **__):
+            data = np.zeros((3,))
+            i = np.random.randint(3)
+            data[i] = 1
+            return data
+
+        consumer.grpc_image = dummydata
+
+        label = consumer.detect_label(image)
+        assert label in set(list(range(4)))
 
     def test_detect_scale(self):
         redis_client = DummyRedis([])
