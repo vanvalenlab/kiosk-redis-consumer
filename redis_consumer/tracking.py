@@ -296,7 +296,7 @@ class cell_tracker():
                     inputs[feature_name][0].append(track_feature)
                     inputs[feature_name][1].append(frame_feature)
 
-        self.logger.info('Got features in %s seconds.' timeit.default_timer() - t)
+        self.logger.info('Got features in %s seconds.', timeit.default_timer() - t)
 
         if input_pairs == []:
             # if the frame is empty
@@ -825,7 +825,6 @@ class cell_tracker():
 
         # If FPs exist, use the results to correct
         while len(FPs_sorted) != 0:
-
             lineage, tracked = self._remove_false_pos(lineage, tracked, FPs_sorted[0])
             G = self._track_to_graph(lineage)
             FPs = self._flag_false_pos(G, time_excl)
@@ -957,9 +956,8 @@ class cell_tracker():
                 'false positive': node,
                 'neighbors': list(G.neighbors(node)),
                 'connected lineages': set([int(n.split('_')[0])
-                                          for n in nx.node_connected_component(G, n)])
+                                           for n in nx.node_connected_component(G, n)])
             }
-
         return D
 
     def _review_candidate_nodes(self, FPs_candidates):
@@ -1073,6 +1071,6 @@ class cell_tracker():
                 del lineage[label_to_remove]
 
         else:
-            print('Error: More than 2 neighbor nodes')
+            self.logger.error('Error: More than 2 neighbor nodes')
 
         return lineage, tracked
