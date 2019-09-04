@@ -659,10 +659,12 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             'identity_started': self.hostname,
         })
 
-        model_name = hvals.get('model_name')
-        model_version = hvals.get('model_version')
         cuts = hvals.get('cuts', '0')
         field = hvals.get('field_size', '61')
+
+        # Overridden with LABEL_DETECT_ENABLED
+        model_name = hvals.get('model_name')
+        model_version = hvals.get('model_version')
 
         with utils.get_tempdir() as tempdir:
             _ = timeit.default_timer()
