@@ -1004,9 +1004,9 @@ class TrackingConsumer(TensorFlowServingConsumer):
         hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
 
         # Pick model based on redis or default setting
-        model = hvalues.get('model_name')
-        version = hvalues.get('model_version')
-        if (model is None) or (version is None):
+        model = hvalues.get('model_name', '')
+        version = hvalues.get('model_version', '')
+        if not model or not version:
             model, version = settings.TRACKING_MODEL.split(':')
 
         t = timeit.default_timer()
