@@ -722,7 +722,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             self.update_key(redis_hash, {'status': 'post-processing'})
 
             if settings.LABEL_DETECT_ENABLED:
-                post_funcs = utils._pick_postprocess(label)
+                post_funcs = utils._pick_postprocess(label).split(',')
             else:
                 post_funcs = hvals.get('postprocess_function', '').split(',')
 
