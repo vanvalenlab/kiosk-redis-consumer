@@ -483,7 +483,15 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             return image
 
         f = self._get_processing_function(process_type, key)
-        results = f(image)
+
+        if key == 'retinanet-semantic':
+            # image[:-1] is targeted at a two semantic head panoptic model
+            # TODO This may need to be modified and generalized in the future
+            results = f(image[:-1])
+        elif key == 'retinanet':
+            results = f(image, self._rawshape[1], self._rawshape[2])
+        else:
+            results = f(image)
 
         if results.shape[0] == 1:
             results = np.squeeze(results, axis=0)
@@ -573,6 +581,10 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             fname = self.storage.download(hvals.get('input_file_name'), tempdir)
             image = utils.get_image(fname)
 
+            # Save shape value for postprocessing purposes
+            # TODO this is a big janky
+            self._rawshape = image.shape
+
             streaming = str(cuts).isdigit() and int(cuts) > 0
 
             # Pre-process data before sending to the model
@@ -628,12 +640,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             else:
                 post_funcs = hvals.get('postprocess_function', '').split(',')
 
-            # image[:-1] is targeted at a two semantic head panoptic model
-            # TODO This may need to be modified and generalized in the future
-            if isinstance(image, list):
-                image = self.postprocess(image[:-1], post_funcs, True)
-            else:
-                image = self.postprocess(image, post_funcs, True)
+            image = self.postprocess(image, post_funcs, True)
 
             # Save the post-processed results to a file
             _ = timeit.default_timer()
