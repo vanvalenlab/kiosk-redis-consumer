@@ -956,7 +956,7 @@ class cell_tracker():
                 'false positive': node,
                 'neighbors': list(G.neighbors(node)),
                 'connected lineages': set([int(n.split('_')[0])
-                                           for n in nx.node_connected_component(G, n)])
+                                           for n in nx.node_connected_component(G, node)])
             }
         return D
 
