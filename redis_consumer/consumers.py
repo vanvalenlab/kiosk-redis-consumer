@@ -489,7 +489,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             # TODO This may need to be modified and generalized in the future
             results = f(image[:-1])
         elif key == 'retinanet':
-            results = f(image, self._rawshape[1], self._rawshape[2])
+            results = f(image, self._rawshape[0], self._rawshape[1])
         else:
             results = f(image)
 
@@ -581,10 +581,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             fname = self.storage.download(hvals.get('input_file_name'), tempdir)
             image = utils.get_image(fname)
 
-            # Save shape value for postprocessing purposes
-            # TODO this is a big janky
-            self._rawshape = image.shape
-
             streaming = str(cuts).isdigit() and int(cuts) > 0
 
             # Pre-process data before sending to the model
@@ -605,6 +601,10 @@ class ImageFileConsumer(TensorFlowServingConsumer):
                 self.logger.debug('Image scale already calculated: %s', scale)
 
             image = utils.rescale(image, scale)
+
+            # Save shape value for postprocessing purposes
+            # TODO this is a big janky
+            self._rawshape = image.shape
 
             if settings.LABEL_DETECT_ENABLED:
                 # Detect image label type
