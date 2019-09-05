@@ -117,6 +117,13 @@ def test_watershed():
 
 def test_retinanet():
     im = _sample1(10, 10, 40, 40)
+    out = _retinanet_data(im)[:-1]
+
+    label = processing.retinanet_to_label_image(out, 40, 40)
+
+
+def test_retinanet_semantic():
+    im = _sample1(10, 10, 40, 40)
     out = _retinanet_data(im)
 
-    label = processing.retinanet_to_label_image(out)
+    label = processing.retinanet_semantic_to_label_image(out)
