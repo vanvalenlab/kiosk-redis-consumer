@@ -125,7 +125,8 @@ PROCESSING_FUNCTIONS = {
         'pixelwise': processing.pixelwise,
         'mibi': processing.mibi,
         'watershed': processing.watershed,
-        'retinanet': processing.retinanet_to_label_image
+        'retinanet': processing.retinanet_to_label_image,
+        'retinanet-semantic': processing.retinanet_semantic_to_label_image
     },
 }
 
@@ -169,8 +170,8 @@ MODEL_CHOICES = {
     2: CYTOPLASM_MODEL
 }
 
-PHASE_POSTPROCESS = config('PHASE_POSTPROCESS', default='retinanet')
-CYTOPLASM_POSTPROCESS = config('CYTOPLASM_POSTPROCESS', default='retinanet')
+PHASE_POSTPROCESS = config('PHASE_POSTPROCESS', default='retinanet-semantic')
+CYTOPLASM_POSTPROCESS = config('CYTOPLASM_POSTPROCESS', default='retinanet-semantic')
 NUCLEAR_POSTPROCESS = config('NUCLEAR_POSTPROCESS', default='retinanet')
 
 POSTPROCESS_CHOICES = {

@@ -97,7 +97,7 @@ class cell_tracker():
         # Initialize tracks
         self._initialize_tracks()
 
-        self.logger.info("Tracks initialized and cleaned up.")
+        self.logger.info('Tracks initialized and cleaned up.')
 
     def _clean_up_annotations(self):
         """Relabels every frame in the label matrix.
@@ -296,7 +296,7 @@ class cell_tracker():
                     inputs[feature_name][0].append(track_feature)
                     inputs[feature_name][1].append(frame_feature)
 
-        print('Got features in {}s'.format(timeit.default_timer() - t))
+        self.logger.info('Got features in %s seconds.', timeit.default_timer() - t)
 
         if input_pairs == []:
             # if the frame is empty
@@ -315,9 +315,9 @@ class cell_tracker():
 
             predictions = self.model.predict(model_input)
 
-            self.logger.info("assignment_matrix.shape: %s",
+            self.logger.info('assignment_matrix.shape: %s',
                              assignment_matrix.shape)
-            self.logger.info("predictions.shape: %s", predictions.shape)
+            self.logger.info('predictions.shape: %s', predictions.shape)
             for i, (track, cell) in enumerate(input_pairs):
                 assignment_matrix[track, cell] = 1 - predictions[i, 1]
 
@@ -608,7 +608,6 @@ class cell_tracker():
         return track_neighborhoods
 
     def _sub_area(self, X_frame, y_frame, cell_label, num_channels):
-        t = timeit.default_timer()
         true_size = self.neighborhood_true_size
         pads = ((true_size, true_size),
                 (true_size, true_size),
@@ -638,7 +637,6 @@ class cell_tracker():
 
         # X_reduced /= np.amax(X_reduced)
         X_reduced = np.expand_dims(X_reduced, axis=self.channel_axis)
-        print('_sub_area finished in {}s'.format(timeit.default_timer() - t))
         return X_reduced
 
     def _get_features(self, X, y, frames, labels):
@@ -740,26 +738,17 @@ class cell_tracker():
         """Tracks all of the cells in every frame.
         """
         for frame in range(1, self.x.shape[0]):
-            self.logger.info('Tracking frame ' + str(frame))
-
-            t_whole = timeit.default_timer()  # TODEL
-            t = timeit.default_timer()  # TODEL
+            t = timeit.default_timer()
+            self.logger.info('Tracking frame %s', frame)
 
             cost_matrix, predictions = self._get_cost_matrix(frame)
 
-            print('Time to get_cost_matrix: ', timeit.default_timer() - t)  # TODEL
-            t = timeit.default_timer()  # TODEL
-
             assignments = self._run_lap(cost_matrix)
-
-            print('Time to run lap: ', timeit.default_timer() - t)  # TODEL
-            t = timeit.default_timer()  # TODEL
 
             self._update_tracks(assignments, frame, predictions)
             self.model.progress(frame / self.x.shape[0])
-
-            print('Time to update tracks: ', timeit.default_timer() - t)  # TODEL
-            print('Time to track one frame: ', timeit.default_timer() - t_whole)  # TODEL
+            self.logger.info('Tracked frame %s in %s seconds.',
+                             frame, timeit.default_timer() - t)
 
     def _track_review_dict(self):
         def process(key, track_item):
@@ -836,7 +825,6 @@ class cell_tracker():
 
         # If FPs exist, use the results to correct
         while len(FPs_sorted) != 0:
-
             lineage, tracked = self._remove_false_pos(lineage, tracked, FPs_sorted[0])
             G = self._track_to_graph(lineage)
             FPs = self._flag_false_pos(G, time_excl)
@@ -968,9 +956,8 @@ class cell_tracker():
                 'false positive': node,
                 'neighbors': list(G.neighbors(node)),
                 'connected lineages': set([int(n.split('_')[0])
-                                          for n in nx.node_connected_component(G, n)])
+                                           for n in nx.node_connected_component(G, node)])
             }
-
         return D
 
     def _review_candidate_nodes(self, FPs_candidates):
@@ -1084,6 +1071,6 @@ class cell_tracker():
                 del lineage[label_to_remove]
 
         else:
-            print('Error: More than 2 neighbor nodes')
+            self.logger.error('Error: More than 2 neighbor nodes')
 
         return lineage, tracked
