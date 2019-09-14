@@ -1195,7 +1195,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
         frames = [frames[i] for i in range(num_frames)]
 
-        return {"X": np.expand_dims(tiff_stack, axis=-1), "y": np.array(frames)}
+        # Cast y to int to avoid issues during fourier transform/drift correction
+        return {"X": np.expand_dims(tiff_stack, axis=-1), "y": np.array(frames, dtype='uint16')}
 
     def _consume(self, redis_hash):
         hvalues = self.redis.hgetall(redis_hash)
@@ -1221,6 +1222,11 @@ class TrackingConsumer(TensorFlowServingConsumer):
             self.logger.debug('Got contents tracking file contents.')
             self.logger.debug('X shape: %s', data['X'].shape)
             self.logger.debug('y shape: %s', data['y'].shape)
+
+            # Correct for drift if enabled
+            if settings.DRIFT_CORRECT_ENABLED:
+                data['X'], data['y'] = utils.correct_drift(data['X'], data['y'])
+                self.logger.debug('Drift correction complete.')
 
             # TODO Add support for rescaling in the tracker
             tracker = self._get_tracker(redis_hash, hvalues,

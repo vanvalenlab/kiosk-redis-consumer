@@ -138,6 +138,8 @@ CUTS = config('CUTS', default=0)
 TRACKING_MODEL = config(
     'TRACKING_MODEL', default='tracking_model_benchmarking_757_step5_20epoch_80split_9tl:1')
 
+DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=True)
+
 # tracking.cell_tracker settings
 MAX_DISTANCE = config('MAX_DISTANCE', default=50)
 TRACK_LENGTH = config('TRACK_LENGTH', default=5)
