@@ -469,7 +469,7 @@ def correct_drift(X, y=None):
     # Start with the first image since we compare to the previous
     for t in range(1, X.shape[0]):
         # Calculate shift
-        shift, _, _ = skimage.feature.register_translation(X[t - 1], X[t])
+        shift, _, _ = register_translation(X[t - 1], X[t])
 
         # Correct X image
         X[t] = _shift_image(X[t], shift)
