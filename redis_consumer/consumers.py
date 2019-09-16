@@ -51,6 +51,7 @@ from redis_consumer.grpc_clients import TrackingClient
 from redis_consumer import utils
 from redis_consumer import tracking
 from redis_consumer import settings
+from redis_consumer import processing
 
 
 class Consumer(object):
@@ -1225,7 +1226,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
             # Correct for drift if enabled
             if settings.DRIFT_CORRECT_ENABLED:
-                data['X'], data['y'] = utils.correct_drift(data['X'], data['y'])
+                data['X'], data['y'] = processing.correct_drift(data['X'], data['y'])
                 self.logger.debug('Drift correction complete.')
 
             # TODO Add support for rescaling in the tracker
