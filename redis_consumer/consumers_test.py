@@ -765,7 +765,7 @@ class TestTrackingConsumer(object):
         status = 'new'
         dummyhash = '{queue}:{fname}.zip:{status}'.format(
             queue=queue, status=status, fname=status)
-        dummy_data = np.zeros((1, 1))
+        dummy_data = np.zeros((1, 1, 1))
         consumer._load_data = lambda *x: {'X': dummy_data, 'y': dummy_data}
         consumer._get_tracker = lambda *args: DummyTracker()
         result = consumer._consume(dummyhash)
