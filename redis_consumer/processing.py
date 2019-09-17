@@ -445,7 +445,7 @@ def correct_drift(X, y=None):
         raise ValueError('A minimum of 3 dimensons are required.'
                          'Found {} dimensions.'.format(len(X.shape)))
 
-    if y is not None and X.shape != y.shape:
+    if y is not None and len(X.shape) != len(y.shape):
         raise ValueError('y {} must have same shape as X {}'.format(y.shape, X.shape))
 
     def _shift_image(img, shift):
