@@ -1031,10 +1031,15 @@ class TrackingConsumer(TensorFlowServingConsumer):
     def _get_tracker(self, redis_hash, hvalues, raw, segmented):
         tracking_model = self._get_model(redis_hash, hvalues)
 
+        def _image_norm(original_image):
+            # NNs prefer input data that is 0 mean and unit variance
+            normed_image = (original_image - np.mean(original_image)) / np.std(original_image)
+            return normed_image
+
         # The current tracking model was trained on normalized images but doesn't include
         # a normalization layer. So we normalize the raw images here
         for frame in range(raw.shape[0]):
-            raw[frame, :, :, 0] = image_norm(raw[frame, :, :, 0]) 
+            raw[frame, :, :, 0] = _image_norm(raw[frame, :, :, 0])
 
         features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
         tracker = tracking.cell_tracker(raw, segmented,
