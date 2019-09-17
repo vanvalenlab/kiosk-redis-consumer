@@ -51,6 +51,7 @@ from redis_consumer.grpc_clients import TrackingClient
 from redis_consumer import utils
 from redis_consumer import tracking
 from redis_consumer import settings
+from redis_consumer import processing
 
 
 class Consumer(object):
@@ -1060,7 +1061,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
             'progress': progress,
         })
 
-    def _load_data(self, hvalues, subdir, fname):
+    def _load_data(self, redis_hash, subdir, fname):
         """
         Given the upload location `input_file_name`, and the downloaded
         location of the same file in subdir/fname, return the raw and annotated
@@ -1072,6 +1073,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
             subdir: string of path that contains the downloaded file
             fname: string of file name inside subdir
         """
+        hvalues = self.redis.hgetall(redis_hash)
+
         if fname.endswith('.trk') or fname.endswith('.trks'):
             return utils.load_track_file(os.path.join(subdir, fname))
 
@@ -1090,8 +1093,15 @@ class TrackingConsumer(TensorFlowServingConsumer):
                                  tiff_stack.shape))
 
         # Calculate scale of a subset of raw
-        self.scale = self.detect_scale(tiff_stack)
-        self.logger.debug('Image scale detected: %s', self.scale)
+        scale = hvalues.get('scale', '')
+        if not scale:
+            # Detect scale of image
+            scale = self.detect_scale(tiff_stack)
+            self.logger.debug('Image scale detected: %s', scale)
+            self.update_key(redis_hash, {'scale': scale})
+        else:
+            scale = float(scale)
+            self.logger.debug('Image scale already calculated: %s', scale)
 
         # Pick model and postprocess based on either label or defaults
         if settings.LABEL_DETECT_ENABLED:
@@ -1138,7 +1148,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
                     'created_at': current_timestamp,
                     'updated_at': current_timestamp,
                     'url': upload_file_url,
-                    'scale': self.scale,
+                    'scale': scale,
                     'label': str(label)
                 }
 
@@ -1206,7 +1216,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
         frames = [frames[i] for i in range(num_frames)]
 
-        return {"X": np.expand_dims(tiff_stack, axis=-1), "y": np.array(frames)}
+        # Cast y to int to avoid issues during fourier transform/drift correction
+        return {"X": np.expand_dims(tiff_stack, axis=-1), "y": np.array(frames, dtype='uint16')}
 
     def _consume(self, redis_hash):
         hvalues = self.redis.hgetall(redis_hash)
@@ -1227,11 +1238,16 @@ class TrackingConsumer(TensorFlowServingConsumer):
         with utils.get_tempdir() as tempdir:
             fname = self.storage.download(hvalues.get('input_file_name'),
                                           tempdir)
-            data = self._load_data(hvalues, tempdir, fname)
+            data = self._load_data(redis_hash, tempdir, fname)
 
             self.logger.debug('Got contents tracking file contents.')
             self.logger.debug('X shape: %s', data['X'].shape)
             self.logger.debug('y shape: %s', data['y'].shape)
+
+            # Correct for drift if enabled
+            if settings.DRIFT_CORRECT_ENABLED:
+                data['X'], data['y'] = processing.correct_drift(data['X'], data['y'])
+                self.logger.debug('Drift correction complete.')
 
             # TODO Add support for rescaling in the tracker
             tracker = self._get_tracker(redis_hash, hvalues,
