@@ -1050,7 +1050,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
             'progress': progress,
         })
 
-    def _load_data(self, hvalues, subdir, fname):
+    def _load_data(self, redis_hash, subdir, fname):
         """
         Given the upload location `input_file_name`, and the downloaded
         location of the same file in subdir/fname, return the raw and annotated
@@ -1062,6 +1062,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
             subdir: string of path that contains the downloaded file
             fname: string of file name inside subdir
         """
+        hvalues = self.redis.hgetall(redis_hash)
+
         if fname.endswith('.trk') or fname.endswith('.trks'):
             return utils.load_track_file(os.path.join(subdir, fname))
 
@@ -1080,8 +1082,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
                                  tiff_stack.shape))
 
         # Calculate scale of a subset of raw
-        scale = hvals.get('scale', '')
-        if no scale:
+        scale = hvalues.get('scale', '')
+        if not scale:
             # Detect scale of image
             scale = self.detect_scale(tiff_stack)
             self.logger.debug('Image scale detected: %s', scale)
@@ -1135,7 +1137,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
                     'created_at': current_timestamp,
                     'updated_at': current_timestamp,
                     'url': upload_file_url,
-                    'scale': self.scale,
+                    'scale': scale,
                     'label': str(label)
                 }
 
@@ -1225,7 +1227,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
         with utils.get_tempdir() as tempdir:
             fname = self.storage.download(hvalues.get('input_file_name'),
                                           tempdir)
-            data = self._load_data(hvalues, tempdir, fname)
+            data = self._load_data(redis_hash, tempdir, fname)
 
             self.logger.debug('Got contents tracking file contents.')
             self.logger.debug('X shape: %s', data['X'].shape)
