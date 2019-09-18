@@ -40,7 +40,7 @@ from keras_retinanet.utils.compute_overlap import compute_overlap
 from scipy.ndimage import fourier_shift
 
 
-def noramlize(image):
+def normalize(image):
     """Normalize image data by dividing by the maximum pixel value
 
     Args:

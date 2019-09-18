@@ -118,7 +118,7 @@ EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
 # Pre- and Post-processing settings
 PROCESSING_FUNCTIONS = {
     'pre': {
-        'normalize': processing.noramlize
+        'normalize': processing.normalize
     },
     'post': {
         'deepcell': processing.pixelwise,  # TODO: this is deprecated.
