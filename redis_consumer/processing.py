@@ -31,13 +31,13 @@ from __future__ import print_function
 import numpy as np
 from scipy import ndimage
 from scipy.ndimage.morphology import distance_transform_edt
+from scipy.ndimage import fourier_shift
 from skimage import morphology
 from skimage.feature import peak_local_max, register_translation
 from skimage.measure import label, regionprops
 from skimage.transform import resize
 from skimage.segmentation import random_walker, relabel_sequential
 from keras_retinanet.utils.compute_overlap import compute_overlap
-from scipy.ndimage import fourier_shift
 
 
 def normalize(image):
