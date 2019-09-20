@@ -150,7 +150,7 @@ DEATH = config('DEATH', default=0.95, cast=float)
 NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30, cast=int)
 
 # Scale detection settings
-SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:2')
+SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:3')
 SCALE_DETECT_SAMPLE = config('SCALE_DETECT_SAMPLE', default=3, cast=int)
 # Not supported for tracking. Always detects scale
 SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
