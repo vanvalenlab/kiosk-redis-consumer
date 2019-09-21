@@ -157,7 +157,7 @@ SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
 SCALE_RESHAPE_SIZE = config('SCALE_RESHAPE_SIZE', default=216, cast=int)
 
 # Type detection settings
-LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:0', cast=str)
+LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', cast=str)
 LABEL_DETECT_SAMPLE = config('LABEL_DETECT_SAMPLE', default=3, cast=int)
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 LABEL_RESHAPE_SIZE = config('LABEL_RESHAPE_SIZE', default=216, cast=int)
