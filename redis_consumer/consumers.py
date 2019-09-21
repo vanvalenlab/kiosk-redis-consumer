@@ -1031,10 +1031,11 @@ class TrackingConsumer(TensorFlowServingConsumer):
     def _get_tracker(self, redis_hash, hvalues, raw, segmented):
         tracking_model = self._get_model(redis_hash, hvalues)
 
-        # The current tracking model was trained on normalized images but does
-        # not include a normalization layer. Normalize the raw images here.
-        for frame in range(raw.shape[0]):
-            raw[frame, :, :, 0] = processing.normalize(raw[frame, :, :, 0])
+        # Some tracking models do not have an ImageNormalization Layer.
+        # If not, the data must be normalized before being tracked.
+        if settings.NORMALIZE_TRACKING:
+            for frame in range(raw.shape[0]):
+                raw[frame, :, :, 0] = processing.normalize(raw[frame, :, :, 0])
 
         features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
         tracker = tracking.cell_tracker(raw, segmented,

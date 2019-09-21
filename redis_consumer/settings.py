@@ -140,6 +140,7 @@ TRACKING_MODEL = config(
     'TRACKING_MODEL', default='tracking_model_benchmarking_757_step5_20epoch_80split_9tl:1', cast=str)
 
 DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=True, cast=bool)
+NORMALIZE_TRACKING = config('NORMALIZE_TRACKING', default=True, cast=bool)
 
 # tracking.cell_tracker settings
 MAX_DISTANCE = config('MAX_DISTANCE', default=50, cast=int)
