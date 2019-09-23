@@ -79,9 +79,6 @@ GRPC_RETRY_STATUSES = {
 REDIS_TIMEOUT = config('REDIS_TIMEOUT', default=3, cast=int)
 EMPTY_QUEUE_TIMEOUT = config('EMPTY_QUEUE_TIMEOUT', default=5, cast=int)
 
-# Status of hashes marked for prediction
-STATUS = config('STATUS', default='new')
-
 # Cloud storage
 CLOUD_PROVIDER = config('CLOUD_PROVIDER', cast=str, default='aws').lower()
 
