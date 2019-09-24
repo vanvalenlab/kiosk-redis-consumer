@@ -1259,7 +1259,29 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
             # Post-process and save the output file
             tracker.postprocess(save_name)
-            output_file_name, output_url = self.storage.upload(save_name)
+            # Start workaround for working with zip files
+            data = utils.load_track_file(save_name)
+            lineage_file = os.path.join(tempdir, 'lineage.json')
+
+            with open(lineage_file, 'w') as fp:
+                json.dump(data['lineages'], fp)
+
+            save_name = hvalues.get('original_name', fname)
+            subdir = os.path.dirname(save_name.replace(tempdir, ''))
+            name = os.path.splitext(os.path.basename(save_name))[0]
+
+            outpaths = utils.save_numpy_array(
+                data['y'], name=name,
+                subdir=subdir, output_dir=tempdir)
+
+            outpaths.append(lineage_file)
+
+            # Save as zip instead of .trk for demo-purposes
+            zip_file = utils.zip_files(outpaths, tempdir)
+
+            output_file_name, output_url = self.storage.upload(zip_file)
+            # End workaround for working with zip files
+            # output_file_name, output_url = self.storage.upload(save_name)
 
             self.update_key(redis_hash, {
                 'status': self.final_status,
