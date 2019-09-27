@@ -1241,37 +1241,35 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
             # Correct for drift if enabled
             if settings.DRIFT_CORRECT_ENABLED:
+                t = timeit.default_timer()
                 data['X'], data['y'] = processing.correct_drift(data['X'], data['y'])
-                self.logger.debug('Drift correction complete.')
+                self.logger.debug('Drift correction complete in %s seconds.',
+                                  timeit.default_timer() - t)
 
             # TODO Add support for rescaling in the tracker
             tracker = self._get_tracker(redis_hash, hvalues,
-                                        data["X"], data["y"])
+                                        data['X'], data['y'])
             self.logger.debug('Trying to track...')
 
             tracker._track_cells()
 
             self.logger.debug('Tracking done!')
 
-            # Save tracking result and upload
-            save_name = os.path.join(
-                tempdir, hvalues.get('original_name', fname)) + '.trk'
-
             # Post-process and save the output file
-            tracker.postprocess(save_name)
-            # Start workaround for working with zip files
-            data = utils.load_track_file(save_name)
-            lineage_file = os.path.join(tempdir, 'lineage.json')
+            tracked_data = tracker.postprocess()
 
+            # Save lineage data to JSON file
+            lineage_file = os.path.join(tempdir, 'lineage.json')
             with open(lineage_file, 'w') as fp:
-                json.dump(data['lineages'], fp)
+                json.dump(tracked_data['tracks'], fp)
 
             save_name = hvalues.get('original_name', fname)
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
 
+            # Save tracked data as tiff stack
             outpaths = utils.save_numpy_array(
-                data['y'], name=name,
+                tracked_data['y_tracked'], name=name,
                 subdir=subdir, output_dir=tempdir)
 
             outpaths.append(lineage_file)
@@ -1280,8 +1278,6 @@ class TrackingConsumer(TensorFlowServingConsumer):
             zip_file = utils.zip_files(outpaths, tempdir)
 
             output_file_name, output_url = self.storage.upload(zip_file)
-            # End workaround for working with zip files
-            # output_file_name, output_url = self.storage.upload(save_name)
 
             self.update_key(redis_hash, {
                 'status': self.final_status,

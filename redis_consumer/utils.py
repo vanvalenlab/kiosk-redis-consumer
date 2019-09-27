@@ -291,7 +291,6 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
     return out_paths
 
 
-# from deepcell.utils.tracking_utils.load_trks
 def load_track_file(filename):
     """Load a trk/trks file.
     Args:
@@ -314,33 +313,8 @@ def load_track_file(filename):
             array_file.seek(0)
             tracked = np.load(array_file)
             array_file.close()
-        # Start workaround for downloading zipfiles
-        __, file_extension = os.path.splitext(filename)
 
-        lineages = None
-        if file_extension == '.trks':
-            try:
-                trk_data = trks.getmember('lineages.json')
-                lineages = json.loads(trks.extractfile(trk_data).read().decode())
-                # JSON only allows strings as keys, so convert them back to ints
-                for i, tracks in enumerate(lineages):
-                    lineages[i] = {int(k): v for k, v in tracks.items()}
-            except:
-                lineages = {}
-
-        elif file_extension == '.trk':
-            try:
-                trk_data = trks.getmember('lineage.json')
-                lineage = json.loads(trks.extractfile(trk_data).read().decode())
-                # JSON only allows strings as keys, so convert them back to ints
-                lineages = []
-                lineages.append({int(k): v for k, v in lineage.items()})
-            except:
-                lineages = []
-
-        return {'X': raw, 'y': tracked, 'lineages': lineages}
-        # End workaround for downloading zipfiles
-        # return {'X': raw, 'y': tracked}
+        return {'X': raw, 'y': tracked}
 
     raise Exception("track file must end with .zip or .trk/.trks")
 
