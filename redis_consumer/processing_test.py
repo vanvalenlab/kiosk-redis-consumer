@@ -90,7 +90,7 @@ def _retinanet_data(im):
 def test_normalize():
     height, width = 300, 300
     img = _get_image(height, width)
-    normalized_img = processing.noramlize(img)
+    normalized_img = processing.normalize(img)
     np.testing.assert_almost_equal(normalized_img.mean(), 0)
     np.testing.assert_almost_equal(normalized_img.var(), 1)
 
