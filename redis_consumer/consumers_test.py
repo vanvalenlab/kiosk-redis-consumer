@@ -178,7 +178,10 @@ class DummyTracker(object):
         return None
 
     def postprocess(self, *_, **__):
-        return None
+        return {
+            'y_tracked': np.zeros((32, 32, 1)),
+            'tracks': []
+        }
 
 
 class TestConsumer(object):
