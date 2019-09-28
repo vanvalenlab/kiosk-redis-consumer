@@ -947,6 +947,7 @@ class ZipFileConsumer(Consumer):
                 'status': next_status,
                 'children': key_separator.join(all_hashes),
                 'children_upload_time': timeit.default_timer() - start,
+                'progress': 0
             })
             return next_status
 
@@ -967,6 +968,7 @@ class ZipFileConsumer(Consumer):
                     done.add(child)
 
             remaining_children = children - done - failed
+            progress = (len(done) + len(failed)) / len(children)
 
             self.logger.info('Key `%s` has %s children waiting for processing',
                              redis_hash, len(remaining_children))
@@ -975,6 +977,7 @@ class ZipFileConsumer(Consumer):
             self.update_key(redis_hash, {
                 'children:done': key_separator.join(d for d in done if d),
                 'children:failed': key_separator.join(f for f in failed if f),
+                'progress': min(100, max(0, round(progress * 100)))
             })
 
             if not remaining_children:
