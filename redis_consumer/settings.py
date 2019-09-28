@@ -79,9 +79,6 @@ GRPC_RETRY_STATUSES = {
 REDIS_TIMEOUT = config('REDIS_TIMEOUT', default=3, cast=int)
 EMPTY_QUEUE_TIMEOUT = config('EMPTY_QUEUE_TIMEOUT', default=5, cast=int)
 
-# Status of hashes marked for prediction
-STATUS = config('STATUS', default='new')
-
 # Cloud storage
 CLOUD_PROVIDER = config('CLOUD_PROVIDER', cast=str, default='aws').lower()
 
@@ -118,7 +115,7 @@ EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
 # Pre- and Post-processing settings
 PROCESSING_FUNCTIONS = {
     'pre': {
-        'normalize': processing.noramlize
+        'normalize': processing.normalize
     },
     'post': {
         'deepcell': processing.pixelwise,  # TODO: this is deprecated.
@@ -131,38 +128,41 @@ PROCESSING_FUNCTIONS = {
 }
 
 # Tracking settings
-TRACKING_SEGMENT_MODEL = config('TRACKING_SEGMENT_MODEL', default='panoptic:3')
-TRACKING_POSTPROCESS_FUNCTION = config('TRACKING_POSTPROCESS_FUNCTION', default='retinanet')
-CUTS = config('CUTS', default=0)
+TRACKING_SEGMENT_MODEL = config('TRACKING_SEGMENT_MODEL', default='panoptic:3', cast=str)
+TRACKING_POSTPROCESS_FUNCTION = config('TRACKING_POSTPROCESS_FUNCTION',
+                                       default='retinanet', cast=str)
+CUTS = config('CUTS', default=0, cast=int)
 
-TRACKING_MODEL = config(
-    'TRACKING_MODEL', default='tracking_model_benchmarking_757_step5_20epoch_80split_9tl:1')
+TRACKING_MODEL = config('TRACKING_MODEL', default='TrackingModel:0', cast=str)
+
+DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=True, cast=bool)
+NORMALIZE_TRACKING = config('NORMALIZE_TRACKING', default=True, cast=bool)
 
 # tracking.cell_tracker settings
-MAX_DISTANCE = config('MAX_DISTANCE', default=50)
-TRACK_LENGTH = config('TRACK_LENGTH', default=5)
-DIVISION = config('DIVISION', default=0.9)
-BIRTH = config('BIRTH', default=0.95)
-DEATH = config('DEATH', default=0.95)
-NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30)
+MAX_DISTANCE = config('MAX_DISTANCE', default=50, cast=int)
+TRACK_LENGTH = config('TRACK_LENGTH', default=5, cast=int)
+DIVISION = config('DIVISION', default=0.9, cast=float)
+BIRTH = config('BIRTH', default=0.95, cast=float)
+DEATH = config('DEATH', default=0.95, cast=float)
+NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30, cast=int)
 
 # Scale detection settings
-SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:2')
-SCALE_DETECT_SAMPLE = config('SCALE_DETECT_SAMPLE', default=3)
+SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:3')
+SCALE_DETECT_SAMPLE = config('SCALE_DETECT_SAMPLE', default=3, cast=int)
 # Not supported for tracking. Always detects scale
-SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False)
-SCALE_RESHAPE_SIZE = config('SCALE_RESHAPE_SIZE', default=216)
+SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
+SCALE_RESHAPE_SIZE = config('SCALE_RESHAPE_SIZE', default=216, cast=int)
 
 # Type detection settings
-LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:0')
-LABEL_DETECT_SAMPLE = config('LABEL_DETECT_SAMPLE', default=3)
-LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False)
-LABEL_RESHAPE_SIZE = config('LABEL_RESHAPE_SIZE', default=216)
+LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:2', cast=str)
+LABEL_DETECT_SAMPLE = config('LABEL_DETECT_SAMPLE', default=3, cast=int)
+LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
+LABEL_RESHAPE_SIZE = config('LABEL_RESHAPE_SIZE', default=216, cast=int)
 
 # Set default models based on label type
-PHASE_MODEL = config('PHASE_MODEL', default='panoptic_phase:0')
-CYTOPLASM_MODEL = config('CYTOPLASM_MODEL', default='panoptic_cytoplasm:0')
-NUCLEAR_MODEL = config('NUCLEAR_MODEL', default='panoptic:3')
+PHASE_MODEL = config('PHASE_MODEL', default='panoptic_phase:0', cast=str)
+CYTOPLASM_MODEL = config('CYTOPLASM_MODEL', default='panoptic_cytoplasm:0', cast=str)
+NUCLEAR_MODEL = config('NUCLEAR_MODEL', default='panoptic:3', cast=str)
 
 MODEL_CHOICES = {
     0: NUCLEAR_MODEL,
@@ -170,9 +170,9 @@ MODEL_CHOICES = {
     2: CYTOPLASM_MODEL
 }
 
-PHASE_POSTPROCESS = config('PHASE_POSTPROCESS', default='retinanet-semantic')
-CYTOPLASM_POSTPROCESS = config('CYTOPLASM_POSTPROCESS', default='retinanet-semantic')
-NUCLEAR_POSTPROCESS = config('NUCLEAR_POSTPROCESS', default='retinanet')
+PHASE_POSTPROCESS = config('PHASE_POSTPROCESS', default='retinanet-semantic', cast=str)
+CYTOPLASM_POSTPROCESS = config('CYTOPLASM_POSTPROCESS', default='retinanet-semantic', cast=str)
+NUCLEAR_POSTPROCESS = config('NUCLEAR_POSTPROCESS', default='retinanet', cast=str)
 
 POSTPROCESS_CHOICES = {
     0: NUCLEAR_POSTPROCESS,

@@ -291,7 +291,6 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
     return out_paths
 
 
-# from deepcell.utils.tracking_utils.load_trks
 def load_track_file(filename):
     """Load a trk/trks file.
     Args:

@@ -30,6 +30,7 @@ from __future__ import print_function
 
 import numpy as np
 from skimage.measure import regionprops
+import pytest
 
 from redis_consumer import processing
 
@@ -89,7 +90,7 @@ def _retinanet_data(im):
 def test_normalize():
     height, width = 300, 300
     img = _get_image(height, width)
-    normalized_img = processing.noramlize(img)
+    normalized_img = processing.normalize(img)
     np.testing.assert_almost_equal(normalized_img.mean(), 0)
     np.testing.assert_almost_equal(normalized_img.var(), 1)
 
@@ -127,3 +128,31 @@ def test_retinanet_semantic():
     out = _retinanet_data(im)
 
     label = processing.retinanet_semantic_to_label_image(out)
+
+
+def test_correct_drift():
+    img2d = np.random.rand(30, 30)
+    img3d = np.random.rand(10, 30, 30)
+    img4d = np.random.rand(10, 30, 30, 1)
+
+    # Wrong  input size
+    with pytest.raises(ValueError):
+        processing.correct_drift(img2d)
+
+    # Mismatched inputs
+    with pytest.raises(ValueError):
+        processing.correct_drift(img3d, img4d)
+
+    # 3d X alone
+    res = processing.correct_drift(img3d)
+    assert len(res.shape) == 3
+
+    # 3d with y
+    res = processing.correct_drift(img3d, img3d)
+    assert len(res) == 2
+    assert len(res[0].shape) == 3
+    assert len(res[1].shape) == 3
+
+    # 4d input
+    res = processing.correct_drift(img4d)
+    assert len(res.shape) == 4
