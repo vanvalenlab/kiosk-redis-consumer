@@ -129,12 +129,11 @@ PROCESSING_FUNCTIONS = {
 
 # Tracking settings
 TRACKING_SEGMENT_MODEL = config('TRACKING_SEGMENT_MODEL', default='panoptic:3', cast=str)
-TRACKING_POSTPROCESS_FUNCTION = config(
-    'TRACKING_POSTPROCESS_FUNCTION', default='retinanet', cast=str)
+TRACKING_POSTPROCESS_FUNCTION = config('TRACKING_POSTPROCESS_FUNCTION',
+                                       default='retinanet', cast=str)
 CUTS = config('CUTS', default=0, cast=int)
 
-TRACKING_MODEL = config(
-    'TRACKING_MODEL', default='tracking_model_benchmarking_757_step5_20epoch_80split_9tl:1', cast=str)
+TRACKING_MODEL = config('TRACKING_MODEL', default='TrackingModel:0', cast=str)
 
 DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=True, cast=bool)
 NORMALIZE_TRACKING = config('NORMALIZE_TRACKING', default=True, cast=bool)
@@ -155,7 +154,7 @@ SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
 SCALE_RESHAPE_SIZE = config('SCALE_RESHAPE_SIZE', default=216, cast=int)
 
 # Type detection settings
-LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', cast=str)
+LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:2', cast=str)
 LABEL_DETECT_SAMPLE = config('LABEL_DETECT_SAMPLE', default=3, cast=int)
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 LABEL_RESHAPE_SIZE = config('LABEL_RESHAPE_SIZE', default=216, cast=int)
