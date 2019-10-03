@@ -135,7 +135,7 @@ CUTS = config('CUTS', default=0, cast=int)
 
 TRACKING_MODEL = config('TRACKING_MODEL', default='TrackingModel:0', cast=str)
 
-DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=True, cast=bool)
+DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=False, cast=bool)
 NORMALIZE_TRACKING = config('NORMALIZE_TRACKING', default=True, cast=bool)
 
 # tracking.cell_tracker settings
