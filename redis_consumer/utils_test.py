@@ -29,13 +29,12 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import json
-import numpy as np
 import pytest
 import tarfile
 import tempfile
 import zipfile
 
+import numpy as np
 from keras_preprocessing.image import array_to_img
 from skimage.external import tifffile as tiff
 
@@ -90,6 +89,7 @@ def test_make_tensor_proto():
 
 
 def test_grpc_response_to_dict():
+    # pylint: disable=E1101
     # test valid response
     data = _get_image(300, 300, 1)
     tensor_proto = utils.make_tensor_proto(data, 'DT_FLOAT')
@@ -216,7 +216,7 @@ def test_save_numpy_array():
     # Bad path will not fail, but will log error
     img = _get_image(h, w, c)
     files = utils.save_numpy_array(img, 'name', '/a/b/', '/does/not/exist/')
-    assert len(files) == 0
+    assert not files
 
 
 def test_load_track_file():
@@ -338,23 +338,24 @@ def test_reshape_matrix():
 
 
 def test_rescale():
-    shapes = [(4, 4, 5), (4, 4, 1)]
-    for shape in shapes:
-        image = np.random.random(shape)
-        rescaled = utils.rescale(image, 1)
-        np.testing.assert_array_equal(rescaled, image)
+    scales = [.5, 2]
+    shapes = [(4, 4, 5), (4, 4, 1), (4, 4)]
+    for scale in scales:
+        for shape in shapes:
+            image = np.random.random(shape)
+            rescaled = utils.rescale(image, 1)
+            np.testing.assert_array_equal(rescaled, image)
 
-        rescaled = utils.rescale(image, .5)
-        expected_shape = (int(np.ceil(shape[0] / 2)),
-                          int(np.ceil(shape[1] / 2)),
-                          int(shape[2]))
-        assert rescaled.shape == expected_shape
+            rescaled = utils.rescale(image, scale)
+            expected_shape = (int(np.ceil(shape[0] * scale)),
+                              int(np.ceil(shape[1] * scale)))
 
-        rescaled = utils.rescale(image, 2)
-        expected_shape = (int(np.ceil(shape[0] * 2)),
-                          int(np.ceil(shape[1] * 2)),
-                          int(shape[2]))
-        assert rescaled.shape == expected_shape
+            if len(shape) > 2:
+                expected_shape = tuple(list(expected_shape) + [int(shape[2])])
+            assert rescaled.shape == expected_shape
+            # scale it back
+            rescaled = utils.rescale(rescaled, 1 / scale)
+            assert rescaled.shape == shape
 
 
 def test__pick_model():
