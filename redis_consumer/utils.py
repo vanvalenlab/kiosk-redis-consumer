@@ -429,6 +429,7 @@ def rescale(image, scale):
         mode='edge',
         anti_aliasing=False,
         anti_aliasing_sigma=None,
+        multichannel=True,
         preserve_range=True,
         order=0
     )

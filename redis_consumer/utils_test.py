@@ -338,16 +338,23 @@ def test_reshape_matrix():
 
 
 def test_rescale():
-    shape = (4, 4, 5)
-    image = np.random.random(shape)
-    rescaled = utils.rescale(image, 1)
-    np.testing.assert_array_equal(rescaled, image)
+    shapes = [(4, 4, 5), (4, 4, 1)]
+    for shape in shapes:
+        image = np.random.random(shape)
+        rescaled = utils.rescale(image, 1)
+        np.testing.assert_array_equal(rescaled, image)
 
-    rescaled = utils.rescale(image, .5)
-    expected_shape = (int(np.ceil(shape[0] / 2)),
-                      int(np.ceil(shape[1] / 2)),
-                      int(shape[2]))
-    assert rescaled.shape == expected_shape
+        rescaled = utils.rescale(image, .5)
+        expected_shape = (int(np.ceil(shape[0] / 2)),
+                          int(np.ceil(shape[1] / 2)),
+                          int(shape[2]))
+        assert rescaled.shape == expected_shape
+
+        rescaled = utils.rescale(image, 2)
+        expected_shape = (int(np.ceil(shape[0] * 2)),
+                          int(np.ceil(shape[1] * 2)),
+                          int(shape[2]))
+        assert rescaled.shape == expected_shape
 
 
 def test__pick_model():
