@@ -280,7 +280,7 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
             if not os.path.isdir(os.path.dirname(path)):
                 os.makedirs(os.path.dirname(path))
 
-            skimage.external.tifffile.imsave(path, img)
+            tifffile.imsave(path, img)
             logger.debug('Saved channel %s to %s', channel, path)
             out_paths.append(path)
         except Exception as err:  # pylint: disable=broad-except
