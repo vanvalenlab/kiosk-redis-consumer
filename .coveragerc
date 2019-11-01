@@ -16,4 +16,3 @@ omit =
     **/*_test.py
     redis_consumer/pbs/*
     redis_consumer/grpc_clients.py
-    redis_consumer/tracking.py
