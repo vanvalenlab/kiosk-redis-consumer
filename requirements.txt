@@ -12,4 +12,4 @@ pandas>=0.24.2
 pytz==2019.1
 keras_retinanet==0.5.1
 opencv-python==4.1.0.25
-deepcell-tracking==0.1.0
+deepcell-tracking==0.2.0
