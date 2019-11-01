@@ -40,10 +40,10 @@ import urllib
 import uuid
 import zipfile
 
+from skimage.external import tifffile
 import grpc
 import numpy as np
 import pytz
-import skimage
 
 from redis_consumer.grpc_clients import PredictClient
 # from redis_consumer.grpc_clients import ProcessClient
@@ -1128,7 +1128,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
                 segment_local_path = os.path.join(tempdir, segment_fname)
 
                 # upload it
-                skimage.external.tifffile.imsave(segment_local_path, img)
+                tifffile.imsave(segment_local_path, img)
                 upload_file_name, upload_file_url = self.storage.upload(
                     segment_local_path)
 

@@ -42,6 +42,7 @@ import tempfile
 import zipfile
 import six
 
+from skimage.external import tifffile
 import numpy as np
 import keras_preprocessing.image
 import skimage
@@ -204,7 +205,7 @@ def get_image(filepath):
     """
     logger.debug('Loading %s into numpy array', filepath)
     if os.path.splitext(filepath)[-1].lower() in {'.tif', '.tiff'}:
-        img = skimage.external.tifffile.TiffFile(filepath).asarray()
+        img = tifffile.TiffFile(filepath).asarray()
         # tiff files should not have a channel dim
         img = np.expand_dims(img, axis=-1)
     else:
