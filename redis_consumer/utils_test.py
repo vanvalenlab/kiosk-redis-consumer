@@ -344,7 +344,9 @@ def test_rescale():
     np.testing.assert_array_equal(rescaled, image)
 
     rescaled = utils.rescale(image, .5)
-    expected_shape = (np.ceil(shape[0] / 2), np.ceil(shape[1] / 2), shape[2])
+    expected_shape = (int(np.ceil(shape[0] / 2)),
+                      int(np.ceil(shape[1] / 2)),
+                      int(shape[2]))
     assert rescaled.shape == expected_shape
 
 
