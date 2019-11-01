@@ -28,6 +28,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import timeit
 
 from deepcell_tracking import cell_tracker as _cell_tracker
@@ -35,6 +36,10 @@ from deepcell_tracking import cell_tracker as _cell_tracker
 
 class cell_tracker(_cell_tracker):
     """Override the original cell_tracker class to call model.progress()"""
+
+    def __init__(self, *args, **kwargs):
+        self.logger = logging.getLogger(str(self.__class__.__name__))
+        super(cell_tracker, self).__init__(*args, **kwargs)
 
     def _track_cells(self):
         """Tracks all of the cells in every frame."""
