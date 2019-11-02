@@ -34,7 +34,6 @@ import time
 import timeit
 import contextlib
 import hashlib
-import json
 import logging
 import shutil
 import tarfile
@@ -42,9 +41,11 @@ import tempfile
 import zipfile
 import six
 
+import skimage
+from skimage.external import tifffile
+
 import numpy as np
 import keras_preprocessing.image
-import skimage
 import dict_to_protobuf
 import PIL
 
@@ -204,7 +205,7 @@ def get_image(filepath):
     """
     logger.debug('Loading %s into numpy array', filepath)
     if os.path.splitext(filepath)[-1].lower() in {'.tif', '.tiff'}:
-        img = skimage.external.tifffile.TiffFile(filepath).asarray()
+        img = tifffile.TiffFile(filepath).asarray()
         # tiff files should not have a channel dim
         img = np.expand_dims(img, axis=-1)
     else:
@@ -251,7 +252,7 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
     Returns:
         out_paths: list of all saved image paths
     """
-    logger.debug('Saving array of size {}'.format(arr.shape))
+    logger.debug('Saving array of size %s', arr.shape)
 
     if len(arr.shape) == 2:
         arr = np.expand_dims(arr, -1)
@@ -279,7 +280,7 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
             if not os.path.isdir(os.path.dirname(path)):
                 os.makedirs(os.path.dirname(path))
 
-            skimage.external.tifffile.imsave(path, img)
+            tifffile.imsave(path, img)
             logger.debug('Saved channel %s to %s', channel, path)
             out_paths.append(path)
         except Exception as err:  # pylint: disable=broad-except
@@ -421,17 +422,32 @@ def reshape_matrix(X, y, reshape_size=256, is_channels_first=False):
     return new_X, new_y
 
 
-def rescale(image, scale):
+def rescale(image, scale, channel_axis=-1):
+    multichannel = False
+    add_channel = False
     if scale == 1:
-        return image
-    return skimage.transform.rescale(
+        return image  # no rescale necessary, short-circuit
+
+    if len(image.shape) != 2:  # we have a channel axis
+        try:
+            image = np.squeeze(image, axis=channel_axis)
+            add_channel = True
+        except:  # pylint: disable=bare-except
+            multichannel = True  # channel axis is not 1
+
+    rescaled_img = skimage.transform.rescale(
         image, scale,
         mode='edge',
         anti_aliasing=False,
         anti_aliasing_sigma=None,
+        multichannel=multichannel,
         preserve_range=True,
         order=0
     )
+    if add_channel:
+        rescaled_img = np.expand_dims(rescaled_img, axis=channel_axis)
+    logger.debug('Rescaled image from %s to %s', image.shape, rescaled_img.shape)
+    return rescaled_img
 
 
 def _pick_model(label):
