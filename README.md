@@ -9,7 +9,13 @@ Reads events in redis, downloads image data from the cloud, and send the data to
 
 Consumers consume redis events. Each type of redis event is put into a separate queue (e.g. `predict`, `track`), and each consumer type will pop items to consume off that queue.
 
-If the consumer will send data to a TensorFlow Serving model, it should inherit from `TensorFlowServingConsumer`, which has methods `_get_predict_client` and `grpc_image` which can send data to the specific model.  The new consumer must also implement the `_consume` method which performs the bulk of the work. The `_consume` method will fetch data from redis, download data from the bucket, process the data with a model, and upload the results to the bucket again. See below for a basic implementation of `_consume`:
+Each redis event should have the following fields:
+
+* `model_name` - The name of the model in TensorFlow Serving
+* `model_version` - The version number of the model in TensorFlow Serving
+* `input_file_name` - The path to the data file in a cloud bucket.
+
+If the consumer will send data to a TensorFlow Serving model, it should inherit from `TensorFlowServingConsumer`, which has methods `_get_predict_client` and `grpc_image` which can send data to the specific model.  The new consumer must also implement the `_consume` method which performs the bulk of the work. The `_consume` method will fetch data from redis, download data file from the bucket, process the data with a model, and upload the results to the bucket again. See below for a basic implementation of `_consume`:
 
 ```python
 def _consume(self, redis_hash):
