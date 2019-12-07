@@ -174,6 +174,9 @@ class DummyTracker(object):
     def _track_cells(self):
         return None
 
+    def track_cells(self):
+        return None
+
     def dump(self, *_, **__):
         return None
 

@@ -31,27 +31,29 @@ from __future__ import print_function
 import logging
 import timeit
 
-from deepcell_tracking import cell_tracker as _cell_tracker
+from deepcell_tracking import CellTracker as _CellTracker
 
 
-class cell_tracker(_cell_tracker):
+class CellTracker(_CellTracker):
     """Override the original cell_tracker class to call model.progress()"""
 
     def __init__(self, *args, **kwargs):
         self.logger = logging.getLogger(str(self.__class__.__name__))
-        super(cell_tracker, self).__init__(*args, **kwargs)
+        super(CellTracker, self).__init__(*args, **kwargs)
 
-    def _track_cells(self):
-        """Tracks all of the cells in every frame."""
-        for frame in range(1, self.x.shape[0]):
-            t = timeit.default_timer()
-            self.logger.info('Tracking frame %s', frame)
+    def track_cells(self):
+        """Tracks all of the cells in every frame.
+        """
+        start = timeit.default_timer()
+        self._initialize_tracks()
 
-            cost_matrix, predictions = self._get_cost_matrix(frame)
+        for frame in range(1, self.x.shape[self.time_axis]):
+            self._track_frame(frame)
 
-            assignments = self._run_lap(cost_matrix)
-
-            self._update_tracks(assignments, frame, predictions)
+            # The only difference between the original and this
+            # is calling model.progress after every frame.
             self.model.progress(frame / self.x.shape[0])
-            self.logger.info('Tracked frame %s in %s seconds.',
-                             frame, timeit.default_timer() - t)
+
+        self.logger.info('Tracked all %s frames in %s s.',
+                         self.x.shape[self.time_axis],
+                         timeit.default_timer() - start)

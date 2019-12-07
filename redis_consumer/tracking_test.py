@@ -90,14 +90,14 @@ class TestTracking(object):
             x, y = _get_dummy_tracking_data(
                 length, frames=frames, data_format=data_format)
 
-            tracker = tracking.cell_tracker(
+            tracker = tracking.CellTracker(
                 x, y,
                 model=DummyModel(),
                 track_length=track_length,
                 data_format=data_format,
                 features=features)
 
-            tracker._track_cells()
+            tracker.track_cells()
 
             # test tracker.dataframe
             df = tracker.dataframe(cell_type='test-value')

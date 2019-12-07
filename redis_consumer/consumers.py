@@ -1041,15 +1041,15 @@ class TrackingConsumer(TensorFlowServingConsumer):
                 raw[frame, :, :, 0] = processing.normalize(raw[frame, :, :, 0])
 
         features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
-        tracker = tracking.cell_tracker(raw, segmented,
-                                        tracking_model,
-                                        max_distance=settings.MAX_DISTANCE,
-                                        track_length=settings.TRACK_LENGTH,
-                                        division=settings.DIVISION,
-                                        birth=settings.BIRTH,
-                                        death=settings.DEATH,
-                                        neighborhood_scale_size=settings.NEIGHBORHOOD_SCALE_SIZE,
-                                        features=features)
+        tracker = tracking.CellTracker(raw, segmented,
+                                       tracking_model,
+                                       max_distance=settings.MAX_DISTANCE,
+                                       track_length=settings.TRACK_LENGTH,
+                                       division=settings.DIVISION,
+                                       birth=settings.BIRTH,
+                                       death=settings.DEATH,
+                                       neighborhood_scale_size=settings.NEIGHBORHOOD_SCALE_SIZE,
+                                       features=features)
 
         self.logger.debug('Created tracker!')
         return tracker
@@ -1254,7 +1254,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
                                         data['X'], data['y'])
             self.logger.debug('Trying to track...')
 
-            tracker._track_cells()
+            tracker.track_cells()
 
             self.logger.debug('Tracking done!')
 
