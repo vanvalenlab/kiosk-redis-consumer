@@ -299,7 +299,7 @@ class TensorFlowServingConsumer(Consumer):
                 return results
             except grpc.RpcError as err:
                 # pylint: disable=E1101
-                if count > settings.MAX_RETRY:
+                if count > settings.MAX_RETRY > 0:
                     retrying = False
                     raise RuntimeError('Prediction has failed {} times due to '
                                        'error {}'.format(count, err))
