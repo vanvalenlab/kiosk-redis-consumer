@@ -47,6 +47,7 @@ DEBUG = config('DEBUG', cast=bool, default=False)
 # Consumer settings
 INTERVAL = config('INTERVAL', default=10, cast=int)
 CONSUMER_TYPE = config('CONSUMER_TYPE', default='image')
+MAX_RETRY = config('MAX_RETRY', default=10, cast=int)
 
 # Hash Prefix - filter out prediction jobs
 HASH_PREFIX = _strip(config('HASH_PREFIX', cast=str, default='predict'))
