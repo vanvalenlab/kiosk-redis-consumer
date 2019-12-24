@@ -47,6 +47,7 @@ DEBUG = config('DEBUG', cast=bool, default=False)
 # Consumer settings
 INTERVAL = config('INTERVAL', default=10, cast=int)
 CONSUMER_TYPE = config('CONSUMER_TYPE', default='image')
+MAX_RETRY = config('MAX_RETRY', default=5, cast=int)
 
 # Hash Prefix - filter out prediction jobs
 HASH_PREFIX = _strip(config('HASH_PREFIX', cast=str, default='predict'))
@@ -72,6 +73,7 @@ GRPC_BACKOFF = config('GRPC_BACKOFF', default=3, cast=int)
 # Retry-able gRPC status codes
 GRPC_RETRY_STATUSES = {
     grpc.StatusCode.DEADLINE_EXCEEDED,
+    grpc.StatusCode.RESOURCE_EXHAUSTED,
     grpc.StatusCode.UNAVAILABLE
 }
 

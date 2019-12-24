@@ -254,7 +254,7 @@ class TensorFlowServingConsumer(Consumer):
         return client
 
     def grpc_image(self, img, model_name, model_version):
-        count = 0
+        true_failures, count = 0, 0
         start = timeit.default_timer()
         self.logger.debug('Segmenting image of shape %s with model %s:%s',
                           img.shape, model_name, model_version)
@@ -299,8 +299,14 @@ class TensorFlowServingConsumer(Consumer):
                 return results
             except grpc.RpcError as err:
                 # pylint: disable=E1101
+                if true_failures > settings.MAX_RETRY > 0:
+                    retrying = False
+                    raise RuntimeError('Prediction has failed {} times due to '
+                                       'error {}'.format(count, err))
                 if err.code() in settings.GRPC_RETRY_STATUSES:
                     count += 1
+                    is_true_failure = err.code() != grpc.StatusCode.UNAVAILABLE
+                    true_failures += int(is_true_failure)
                     # write update to Redis
                     temp_status = 'retry-predicting - {} - {}'.format(
                         count, err.code().name)
