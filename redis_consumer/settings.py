@@ -73,6 +73,7 @@ GRPC_BACKOFF = config('GRPC_BACKOFF', default=3, cast=int)
 # Retry-able gRPC status codes
 GRPC_RETRY_STATUSES = {
     grpc.StatusCode.DEADLINE_EXCEEDED,
+    grpc.StatusCode.RESOURCE_EXHAUSTED,
     grpc.StatusCode.UNAVAILABLE
 }
 
