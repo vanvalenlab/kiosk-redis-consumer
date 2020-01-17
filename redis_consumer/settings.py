@@ -109,7 +109,8 @@ GCLOUD_STORAGE_BUCKET = config('GKE_BUCKET', default='default-bucket')
 HOSTNAME = config('HOSTNAME', default='host-unkonwn')
 
 # Redis queue
-QUEUE = config('QUEUE', default='predict')
+QUEUE = config('QUEUE', default='segmentation')
+SEGMENTATION_QUEUE = config('SEGMENTATION_QUEUE', default='segmentation')
 
 # Configure expiration time for child keys
 EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
