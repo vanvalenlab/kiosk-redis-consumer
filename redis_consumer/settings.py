@@ -49,9 +49,6 @@ INTERVAL = config('INTERVAL', default=10, cast=int)
 CONSUMER_TYPE = config('CONSUMER_TYPE', default='image')
 MAX_RETRY = config('MAX_RETRY', default=5, cast=int)
 
-# Hash Prefix - filter out prediction jobs
-HASH_PREFIX = _strip(config('HASH_PREFIX', cast=str, default='predict'))
-
 # Redis client connection
 REDIS_HOST = config('REDIS_HOST', default='redis-master')
 REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)

@@ -730,7 +730,7 @@ class ZipFileConsumer(Consumer):
                 os.remove(imfile)  # remove the file to save some memory
 
                 new_hash = '{prefix}:{file}:{hash}'.format(
-                    prefix=settings.HASH_PREFIX,
+                    prefix=self.child_queue,
                     file=clean_imfile,
                     hash=uuid.uuid4().hex)
 
