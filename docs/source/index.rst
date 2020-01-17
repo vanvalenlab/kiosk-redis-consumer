@@ -6,9 +6,9 @@
 Welcome to Kiosk Redis Consumer's documentation!
 ================================================
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+.. mdinclude:: ../../README.md
+
+.. include:: _sidebar.rst.inc
 
 
 
