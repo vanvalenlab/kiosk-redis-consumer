@@ -1160,13 +1160,13 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
                 # make a hash for this frame
                 segment_hash = '{prefix}:{file}:{hash}'.format(
-                    prefix='predict',
+                    prefix=settings.SEGMENTATION_QUEUE,
                     file=segment_fname,
                     hash=uuid.uuid4().hex)
 
                 # push the hash to redis and the predict queue
                 self.redis.hmset(segment_hash, frame_hvalues)
-                self.redis.lpush('predict', segment_hash)
+                self.redis.lpush(settings.SEGMENTATION_QUEUE, segment_hash)
                 self.logger.debug('Added new hash for segmentation `%s`: %s',
                                   segment_hash, json.dumps(frame_hvalues,
                                                            indent=4))
