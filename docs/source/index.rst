@@ -1,4 +1,4 @@
-.. _index::
+.. _index:
 
 Welcome to Kiosk Redis Consumer's documentation!
 ================================================
