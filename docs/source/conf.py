@@ -17,6 +17,8 @@ import sys
 import shlex
 from datetime import datetime
 
+import gensidebar
+
 sys.path.insert(0, os.path.abspath('../..'))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__))))
 
@@ -24,7 +26,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__))))
 # -- Project information -----------------------------------------------------
 
 project = 'Kiosk Redis Consumer'
-copyright = '2016-{currentyear}, Van Valen Lab at the California Institute of Technology (Caltech)'.format(
+copyright = ('2016-{currentyear}, Van Valen Lab at the California Institute of Technology'
+             ' (Caltech)').format(
     currentyear=datetime.now().year
 )
 author = 'Van Valen Lab at Caltech'
@@ -203,13 +206,12 @@ autodoc_mock_imports = ["tensorflow", "sklearn", "skimage",
 intersphinx_mapping = {
     'deepcell': ('https://deepcell.readthedocs.io/en/{}/'.format(rtd_version), None),
     'kiosk': ('https://deepcell-kiosk.readthedocs.io/en/{}/'.format(rtd_version), None),
-    'kiosk-frontend': ('https://deepcell-kiosk.readthedocs.io/projects/kiosk-frontend/en/{}/'.format(rtd_version), None)
+    'kiosk-frontend': (('https://deepcell-kiosk.readthedocs.io/projects/kiosk-frontend/en/'
+                        '{}/').format(rtd_version), None)
 }
 
 intersphinx_cache_limit = 0
 
 # -- Custom Document processing ----------------------------------------------
-
-import gensidebar
 
 gensidebar.generate_sidebar(globals(), "kiosk-redis-consumer")
