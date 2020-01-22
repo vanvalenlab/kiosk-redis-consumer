@@ -17,11 +17,10 @@ import sys
 import shlex
 from datetime import datetime
 
-import gensidebar
-
 sys.path.insert(0, os.path.abspath('../..'))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__))))
 
+import gensidebar
 
 # -- Project information -----------------------------------------------------
 
