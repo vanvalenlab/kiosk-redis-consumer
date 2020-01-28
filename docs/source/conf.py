@@ -15,6 +15,7 @@
 import os
 import sys
 import shlex
+import mock
 from datetime import datetime
 
 sys.path.insert(0, os.path.abspath('../..'))
@@ -197,8 +198,29 @@ epub_exclude_files = ['search.html']
 
 
 # -- Extension configuration -------------------------------------------------
-autodoc_mock_imports = ["tensorflow", "sklearn", "skimage",
-                        "nbformat", "cv2", "keras_retinanet", "keras_maskrcnn"]
+autodoc_mock_imports = ["tensorflow",
+                        "sklearn",
+                        "skimage",
+                        "nbformat",
+                        "cv2",
+                        "keras_retinanet",
+                        "keras_preprocessing",
+                        "keras_maskrcnn",
+                        "deepcell-tracking",
+                        "grpc",
+                        "numpy",
+                        "scipy",
+                        "google", "google.cloud", "google.auth",
+                        "dict_to_protobuf",
+                        "PIL",
+                        "boto3",
+                        "decouple",
+                        "grpcio"]
+
+for f in os.listdir('../../redis_consumer/pbs'):
+    if 'py' in f and f != '__init__.py':
+        sys.modules['redis_consumer.pbs.{}'.format(f[:-3])] = mock.Mock()
+
 
 # -- Options for intersphinx extension ---------------------------------------
 
