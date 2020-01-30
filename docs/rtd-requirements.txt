@@ -1,3 +1,6 @@
 m2r
 mock==3.0.5
 Sphinx==2.3.1
+
+grpcio==1.22.0
+dict-to-protobuf==0.0.3.9

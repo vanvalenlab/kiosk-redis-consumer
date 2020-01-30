@@ -211,15 +211,16 @@ autodoc_mock_imports = ["tensorflow",
                         "numpy",
                         "scipy",
                         "google", "google.cloud", "google.auth",
-                        "dict_to_protobuf",
+                        # "dict_to_protobuf",
                         "PIL",
                         "boto3",
                         "decouple",
-                        "grpcio"]
+                        # "grpcio"
+                        ]
 
-for f in os.listdir('../../redis_consumer/pbs'):
-    if 'py' in f and f != '__init__.py':
-        sys.modules['redis_consumer.pbs.{}'.format(f[:-3])] = mock.Mock()
+# for f in os.listdir('../../redis_consumer/pbs'):
+#     if 'py' in f and f != '__init__.py':
+#         sys.modules['redis_consumer.pbs.{}'.format(f[:-3])] = mock.Mock()
 
 
 # -- Options for intersphinx extension ---------------------------------------
