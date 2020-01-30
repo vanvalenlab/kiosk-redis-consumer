@@ -207,14 +207,14 @@ autodoc_mock_imports = ["tensorflow",
                         "keras_preprocessing",
                         "keras_maskrcnn",
                         "deepcell-tracking",
-                        "grpc",
+                        # "grpc",
                         "numpy",
                         "scipy",
-                        "google", "google.cloud", "google.auth",
+                        # "google", "google.cloud", "google.auth",
                         # "dict_to_protobuf",
                         "PIL",
-                        "boto3",
-                        "decouple",
+                        # "boto3",
+                        # "decouple",
                         # "grpcio"
                         ]
 
