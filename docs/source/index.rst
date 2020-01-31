@@ -13,7 +13,6 @@ API
     redis_consumer.grpc_clients
     redis_consumer.processing
     redis_consumer.redis
-    redis_consumer.settings
     redis_consumer.storage
     redis_consumer.tracking
     redis_consumer.utils
