@@ -4,3 +4,4 @@ redis_consumer.consumers module
     :members:
     :undoc-members:
     :show-inheritance:
+    :private-members:
