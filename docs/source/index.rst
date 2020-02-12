@@ -1,7 +1,7 @@
 Welcome to Kiosk Redis Consumer's documentation!
 ================================================
 
-.. mdinclude:: ../../README.md
+.. include:: ../../README.rst
 
 .. include:: _sidebar.rst.inc
 
