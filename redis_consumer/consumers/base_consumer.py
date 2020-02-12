@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Classes to consume events in redis"""
+"""Base Consumer classes to provide structure for custom consumer workflows."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
