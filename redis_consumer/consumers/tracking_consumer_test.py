@@ -30,10 +30,7 @@ from __future__ import print_function
 
 import os
 import copy
-import math
-import random
 
-import redis
 import numpy as np
 from skimage.external import tifffile as tiff
 
@@ -41,7 +38,6 @@ import pytest
 
 from redis_consumer import consumers
 from redis_consumer import utils
-from redis_consumer import settings
 
 
 def _get_image(img_h=300, img_w=300):

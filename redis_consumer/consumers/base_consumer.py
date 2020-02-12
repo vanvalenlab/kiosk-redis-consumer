@@ -29,10 +29,15 @@ from __future__ import division
 from __future__ import print_function
 
 import datetime
+import hashlib
 import logging
+import os
 import sys
 import time
 import timeit
+import urllib
+import uuid
+import zipfile
 
 import grpc
 import numpy as np
