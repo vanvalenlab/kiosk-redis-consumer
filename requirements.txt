@@ -14,3 +14,4 @@ keras_retinanet==0.5.1
 opencv-python==4.1.0.25
 networkx>=2.1
 deepcell-tracking==0.2.5
+deepcell_data_processing==0.1.0
