@@ -123,7 +123,8 @@ PROCESSING_FUNCTIONS = {
         'mibi': processing.mibi,
         'watershed': processing.watershed,
         'retinanet': processing.retinanet_to_label_image,
-        'retinanet-semantic': processing.retinanet_semantic_to_label_image
+        'retinanet-semantic': processing.retinanet_semantic_to_label_image,
+        'deep_watershed': processing.deep_watershed,
     },
 }
 
@@ -170,9 +171,9 @@ MODEL_CHOICES = {
     2: CYTOPLASM_MODEL
 }
 
-PHASE_POSTPROCESS = config('PHASE_POSTPROCESS', default='retinanet-semantic', cast=str)
-CYTOPLASM_POSTPROCESS = config('CYTOPLASM_POSTPROCESS', default='retinanet-semantic', cast=str)
-NUCLEAR_POSTPROCESS = config('NUCLEAR_POSTPROCESS', default='retinanet', cast=str)
+PHASE_POSTPROCESS = config('PHASE_POSTPROCESS', default='deep_watershed', cast=str)
+CYTOPLASM_POSTPROCESS = config('CYTOPLASM_POSTPROCESS', default='deep_watershed', cast=str)
+NUCLEAR_POSTPROCESS = config('NUCLEAR_POSTPROCESS', default='deep_watershed', cast=str)
 
 PHASE_RESHAPE_SIZE = config('PHASE_RESHAPE_SIZE', default=512, cast=int)
 CYTOPLASM_RESHAPE_SIZE = config('CYTOPLASM_RESHAPE_SIZE', default=512, cast=int)

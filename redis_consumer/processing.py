@@ -39,6 +39,8 @@ from deepcell_toolbox import watershed
 from deepcell_toolbox import pixelwise
 from deepcell_toolbox import correct_drift
 
+from deepcell_toolbox.deep_watershed import deep_watershed
+
 from deepcell_toolbox import retinanet_semantic_to_label_image
 from deepcell_toolbox import retinanet_to_label_image
 
