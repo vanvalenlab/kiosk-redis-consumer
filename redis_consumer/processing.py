@@ -23,10 +23,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Functions for pre- and post-processing image data"""
+"""DEPRECATED. Please use the "deepell_toolbox" package instead.
+
+Functions for pre- and post-processing image data
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+# pylint: disable=W0611
 
 from deepcell_toolbox import normalize
 from deepcell_toolbox import mibi
