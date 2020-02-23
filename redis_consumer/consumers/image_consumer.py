@@ -227,7 +227,46 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             model_shape = settings.MODEL_SIZES.get(
                 '{}:{}'.format(model_name, model_version), max(image.shape))
 
-            if image.shape[0] > model_shape or image.shape[1] > model_shape:
+            if (image.shape[image.ndim - 3] < model_shape or
+                    image.shape[image.ndim - 2] < model_shape):
+                # tiling not necessary, but image must be padded.
+                pad_width = []
+                for i in range(image.ndim):
+                    if i in {image.ndim - 3, image.ndim - 2}:
+                        diff = model_shape - image.shape[i]
+                        if diff % 2:
+                            pad_width.append((diff // 2, diff // 2 + 1))
+                        else:
+                            pad_width.append((diff // 2, diff // 2))
+                    else:
+                        pad_width.append((0, 0))
+                padded_img = np.pad(image, pad_width, 'reflect')
+                image = self.grpc_image(padded_img, model_name, model_version)
+
+                for i, j in enumerate(image):
+
+                    self.logger.critical('output %s shape is %s', i, j.shape)
+
+                def unpad(x, pad_width):
+                    slices = []
+                    for c in pad_width:
+                        e = None if c[1] == 0 else -c[1]
+                        slices.append(slice(c[0], e))
+                    return x[tuple(slices)]
+
+                # unpad results
+                pad_width.insert(0, (0, 0))  # batch size
+                if isinstance(image, list):
+                    image = [unpad(i, pad_width) for i in image]
+                else:
+                    image = unpad(image, pad_width)
+
+                for i, j in enumerate(image):
+
+                    self.logger.critical('unpadded %s shape is %s', i, j.shape)
+
+            elif (image.shape[image.ndim - 3] > model_shape or
+                  image.shape[image.ndim - 2] > model_shape):
                 # need to tile!
                 tiles, tiles_info = tile_image(
                     np.expand_dims(image, axis=0),
