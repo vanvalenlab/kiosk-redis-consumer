@@ -5,6 +5,10 @@ Welcome to Kiosk Redis Consumer's documentation!
 
 .. include:: _sidebar.rst.inc
 
+.. toctree::
+
+    CUSTOM_CONSUMER
+
 API
 ---
 .. toctree::
