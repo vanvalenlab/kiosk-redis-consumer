@@ -33,6 +33,8 @@ import timeit
 
 import numpy as np
 
+from deepcell_toolbox.utils import tile_image, untile_image
+
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import utils
 from redis_consumer import settings
@@ -222,7 +224,30 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             # Send data to the model
             self.update_key(redis_hash, {'status': 'predicting'})
 
-            if streaming:
+            model_shape = settings.MODEL_SIZES.get(
+                '{}:{}'.format(model_name, model_version), max(image.shape))
+
+            if image.shape[0] > model_shape or image.shape[1] > model_shape:
+                # need to tile!
+                tiles, tiles_info = tile_image(
+                    np.expand_dims(image, axis=0),
+                    model_input_shape=(model_shape, model_shape),
+                    stride_ratio=0.75)
+
+                # max_batch_size is 1 by default.
+                # dependent on the tf-serving configuration
+                results = []
+                for t in range(tiles.shape[0]):
+                    output = self.grpc_image(tiles[t], model_name, model_version)
+                    if not results:
+                        results = output
+                    else:
+                        for i, o in enumerate(output):
+                            results[i] = np.vstack((results[i], o))
+
+                image = [untile_image(r, tiles_info) for r in results]
+
+            elif streaming:
                 image = self.process_big_image(
                     cuts, image, field, model_name, model_version)
             else:
