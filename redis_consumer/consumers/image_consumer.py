@@ -167,8 +167,8 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             'identity_started': self.hostname,
         })
 
-        cuts = hvals.get('cuts', '0')
-        field = hvals.get('field_size', '61')
+        cuts = hvals.get('cuts', '0')  # TODO: deprecated
+        field = hvals.get('field_size', '61')  # TODO: deprecated
 
         # Overridden with LABEL_DETECT_ENABLED
         model_name = hvals.get('model_name')
@@ -247,9 +247,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
 
                 image = [untile_image(r, tiles_info) for r in results]
 
-            elif streaming:
-                image = self.process_big_image(
-                    cuts, image, field, model_name, model_version)
             else:
                 image = self.grpc_image(image, model_name, model_version)
 
