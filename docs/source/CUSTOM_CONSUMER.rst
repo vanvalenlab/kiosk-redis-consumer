@@ -13,10 +13,6 @@ Each redis event should have the following fields:
 * ``model_version`` - The version number of the model in TensorFlow Serving
 * ``input_file_name`` - The path to the data file in a cloud bucket.
 
-.. todo::
-
-    Does the user need to set ``model_name`` and ``model_version`` somewhere?
-
 If the consumer will send data to a TensorFlow Serving model, it should inherit from :class:`redis_consumer.consumers.TensorFlowServingConsumer`, which has methods :meth:`~redis_consumer.consumers.TensorFlowServingConsumer._get_predict_client` and :meth:`~redis_consumer.consumers.TensorFlowServingConsumer.grpc_image` which can send data to the specific model.  The new consumer must also implement the :meth:`~redis_consumer.consumers.TensorFlowServingConsumer._consume` method which performs the bulk of the work. The :meth:`~redis_consumer.consumers.TensorFlowServingConsumer._consume` method will fetch data from redis, download data file from the bucket, process the data with a model, and upload the results to the bucket again. See below for a basic implementation of :meth:`~redis_consumer.consumers.TensorFlowServingConsumer._consume`:
 
 .. code-block:: python
