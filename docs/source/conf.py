@@ -198,15 +198,12 @@ epub_exclude_files = ['search.html']
 
 
 # -- Extension configuration -------------------------------------------------
-autodoc_mock_imports = ["tensorflow",
-                        "sklearn",
-                        "skimage",
-                        "nbformat",
+autodoc_mock_imports = ["skimage",
                         "cv2",
                         "keras_retinanet",
                         "keras_preprocessing",
-                        "keras_maskrcnn",
                         "deepcell_tracking",
+                        "deepcell_toolbox",
                         "numpy",
                         "scipy",
                         "PIL"]
