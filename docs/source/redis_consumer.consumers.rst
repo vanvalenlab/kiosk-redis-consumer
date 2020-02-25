@@ -1,5 +1,5 @@
-redis_consumer.consumers package
-================================
+redis_consumer.consumers module
+===============================
 
 Submodules
 ----------
