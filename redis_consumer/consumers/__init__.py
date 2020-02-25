@@ -23,19 +23,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Functions for pre- and post-processing image data"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from deepcell_toolbox import normalize
-from deepcell_toolbox import mibi
-from deepcell_toolbox import watershed
-from deepcell_toolbox import pixelwise
-from deepcell_toolbox import correct_drift
+# Base class consumers
+from redis_consumer.consumers.base_consumer import Consumer
+from redis_consumer.consumers.base_consumer import TensorFlowServingConsumer
+from redis_consumer.consumers.base_consumer import ZipFileConsumer
 
-from deepcell_toolbox import retinanet_semantic_to_label_image
-from deepcell_toolbox import retinanet_to_label_image
+# Custom Workflow consumers
+from redis_consumer.consumers.image_consumer import ImageFileConsumer
+from redis_consumer.consumers.tracking_consumer import TrackingConsumer
 
 del absolute_import
 del division

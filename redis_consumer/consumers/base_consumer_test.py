@@ -23,17 +23,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Tests for post-processing functions"""
+"""Tests for base consumers"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import os
 import copy
-import math
-import random
 
-import redis
 import numpy as np
 from skimage.external import tifffile as tiff
 
@@ -167,24 +164,6 @@ class DummyStorage(object):
 
     def get_public_url(self, zip_path):  # pylint: disable=W0613
         return True
-
-
-class DummyTracker(object):
-
-    def _track_cells(self):
-        return None
-
-    def track_cells(self):
-        return None
-
-    def dump(self, *_, **__):
-        return None
-
-    def postprocess(self, *_, **__):
-        return {
-            'y_tracked': np.zeros((32, 32, 1)),
-            'tracks': []
-        }
 
 
 class TestConsumer(object):
@@ -445,135 +424,6 @@ class TestTensorFlowServingConsumer(object):
         np.testing.assert_almost_equal(scale, expected)
 
 
-class TestImageFileConsumer(object):
-
-    def test_is_valid_hash(self):
-        items = ['item%s' % x for x in range(1, 4)]
-
-        storage = DummyStorage()
-        redis_client = DummyRedis(items)
-        redis_client.hget = lambda *x: x[0]
-
-        consumer = consumers.ImageFileConsumer(redis_client, storage, 'predict')
-        assert consumer.is_valid_hash(None) is False
-        assert consumer.is_valid_hash('file.ZIp') is False
-        assert consumer.is_valid_hash('predict:1234567890:file.ZIp') is False
-        assert consumer.is_valid_hash('track:123456789:file.zip') is False
-        assert consumer.is_valid_hash('predict:123456789:file.zip') is False
-        assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
-        assert consumer.is_valid_hash('predict:1234567890:file.png') is True
-
-    def test__get_processing_function(self):
-        _funcs = settings.PROCESSING_FUNCTIONS
-        settings.PROCESSING_FUNCTIONS = {
-            'valid': {
-                'valid': lambda x: True
-            }
-        }
-
-        consumer = consumers.ImageFileConsumer(None, None, 'q')
-
-        x = consumer._get_processing_function('VaLiD', 'vAlId')
-        y = consumer._get_processing_function('vAlId', 'VaLiD')
-        assert x == y
-
-        with pytest.raises(ValueError):
-            consumer._get_processing_function('invalid', 'valid')
-
-        with pytest.raises(ValueError):
-            consumer._get_processing_function('valid', 'invalid')
-
-        settings.PROCESSING_FUNCTIONS = _funcs
-
-    def test_process(self):
-        _funcs = settings.PROCESSING_FUNCTIONS
-        settings.PROCESSING_FUNCTIONS = {
-            'valid': {
-                'valid': lambda x: x
-            }
-        }
-
-        img = np.zeros((1, 32, 32, 1))
-        redis_client = DummyRedis([])
-        consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
-        output = consumer.process(img, 'valid', 'valid')
-        assert img.shape[1:] == output.shape
-
-        settings.PROCESSING_FUNCTIONS = _funcs
-
-    def test__consume(self):
-        settings.LABEL_DETECT_ENABLED = False
-        settings.SCALE_DETECT_ENABLED = False
-        prefix = 'predict'
-        status = 'new'
-        redis_client = DummyRedis(prefix, status)
-        storage = DummyStorage()
-
-        consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
-
-        def _handle_error(err, rhash):  # pylint: disable=W0613
-            raise err
-
-        def grpc_image_multi(data, *args, **kwargs):  # pylint: disable=W0613
-            return np.array(tuple(list(data.shape) + [2]))
-
-        def detect_scale(_):
-            return 1
-
-        def detect_label(_):
-            return 0
-
-        dummyhash = '{}:test.tiff:{}'.format(prefix, status)
-
-        # consumer._handle_error = _handle_error
-        consumer.grpc_image = grpc_image_multi
-        consumer.detect_scale = detect_scale
-        result = consumer._consume(dummyhash)
-        assert result == consumer.final_status
-        # test with a finished hash
-        result = consumer._consume('{}:test.tiff:{}'.format(prefix, 'done'))
-        assert result == 'done'
-
-        # test mutli-channel
-        def grpc_image(data, *args, **kwargs):  # pylint: disable=W0613
-            return data
-
-        # test with cuts > 0
-        redis_client.hgetall = lambda x: {
-            'model_name': 'model',
-            'model_version': '0',
-            'field': '61',
-            'cuts': '2',
-            'postprocess_function': '',
-            'preprocess_function': '',
-            'file_name': 'test_image.tiff',
-            'input_file_name': 'test_image.tiff',
-            'output_file_name': 'test_image.tiff'
-        }
-        redis_client.hmset = lambda x, y: True
-        consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
-        consumer._handle_error = _handle_error
-        consumer.detect_scale = detect_scale
-        consumer.detect_label = detect_label
-        consumer.grpc_image = grpc_image
-        result = consumer._consume(dummyhash)
-        assert result == consumer.final_status
-
-        # test with multiple outputs from model and cuts == 0
-
-        def grpc_image_list(data, *args, **kwargs):  # pylint: disable=W0613
-            return [data, data]
-
-        redis_client = DummyRedis(prefix, status)
-        consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
-        consumer._handle_error = _handle_error
-        consumer.detect_scale = detect_scale
-        consumer.detect_label = detect_label
-        consumer.grpc_image = grpc_image_list
-        result = consumer._consume(dummyhash)
-        assert result == consumer.final_status
-
-
 class TestZipFileConsumer(object):
 
     def test_is_valid_hash(self):
@@ -725,54 +575,3 @@ class TestZipFileConsumer(object):
             queue=prefix, status=status, fname=status)
         result = consumer._consume(dummyhash)
         assert result == status
-
-
-class TestTrackingConsumer(object):
-
-    def test_is_valid_hash(self):
-        queue = 'track'
-        items = ['item%s' % x for x in range(1, 4)]
-
-        storage = DummyStorage()
-        redis_client = DummyRedis(items)
-        redis_client.hget = lambda *x: x[0]
-
-        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
-        assert consumer.is_valid_hash(None) is False
-        assert consumer.is_valid_hash('predict:123456789:file.png') is False
-        assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
-        assert consumer.is_valid_hash('predict:1234567890:file.png') is False
-        assert consumer.is_valid_hash('track:1234567890:file.ZIp') is False
-        assert consumer.is_valid_hash('track:123456789:file.zip') is False
-        assert consumer.is_valid_hash('track:1234567890:file.png') is False
-        assert consumer.is_valid_hash('track:1234567890:file.tiff') is True
-        assert consumer.is_valid_hash('track:1234567890:file.trk') is True
-        assert consumer.is_valid_hash('track:1234567890:file.trks') is True
-
-    def test__consume(self):
-        queue = 'track'
-        items = ['item%s' % x for x in range(1, 4)]
-
-        storage = DummyStorage()
-        redis_client = DummyRedis(items)
-        redis_client.hget = lambda *x: x[0]
-
-        # test short-circuit _consume()
-        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
-
-        status = 'done'
-        dummyhash = '{queue}:{fname}.zip:{status}'.format(
-            queue=queue, status=status, fname=status)
-
-        result = consumer._consume(dummyhash)
-        assert result == status
-
-        # test valid _consume flow
-        status = 'new'
-        dummyhash = '{queue}:{fname}.zip:{status}'.format(
-            queue=queue, status=status, fname=status)
-        dummy_data = np.zeros((1, 1, 1))
-        consumer._load_data = lambda *x: {'X': dummy_data, 'y': dummy_data}
-        consumer._get_tracker = lambda *args: DummyTracker()
-        result = consumer._consume(dummyhash)
-        assert result == consumer.final_status
