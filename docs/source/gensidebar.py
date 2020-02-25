@@ -56,8 +56,7 @@ def generate_sidebar(conf, conf_api):
         if project != conf_api:
             if do_gen:
                 lines.append(
-                    ('    {desc} <https://deepcell-kiosk.readthedocs.io/projects/'
-                     '{project}/en/{version}/>').format(
+                    '    {desc} <https://deepcell-kiosk.readthedocs.io/projects/{project}/en/{version}/>'.format(
                         desc=desc,
                         project=project,
                         version=version
@@ -74,8 +73,6 @@ def generate_sidebar(conf, conf_api):
     write('Getting Started', 'GETTING_STARTED')
     write('Troubleshooting', 'TROUBLESHOOTING')
     write('Tutorial: Custom Jobs', 'CUSTOM-JOB')
-    write('Advanced Documentation', 'ADVANCED_DOCUMENTATION')
-    write('Software Infrastructure', 'SOFTWARE_INFRASTRUCTURE')
     write('Developer Documentation', 'DEVELOPER')
     endl()
 
