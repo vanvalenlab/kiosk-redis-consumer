@@ -1,5 +1,5 @@
-deepcell.datasets package
-=========================
+redis_consumer.consumers package
+================================
 
 Submodules
 ----------
