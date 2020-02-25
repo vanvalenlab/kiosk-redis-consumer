@@ -17,9 +17,11 @@ cache: pip
 install:
   - pip install -r requirements.txt
   - pip install pytest pytest-cov==2.5.1 pytest-pep8 coveralls
+  - pip install docs/rtd-requirements.txt
 
 script:
-  - pytest --cov=redis_consumer --pep8
+  - PYTHONPATH=$PWD:$PYTHONPATH pytest --cov=redis_consumer --pep8
+  - PYTHONPATH=$PWD:$PYTHONPATH sphinx-build -nT -b dummy ./docs/source build/html
 
 jobs:
   include:
