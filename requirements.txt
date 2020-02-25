@@ -1,16 +1,13 @@
 boto3==1.9.195
 google-cloud-storage>=1.16.1
 python-decouple==3.1
-pathlib==1.0.1
 redis==3.2.1
 scikit-image>=0.14.0
-scipy>=1.2.2
 keras-preprocessing==1.1.0
 grpcio==1.22.0
 dict-to-protobuf==0.0.3.9
-pandas>=0.24.2
 pytz==2019.1
 keras_retinanet==0.5.1
 opencv-python==4.1.0.25
-networkx>=2.1
 deepcell-tracking==0.2.5
+deepcell-toolbox==0.1.0
