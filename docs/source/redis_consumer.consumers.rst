@@ -5,7 +5,7 @@ Submodules
 ----------
 
 redis_consumer.consumers.base_consumer module
-----------------------------------
+---------------------------------------------
 
 .. automodule:: redis_consumer.consumers.base_consumer
     :members:
@@ -14,7 +14,7 @@ redis_consumer.consumers.base_consumer module
     :private-members:
 
 redis_consumer.consumers.image_consumer module
-------------------------------
+----------------------------------------------
 
 .. automodule:: redis_consumer.consumers.image_consumer
     :members:
@@ -23,7 +23,7 @@ redis_consumer.consumers.image_consumer module
     :private-members:
 
 redis_consumer.consumers.tracking_consumer module
---------------------------------
+-------------------------------------------------
 
 .. automodule:: redis_consumer.consumers.tracking_consumer
     :members:
