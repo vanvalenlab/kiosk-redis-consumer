@@ -23,10 +23,9 @@ import gensidebar
 # -- Project information -----------------------------------------------------
 
 project = 'Kiosk Redis Consumer'
-copyright = ('2016-{currentyear}, Van Valen Lab at the California Institute of Technology'
-             ' (Caltech)').format(
-    currentyear=datetime.now().year
-)
+copyright = ('2016-{currentyear}, Van Valen Lab at the '
+             'California Institute of Technology (Caltech)').format(
+                 currentyear=datetime.now().year)
 author = 'Van Valen Lab at Caltech'
 
 # The short X.Y version
@@ -197,15 +196,12 @@ epub_exclude_files = ['search.html']
 
 
 # -- Extension configuration -------------------------------------------------
-autodoc_mock_imports = ["tensorflow",
-                        "sklearn",
-                        "skimage",
-                        "nbformat",
+autodoc_mock_imports = ["skimage",
                         "cv2",
                         "keras_retinanet",
                         "keras_preprocessing",
-                        "keras_maskrcnn",
                         "deepcell_tracking",
+                        "deepcell_toolbox",
                         "numpy",
                         "scipy",
                         "PIL"]

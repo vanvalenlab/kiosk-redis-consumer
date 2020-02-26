@@ -12,4 +12,4 @@ Reads events in redis, downloads image data from the cloud, and send the data to
 Custom Consumers
 ----------------
 
-Custom consumers can be used to implement custom model pipelines. Check out :doc:`kiosk:CUSTOM-JOB`.
+Custom consumers can be used to implement custom model pipelines. Check out our [tutorial](https://deepcell-kiosk.readthedocs.io/en/master/CUSTOM-JOB.html) on building a custom job pipeline.

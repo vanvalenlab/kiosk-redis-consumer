@@ -30,7 +30,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import pandas as pd
 import skimage as sk
 
 import pytest
@@ -101,7 +100,6 @@ class TestTracking(object):
 
             # test tracker.dataframe
             df = tracker.dataframe(cell_type='test-value')
-            assert isinstance(df, pd.DataFrame)
             assert 'cell_type' in df.columns
 
             # test incorrect values in tracker.dataframe
