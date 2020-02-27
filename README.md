@@ -62,7 +62,7 @@ If the consumer will send data to a TensorFlow Serving model, it should inherit 
         return self.final_status
 ```
 
-Finally, the new consumer needs to be registered in the script [`consume-redis-events.py`](https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/consume-redis-events.py) by modifying the function `get_consumer()` shown below. Add a new if statement for the new queue type (`queue_name`) and the corresponding consumer.
+Finally, the new consumer needs to be registered in the script <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/consume-redis-events.py">consume-redis-events.py</a></tt> by modifying the function `get_consumer()` shown below. Add a new if statement for the new queue type (`queue_name`) and the corresponding consumer.
 
 ```python
     def get_consumer(consumer_type, **kwargs):
