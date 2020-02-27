@@ -85,7 +85,7 @@ The consumer is configured using environment variables. Please find a table of a
 
 | Name | Description | Default Value |
 | :--- | :--- | :--- |
-| `QUEUE` | The Redis job queue to check for items to consume. | `"predict"` |
+| `QUEUE` | **REQUIRED**: The Redis job queue to check for items to consume. | `"predict"` |
 | `CONSUMER_TYPE` | **REQUIRED**: The type of consumer to run, used in `consume-redis-events.py`. | `"image"` |
 | `CLOUD_PROVIDER` | **REQUIRED**: The cloud provider, one of `"aws"` and `"gke"`. | `"gke"` |
 | `GCLOUD_STORAGE_BUCKET` | **REQUIRED**: The storage bucket used to download and upload files. | `"default-bucket"` |
