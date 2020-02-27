@@ -210,9 +210,7 @@ autodoc_mock_imports = ["skimage",
 
 intersphinx_mapping = {
     'deepcell': ('https://deepcell.readthedocs.io/en/{}/'.format(rtd_version), None),
-    'kiosk': ('https://deepcell-kiosk.readthedocs.io/en/{}/'.format(rtd_version), None),
-    'kiosk-frontend': (('https://deepcell-kiosk.readthedocs.io/projects/kiosk-frontend/en/'
-                        '{}/').format(rtd_version), None)
+    'kiosk': ('https://deepcell-kiosk.readthedocs.io/en/{}/'.format(rtd_version), None)
 }
 
 intersphinx_cache_limit = 0
@@ -228,4 +226,4 @@ urllib.request.urlretrieve(
 
 import gensidebar
 
-gensidebar.generate_sidebar(globals(), "kiosk-redis-consumer")
+gensidebar.generate_sidebar(globals(), "kiosk-redis-consumer", hidden=False)
