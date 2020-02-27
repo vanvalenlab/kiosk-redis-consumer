@@ -1,9 +1,6 @@
 redis_consumer.consumers module
 ===============================
 
-Submodules
-----------
-
 redis_consumer.consumers.base_consumer module
 ---------------------------------------------
 
