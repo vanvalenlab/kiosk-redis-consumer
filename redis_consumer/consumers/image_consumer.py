@@ -204,7 +204,12 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             # TODO this is a big janky
             self._rawshape = image.shape
 
-            if settings.LABEL_DETECT_ENABLED:
+            if settings.LABEL_DETECT_ENABLED and model_name and model_version:
+                self.logger.warning('Label Detection is enabled, but the model'
+                                    ' %s:%s was specified in Redis.',
+                                    model_name, model_version)
+
+            elif settings.LABEL_DETECT_ENABLED:
                 # Detect image label type
                 label = hvals.get('label', '')
                 if not label:
