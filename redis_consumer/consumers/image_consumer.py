@@ -259,10 +259,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
                 else:
                     image = utils.unpad_image(image, pad_width)
 
-                for i, j in enumerate(image):
-
-                    self.logger.critical('unpadded %s shape is %s', i, j.shape)
-
             elif (image.shape[image.ndim - 3] > model_shape or
                   image.shape[image.ndim - 2] > model_shape):
                 # need to tile!
