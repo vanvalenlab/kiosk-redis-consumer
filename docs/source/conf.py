@@ -44,7 +44,7 @@ on_rtd = os.environ.get("READTHEDOCS", None) == "True"
 
 # This is used for linking and such so we link to the thing we're building
 rtd_version = os.environ.get("READTHEDOCS_VERSION", "master")
-if rtd_version not in ["stable", "latest", "master"]:
+if rtd_version not in ["stable", "latest", "master", "mrgn-docs"]:
     rtd_version = "stable"
 
 # -- General configuration ---------------------------------------------------
