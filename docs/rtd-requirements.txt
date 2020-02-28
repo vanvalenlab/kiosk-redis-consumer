@@ -1,0 +1,12 @@
+m2r
+mock==3.0.5
+Sphinx>=1.8.5
+
+boto3==1.9.195
+google-cloud-storage>=1.16.1
+python-decouple==3.1
+pathlib==1.0.1
+redis==3.2.1
+grpcio==1.22.0
+dict-to-protobuf==0.0.3.9
+pytz==2019.1

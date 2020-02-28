@@ -79,7 +79,7 @@ REDIS_TIMEOUT = config('REDIS_TIMEOUT', default=3, cast=int)
 EMPTY_QUEUE_TIMEOUT = config('EMPTY_QUEUE_TIMEOUT', default=5, cast=int)
 
 # Cloud storage
-CLOUD_PROVIDER = config('CLOUD_PROVIDER', cast=str, default='aws').lower()
+CLOUD_PROVIDER = config('CLOUD_PROVIDER', cast=str, default='gke').lower()
 
 # Application directories
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
