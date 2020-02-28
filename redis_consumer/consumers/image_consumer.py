@@ -247,19 +247,12 @@ class ImageFileConsumer(TensorFlowServingConsumer):
 
                     self.logger.critical('output %s shape is %s', i, j.shape)
 
-                def unpad(x, pad_width):
-                    slices = []
-                    for c in pad_width:
-                        e = None if c[1] == 0 else -c[1]
-                        slices.append(slice(c[0], e))
-                    return x[tuple(slices)]
-
                 # unpad results
                 pad_width.insert(0, (0, 0))  # batch size
                 if isinstance(image, list):
-                    image = [unpad(i, pad_width) for i in image]
+                    image = [utils.unpad_image(i, pad_width) for i in image]
                 else:
-                    image = unpad(image, pad_width)
+                    image = utils.unpad_image(image, pad_width)
 
                 for i, j in enumerate(image):
 

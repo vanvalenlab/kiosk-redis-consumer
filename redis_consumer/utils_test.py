@@ -182,6 +182,27 @@ def test_pad_image():
     np.testing.assert_equal(padded.shape, (frames, new_h, new_w, 1))
 
 
+def test_unpad_image():
+    # 2D images
+    h, w = 330, 330
+    padded = _get_image(h, w)
+    pad_width = [(15, 15), (15, 15), (0, 0)]
+
+    new_h = h - (pad_width[0][0] + pad_width[0][1])
+    new_w = w - (pad_width[1][0] + pad_width[1][1])
+
+    unpadded = utils.unpad_image(padded, pad_width)
+    np.testing.assert_equal(unpadded.shape, (new_h, new_w, 1))
+
+    # 3D images
+    frames = np.random.randint(low=1, high=6)
+    imgs = np.vstack([_get_image(h, w)[None, ...] for i in range(frames)])
+
+    pad_width = [(0, 0), (15, 15), (15, 15), (0, 0)]
+    unpadded = utils.unpad_image(imgs, pad_width)
+    np.testing.assert_equal(unpadded.shape, (frames, new_h, new_w, 1))
+
+
 def test_save_numpy_array():
     h, w = 30, 30
     c = np.random.randint(low=1, high=4)
