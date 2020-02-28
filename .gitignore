@@ -3,6 +3,10 @@ output/
 download/
 logs/
 
+# Doc files
+docs/source/_sidebar.rst.inc
+docs/source/gensidebar.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
