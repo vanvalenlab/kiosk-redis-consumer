@@ -15,7 +15,12 @@
 import os
 import sys
 from datetime import datetime
-import urllib.request
+
+try:
+    from urllib.request import urlretrieve
+except ImportError:
+    from urllib import urlretrieve
+
 sys.path.insert(0, os.path.abspath('../..'))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__))))
 
@@ -218,7 +223,7 @@ intersphinx_cache_limit = 0
 # -- Custom Document processing ----------------------------------------------
 
 # Download gensidebar
-urllib.request.urlretrieve(
+urlretrieve(
     'https://raw.githubusercontent.com/vanvalenlab/kiosk/{}/docs/source/gensidebar.py'.format(
         rtd_version),
     'gensidebar.py'
