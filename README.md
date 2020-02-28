@@ -81,6 +81,30 @@ Finally, the new consumer needs to be registered in the script <tt><a href="http
 
 For guidance on how to complete the deployment of a custom consumer, please return to [Tutorial: Custom Job](https://deepcell-kiosk.readthedocs.io/en/master/CUSTOM-JOB.html).
 
+## Configuration
+
+The consumer is configured using environment variables. Please find a table of all environment variables and their descriptions below.
+
+| Name | Description | Default Value |
+| :--- | :--- | :--- |
+| `QUEUE` | **REQUIRED**: The Redis job queue to check for items to consume. | `"predict"` |
+| `CONSUMER_TYPE` | **REQUIRED**: The type of consumer to run, used in `consume-redis-events.py`. | `"image"` |
+| `CLOUD_PROVIDER` | **REQUIRED**: The cloud provider, one of `"aws"` and `"gke"`. | `"gke"` |
+| `GCLOUD_STORAGE_BUCKET` | **REQUIRED**: The name of the storage bucket used to download and upload files. | `"default-bucket"` |
+| `INTERVAL` | How frequently the consumer checks the Redis queue for items, in seconds. | `5` |
+| `REDIS_HOST` | The IP address or hostname of Redis. | `"redis-master"` |
+| `REDIS_PORT` | The port used to connect to Redis. | `6379` |
+| `REDIS_TIMEOUT` | Timeout for each Redis request, in seconds. | `3` |
+| `EMPTY_QUEUE_TIMEOUT` | Time to wait after finding an empty queue, in seconds. | `5` |
+| `EXPIRE_TIME` | Expire Redis items this many seconds after completion. | `3600` |
+| `TF_HOST` | The IP address or hostname of TensorFlow Serving. | `"tf-serving"` |
+| `TF_PORT` | The port used to connect to TensorFlow Serving. | `8500` |
+| `TF_TENSOR_NAME` | Name of input tensor for the exported model. | `"image"` |
+| `TF_TENSOR_DTYPE` | The `dtype` used for the exported model. | `"DT_FLOAT"` |
+| `GRPC_TIMEOUT` | Timeout for gRPC API requests, in seconds. | `30` |
+| `GRPC_BACKOFF` | Time to wait before retrying a gRPC API request. | `3` |
+| `MAX_RETRY` | Maximum number of retries for a failed TensorFlow Serving request. | `5` |
+
 ## Contribute
 
 We welcome contributions to the [kiosk](https://github.com/vanvalenlab/kiosk) and its associated projects. If you are interested, please refer to our [Developer Documentation](https://deepcell-kiosk.readthedocs.io/en/master/DEVELOPER.html), [Code of Conduct](https://github.com/vanvalenlab/kiosk/blob/master/CODE_OF_CONDUCT.md) and [Contributing Guidelines](https://github.com/vanvalenlab/kiosk/blob/master/CONTRIBUTING.md).
