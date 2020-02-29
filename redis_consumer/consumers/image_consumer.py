@@ -203,7 +203,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             # Save shape value for postprocessing purposes
             # TODO this is a big janky
             self._rawshape = image.shape
-
+            label = None
             if settings.LABEL_DETECT_ENABLED and model_name and model_version:
                 self.logger.warning('Label Detection is enabled, but the model'
                                     ' %s:%s was specified in Redis.',
@@ -286,7 +286,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             # Post-process model results
             self.update_key(redis_hash, {'status': 'post-processing'})
 
-            if settings.LABEL_DETECT_ENABLED:
+            if settings.LABEL_DETECT_ENABLED and label is not None:
                 post_funcs = utils._pick_postprocess(label).split(',')
             else:
                 post_funcs = hvals.get('postprocess_function', '').split(',')
