@@ -295,3 +295,27 @@ class TestImageFileConsumer(object):
         consumer.grpc_image = grpc_image_list
         result = consumer._consume(dummyhash)
         assert result == consumer.final_status
+
+        settings.LABEL_DETECT_ENABLED = True
+        settings.SCALE_DETECT_ENABLED = True
+
+        # test with model_name and model_version
+        redis_client.hgetall = lambda x: {
+            'model_name': 'model',
+            'model_version': '0',
+            'label': '0',
+            'scale': '1',
+            'postprocess_function': '',
+            'preprocess_function': '',
+            'file_name': 'test_image.tiff',
+            'input_file_name': 'test_image.tiff',
+            'output_file_name': 'test_image.tiff'
+        }
+        redis_client.hmset = lambda x, y: True
+        consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
+        consumer._handle_error = _handle_error
+        consumer.detect_scale = detect_scale
+        consumer.detect_label = detect_label
+        consumer.grpc_image = grpc_image
+        result = consumer._consume(dummyhash)
+        assert result == consumer.final_status
