@@ -37,6 +37,7 @@ from skimage.external import tifffile as tiff
 import pytest
 
 from redis_consumer import consumers
+from redis_consumer import settings
 from redis_consumer import utils
 
 
@@ -206,6 +207,23 @@ class TestTrackingConsumer(object):
         assert consumer.is_valid_hash('track:1234567890:file.tiff') is True
         assert consumer.is_valid_hash('track:1234567890:file.trk') is True
         assert consumer.is_valid_hash('track:1234567890:file.trks') is True
+
+    def test__get_tracker(self):
+        queue = 'track'
+        items = ['item%s' % x for x in range(1, 4)]
+
+        storage = DummyStorage()
+        redis_client = DummyRedis(items)
+        redis_client.hget = lambda *x: x[0]
+
+        shape = (5, 21, 21, 1)
+        raw = np.random.random(shape)
+        segmented = np.random.randint(1, 10, size=shape)
+
+        settings.NORMALIZE_TRACKING = True
+
+        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
+        consumer._get_tracker('item1', {}, raw, segmented)
 
     def test__consume(self):
         queue = 'track'
