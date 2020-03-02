@@ -112,6 +112,9 @@ SEGMENTATION_QUEUE = config('SEGMENTATION_QUEUE', default='predict')
 # Configure expiration time for child keys
 EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
 
+# Configure expiration for cached model metadata
+METADATA_EXPIRE_TIME = config('METADATA_EXPIRE_TIME', default=30, cast=int)
+
 # Pre- and Post-processing settings
 PROCESSING_FUNCTIONS = {
     'pre': {

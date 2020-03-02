@@ -97,6 +97,7 @@ The consumer is configured using environment variables. Please find a table of a
 | `REDIS_TIMEOUT` | Timeout for each Redis request, in seconds. | `3` |
 | `EMPTY_QUEUE_TIMEOUT` | Time to wait after finding an empty queue, in seconds. | `5` |
 | `EXPIRE_TIME` | Expire Redis items this many seconds after completion. | `3600` |
+| `METADATA_EXPIRE_TIME` | Expire cached model metadata after this many seconds. | `30` |
 | `TF_HOST` | The IP address or hostname of TensorFlow Serving. | `"tf-serving"` |
 | `TF_PORT` | The port used to connect to TensorFlow Serving. | `8500` |
 | `TF_TENSOR_NAME` | Name of input tensor for the exported model. | `"image"` |

@@ -328,6 +328,52 @@ class TensorFlowServingConsumer(Consumer):
                                   model_name, model_version, err)
                 raise err
 
+    def get_model_metadata(self, model_name, model_version):
+        """Check Redis for saved model metadata or get from TensorFlow Serving.
+
+        The Consumer prefers to get the model metadata from Redis,
+        but if the metadata does not exist or is too stale,
+        a TensorFlow Serving request will be made.
+
+        Args:
+            model_name (str): The model name to get metadata.
+            model_version (int): The model version to get metadata.
+        """
+        model = '{}:{}'.format(model_name, model_version)
+        self.logger.debug('Getting model metadata for model %s.', model)
+
+        fields = ['in_tensor_dtype', 'in_tensor_shape']
+        response = self.redis.hmget(model, *fields)
+
+        if response:
+            self.logger.debug('Got cached metadata for model %s.', model)
+            return dict(zip(fields, response))
+
+        # No response! The key was expired. Get from TFS and update it.
+        start = timeit.default_timer()
+        client = self._get_predict_client(model_name, model_version)
+        model_metadata = client.get_model_metadata()
+
+        try:
+            inputs = model_metadata['metadata']['signature_def']['signature_def']
+            inputs = inputs[settings.TF_TENSOR_NAME]
+
+            dtype = inputs['dtype']
+            shape = [d['size'] for d in inputs['tensor_shape']['dim']]
+
+            parsed_metadata = dict(zip(fields, [dtype, shape]))
+
+            finished = timeit.default_timer() - start
+            self.logger.debug('Got model metadata for %s in %s seconds.',
+                              model, finished)
+
+            self.redis.hmset(model, mapping=parsed_metadata)
+            self.redis.expire(model, settings.METADATA_EXPIRE_TIME)
+            return parsed_metadata
+        except (KeyError, IndexError) as err:
+            self.logger.error('Malformed metadata: %s', model_metadata)
+            raise err
+
     def process_big_image(self,
                           cuts,
                           img,

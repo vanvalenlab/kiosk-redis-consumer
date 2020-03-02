@@ -41,11 +41,10 @@ from grpc._cython import cygrpc
 
 import numpy as np
 
+from redis_consumer import settings
 from redis_consumer.pbs.prediction_service_pb2_grpc import PredictionServiceStub
-from redis_consumer.pbs.processing_service_pb2_grpc import ProcessingServiceStub
 from redis_consumer.pbs.predict_pb2 import PredictRequest
-from redis_consumer.pbs.process_pb2 import ProcessRequest
-from redis_consumer.pbs.process_pb2 import ChunkedProcessRequest
+from redis_consumer.pbs.get_model_metadata_pb2 import GetModelMetadataRequest
 from redis_consumer.utils import grpc_response_to_dict
 from redis_consumer.utils import make_tensor_proto
 
@@ -149,6 +148,77 @@ class PredictClient(GrpcClient):
 
         channel.close()
         return {}
+
+    def get_model_metadata(self, request_timeout=10):
+        self.logger.info('Sending GetModelMetadataRequest to %s model %s:%s.',
+                         self.host, self.model_name, self.model_version)
+
+        true_failures, count = 0, 0
+
+        retrying = True
+        while retrying:
+            try:
+                t = timeit.default_timer()
+                channel = self.insecure_channel()
+
+                stub = PredictionServiceStub(channel)
+
+                request = GetModelMetadataRequest()
+
+                request.model_spec.name = self.model_name  # pylint: disable=E1101
+
+                if self.model_version > 0:
+                    # pylint: disable=E1101
+                    request.model_spec.version.value = self.model_version
+
+                predict_response = stub.GetModelMetadata(
+                    request, timeout=request_timeout)
+
+                self.logger.debug('gRPC GetModelMetadataRequest finished in %s '
+                                  'seconds.', timeit.default_timer() - t)
+
+                t = timeit.default_timer()
+                predict_response_dict = grpc_response_to_dict(predict_response)
+                self.logger.debug('gRPC GetModelMetadataProtobufConversion took '
+                                  '%s seconds.', timeit.default_timer() - t)
+
+                channel.close()
+                return predict_response_dict
+
+            except grpc.RpcError as err:
+                # pylint: disable=E1101
+                channel.close()
+                if true_failures > settings.MAX_RETRY > 0:
+                    retrying = False
+                    self.logger.error('GetModelMetadataRequest has failed %s '
+                                      'times due to err %s', count, err)
+                    raise err
+
+                if err.code() in settings.GRPC_RETRY_STATUSES:
+                    count += 1
+                    is_true_failure = err.code() != grpc.StatusCode.UNAVAILABLE
+                    true_failures += int(is_true_failure)
+
+                    self.logger.warning('%sException `%s: %s` during '
+                                        'PredictClient GetModelMetadataRequest to '
+                                        'model %s:%s. Waiting %s seconds before '
+                                        'retrying.', type(err).__name__,
+                                        err.code().name, err.details(),
+                                        self.model_name, self.model_version,
+                                        settings.GRPC_BACKOFF)
+
+                    time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
+                    retrying = True  # Unneccessary but explicit
+                else:
+                    retrying = False
+                    raise err
+            except Exception as err:
+                channel.close()
+                retrying = False
+                self.logger.error('Encountered %s during GetModelMetadataRequest'
+                                  ' to model %s:%s: %s', type(err).__name__,
+                                  self.model_name, self.model_version, err)
+                raise err
 
 
 class TrackingClient(GrpcClient):
