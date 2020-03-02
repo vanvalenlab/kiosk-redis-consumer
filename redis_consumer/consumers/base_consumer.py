@@ -44,6 +44,8 @@ import grpc
 import numpy as np
 import pytz
 
+from deepcell_toolbox.utils import tile_image, untile_image
+
 from redis_consumer.grpc_clients import PredictClient
 from redis_consumer import utils
 from redis_consumer import settings
@@ -434,6 +436,14 @@ class TensorFlowServingConsumer(Consumer):
             self.logger.debug('Scale detection disabled. Scale set to 1.')
             return 1
 
+        model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
+        model_metadata = self.get_model_metadata(model_name, model_version)
+
+        model_shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
+
+        size_x = model_shape[len(model_shape) - 3]
+        size_y = model_shape[len(model_shape) - 2]
+
         # Rescale image for compatibility with scale model
         # TODO Generalize to prevent from breaking on new input data types
         if image.shape[-1] == 1:
@@ -441,27 +451,39 @@ class TensorFlowServingConsumer(Consumer):
         else:
             image = np.expand_dims(image, axis=-1)
 
-        # Reshape data to match size of data that model was trained on
-        # TODO Generalize to support rectangular and other shapes
-        size = settings.SCALE_RESHAPE_SIZE
-        if (image.shape[1] >= size) and (image.shape[2] >= size):
-            image, _ = utils.reshape_matrix(image, image, reshape_size=size)
-
-        model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
+        tiles, _ = tile_image(
+            np.expand_dims(image, axis=0),
+            model_input_shape=(size_x, size_y),
+            stride_ratio=0.75)
 
         # Loop over each image in the batch dimension for scale prediction
         # TODO Calculate scale_detect_sample based on batch size
         # Could be based on fraction or sampling a minimum set number of frames
         scales = []
-        for i in range(0, image.shape[0], settings.SCALE_DETECT_SAMPLE):
-            scales.append(self.grpc_image(image[i], model_name, model_version))
+        for i in range(0, tiles.shape[0], settings.SCALE_DETECT_SAMPLE):
+            scales.append(self.grpc_image(tiles[i], model_name, model_version))
 
-        self.logger.debug('Scale detection complete in %s seconds',
-                          timeit.default_timer() - start)
-        return np.mean(scales)
+        detected_scale = np.mean(scales)
+
+        self.logger.debug('Scale %s detected in %s seconds',
+                          detected_scale, timeit.default_timer() - start)
+        return detected_scale
 
     def detect_label(self, image):
         start = timeit.default_timer()
+
+        if not settings.LABEL_DETECT_ENABLED:
+            self.logger.debug('Label detection disabled. Label set to None.')
+            return None
+
+        model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
+        model_metadata = self.get_model_metadata(model_name, model_version)
+
+        model_shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
+
+        size_x = model_shape[len(model_shape) - 3]
+        size_y = model_shape[len(model_shape) - 2]
+
         # Rescale for model compatibility
         # TODO Generalize to prevent from breaking on new input data types
         if image.shape[-1] == 1:
@@ -469,25 +491,25 @@ class TensorFlowServingConsumer(Consumer):
         else:
             image = np.expand_dims(image, axis=-1)
 
-        # TODO Generalize to support rectangular and other shapes
-        size = settings.LABEL_RESHAPE_SIZE
-        if (image.shape[1] >= size) and (image.shape[2] >= size):
-            image, _ = utils.reshape_matrix(image, image, reshape_size=size)
-
-        model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
+        tiles, _ = tile_image(
+            np.expand_dims(image, axis=0),
+            model_input_shape=(size_x, size_y),
+            stride_ratio=0.75)
 
         # Loop over each image in batch
         labels = []
-        for i in range(0, image.shape[0], settings.LABEL_DETECT_SAMPLE):
-            labels.append(self.grpc_image(image[i], model_name, model_version))
+        for i in range(0, tiles.shape[0], settings.LABEL_DETECT_SAMPLE):
+            labels.append(self.grpc_image(tiles[i], model_name, model_version))
 
         labels = np.array(labels)
         vote = labels.sum(axis=0)
         maj = vote.max()
 
-        self.logger.debug('Label detection complete %s seconds.',
-                          timeit.default_timer() - start)
-        return np.where(vote == maj)[-1][0]
+        detected = np.where(vote == maj)[-1][0]
+
+        self.logger.debug('Label %s detected in %s seconds.',
+                          detected, timeit.default_timer() - start)
+        return detected
 
 
 class ZipFileConsumer(Consumer):
