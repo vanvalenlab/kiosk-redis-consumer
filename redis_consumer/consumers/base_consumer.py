@@ -250,7 +250,10 @@ class TensorFlowServingConsumer(Consumer):
                           timeit.default_timer() - t)
         return client
 
-    def grpc_image(self, img, model_name, model_version):
+    def grpc_image(self, img, model_name, model_version,
+                   in_tensor_dtype='DT_FLOAT'):
+
+        in_tensor_dtype = str(in_tensor_dtype).upper()
         true_failures, count = 0, 0
         start = timeit.default_timer()
         self.logger.debug('Segmenting image of shape %s with model %s:%s',
@@ -258,15 +261,13 @@ class TensorFlowServingConsumer(Consumer):
         retrying = True
         while retrying:
             try:
-                floatx = settings.TF_TENSOR_DTYPE
-                if 'f16' in model_name:
-                    floatx = 'DT_HALF'
+                if in_tensor_dtype == 'DT_HALF':
                     # TODO: seems like should cast to "half"
                     # but the model rejects the type, wants "int" or "long"
                     img = img.astype('int')
 
                 req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
-                             'in_tensor_dtype': floatx,
+                             'in_tensor_dtype': in_tensor_dtype,
                              'data': np.expand_dims(img, axis=0)}]
 
                 client = self._get_predict_client(model_name, model_version)
@@ -358,10 +359,10 @@ class TensorFlowServingConsumer(Consumer):
 
         try:
             inputs = model_metadata['metadata']['signature_def']['signature_def']
-            inputs = inputs[settings.TF_TENSOR_NAME]
+            inputs = inputs['serving_default']['inputs'][settings.TF_TENSOR_NAME]
 
             dtype = inputs['dtype']
-            shape = [d['size'] for d in inputs['tensor_shape']['dim']]
+            shape = ','.join([d['size'] for d in inputs['tensor_shape']['dim']])
 
             parsed_metadata = dict(zip(fields, [dtype, shape]))
 
@@ -369,7 +370,7 @@ class TensorFlowServingConsumer(Consumer):
             self.logger.debug('Got model metadata for %s in %s seconds.',
                               model, finished)
 
-            self.redis.hmset(model, mapping=parsed_metadata)
+            self.redis.hmset(model, parsed_metadata)
             self.redis.expire(model, settings.METADATA_EXPIRE_TIME)
             return parsed_metadata
         except (KeyError, IndexError) as err:
@@ -439,6 +440,7 @@ class TensorFlowServingConsumer(Consumer):
         model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
         model_metadata = self.get_model_metadata(model_name, model_version)
 
+        model_dtype = model_metadata['in_tensor_dtype']
         model_shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
 
         size_x = model_shape[len(model_shape) - 3]
@@ -461,7 +463,8 @@ class TensorFlowServingConsumer(Consumer):
         # Could be based on fraction or sampling a minimum set number of frames
         scales = []
         for i in range(0, tiles.shape[0], settings.SCALE_DETECT_SAMPLE):
-            scales.append(self.grpc_image(tiles[i], model_name, model_version))
+            scales.append(self.grpc_image(tiles[i], model_name, model_version,
+                                          in_tensor_dtype=model_dtype))
 
         detected_scale = np.mean(scales)
 
@@ -479,6 +482,7 @@ class TensorFlowServingConsumer(Consumer):
         model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
         model_metadata = self.get_model_metadata(model_name, model_version)
 
+        model_dtype = model_metadata['in_tensor_dtype']
         model_shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
 
         size_x = model_shape[len(model_shape) - 3]
@@ -499,7 +503,8 @@ class TensorFlowServingConsumer(Consumer):
         # Loop over each image in batch
         labels = []
         for i in range(0, tiles.shape[0], settings.LABEL_DETECT_SAMPLE):
-            labels.append(self.grpc_image(tiles[i], model_name, model_version))
+            labels.append(self.grpc_image(tiles[i], model_name, model_version,
+                                          in_tensor_dtype=model_dtype))
 
         labels = np.array(labels)
         vote = labels.sum(axis=0)
