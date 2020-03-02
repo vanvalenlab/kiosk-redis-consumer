@@ -33,6 +33,8 @@ import timeit
 
 import numpy as np
 
+from deepcell_toolbox.utils import tile_image, untile_image
+
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import utils
 from redis_consumer import settings
@@ -165,8 +167,8 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             'identity_started': self.hostname,
         })
 
-        cuts = hvals.get('cuts', '0')
-        field = hvals.get('field_size', '61')
+        cuts = hvals.get('cuts', '0')  # TODO: deprecated
+        field = hvals.get('field_size', '61')  # TODO: deprecated
 
         # Overridden with LABEL_DETECT_ENABLED
         model_name = hvals.get('model_name')
@@ -201,8 +203,13 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             # Save shape value for postprocessing purposes
             # TODO this is a big janky
             self._rawshape = image.shape
+            label = None
+            if settings.LABEL_DETECT_ENABLED and model_name and model_version:
+                self.logger.warning('Label Detection is enabled, but the model'
+                                    ' %s:%s was specified in Redis.',
+                                    model_name, model_version)
 
-            if settings.LABEL_DETECT_ENABLED:
+            elif settings.LABEL_DETECT_ENABLED:
                 # Detect image label type
                 label = hvals.get('label', '')
                 if not label:
@@ -222,16 +229,64 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             # Send data to the model
             self.update_key(redis_hash, {'status': 'predicting'})
 
-            if streaming:
-                image = self.process_big_image(
-                    cuts, image, field, model_name, model_version)
+            model_shape = settings.MODEL_SIZES.get(
+                '{}:{}'.format(model_name, model_version), max(image.shape))
+
+            if (image.shape[image.ndim - 3] < model_shape or
+                    image.shape[image.ndim - 2] < model_shape):
+                # tiling not necessary, but image must be padded.
+                pad_width = []
+                for i in range(image.ndim):
+                    if i in {image.ndim - 3, image.ndim - 2}:
+                        diff = model_shape - image.shape[i]
+                        if diff % 2:
+                            pad_width.append((diff // 2, diff // 2 + 1))
+                        else:
+                            pad_width.append((diff // 2, diff // 2))
+                    else:
+                        pad_width.append((0, 0))
+                padded_img = np.pad(image, pad_width, 'reflect')
+                image = self.grpc_image(padded_img, model_name, model_version)
+
+                for i, j in enumerate(image):
+
+                    self.logger.critical('output %s shape is %s', i, j.shape)
+
+                # unpad results
+                pad_width.insert(0, (0, 0))  # batch size
+                if isinstance(image, list):
+                    image = [utils.unpad_image(i, pad_width) for i in image]
+                else:
+                    image = utils.unpad_image(image, pad_width)
+
+            elif (image.shape[image.ndim - 3] > model_shape or
+                  image.shape[image.ndim - 2] > model_shape):
+                # need to tile!
+                tiles, tiles_info = tile_image(
+                    np.expand_dims(image, axis=0),
+                    model_input_shape=(model_shape, model_shape),
+                    stride_ratio=0.75)
+
+                # max_batch_size is 1 by default.
+                # dependent on the tf-serving configuration
+                results = []
+                for t in range(tiles.shape[0]):
+                    output = self.grpc_image(tiles[t], model_name, model_version)
+                    if not results:
+                        results = output
+                    else:
+                        for i, o in enumerate(output):
+                            results[i] = np.vstack((results[i], o))
+
+                image = [untile_image(r, tiles_info) for r in results]
+
             else:
                 image = self.grpc_image(image, model_name, model_version)
 
             # Post-process model results
             self.update_key(redis_hash, {'status': 'post-processing'})
 
-            if settings.LABEL_DETECT_ENABLED:
+            if settings.LABEL_DETECT_ENABLED and label is not None:
                 post_funcs = utils._pick_postprocess(label).split(',')
             else:
                 post_funcs = hvals.get('postprocess_function', '').split(',')

@@ -240,6 +240,23 @@ def pad_image(image, field):
     return np.pad(image, pad_width, mode='reflect')
 
 
+def unpad_image(x, pad_width):
+    """Unpad image padded with the pad_width.
+
+    Args:
+        image (numpy.array): Image to unpad.
+        pad_width (list): List of pads used to pad the image with np.pad.
+
+    Returns:
+        numpy.array: The unpadded image.
+    """
+    slices = []
+    for c in pad_width:
+        e = None if c[1] == 0 else -c[1]
+        slices.append(slice(c[0], e))
+    return x[tuple(slices)]
+
+
 def save_numpy_array(arr, name='', subdir='', output_dir=None):
     """Split tensor into channels and save each as a tiff file.
 

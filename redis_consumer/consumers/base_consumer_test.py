@@ -306,11 +306,8 @@ class TestConsumer(object):
         redis_client.lrem = lrem
         consumer = consumers.Consumer(redis_client, DummyStorage(), queue_name)
         consumer.get_redis_hash = lambda: '%s:f.tiff:failed' % queue_name
-        print(redis_client.work_queue)
-        print(redis_client.processing_queue)
+
         consumer.consume()
-        print(redis_client.work_queue)
-        print(redis_client.processing_queue)
         assert _processed is True
 
         _processed = False
@@ -319,6 +316,17 @@ class TestConsumer(object):
             status=consumer.final_status)
         consumer.consume()
         assert _processed is True
+
+        _processed = 0
+
+        def G(*_):
+            global _processed
+            _processed += 1
+            return 'waiting'
+
+        consumer._consume = G
+        consumer.consume()
+        assert _processed == N
 
     def test__consume(self):
         with np.testing.assert_raises(NotImplementedError):

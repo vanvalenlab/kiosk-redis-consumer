@@ -23,16 +23,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Functions for pre- and post-processing image data"""
+"""DEPRECATED. Please use the "deepell_toolbox" package instead.
+
+Functions for pre- and post-processing image data
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+# pylint: disable=W0611
 
 from deepcell_toolbox import normalize
 from deepcell_toolbox import mibi
 from deepcell_toolbox import watershed
 from deepcell_toolbox import pixelwise
 from deepcell_toolbox import correct_drift
+
+from deepcell_toolbox.deep_watershed import deep_watershed
 
 from deepcell_toolbox import retinanet_semantic_to_label_image
 from deepcell_toolbox import retinanet_to_label_image
