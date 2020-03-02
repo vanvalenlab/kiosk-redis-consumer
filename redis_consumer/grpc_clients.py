@@ -94,20 +94,20 @@ class PredictClient(GrpcClient):
         self.model_version = model_version
 
     def predict(self, request_data, request_timeout=10):
-        self.logger.info('Sending request to %s model %s:%s.',
+        self.logger.info('Sending PredictRequest to %s model %s:%s.',
                          self.host, self.model_name, self.model_version)
 
         channel = self.insecure_channel()
 
         t = timeit.default_timer()
         stub = PredictionServiceStub(channel)
-        self.logger.debug('Created TensorFlowServingServiceStub in %s seconds.',
+        self.logger.debug('Created PredictionServiceStub in %s seconds.',
                           timeit.default_timer() - t)
 
         t = timeit.default_timer()
         request = PredictRequest()
-        self.logger.debug('Created TensorFlowServingRequest object in %s '
-                          'seconds.', timeit.default_timer() - t)
+        self.logger.debug('Created PredictRequest object in %s seconds.',
+                          timeit.default_timer() - t)
 
         request.model_spec.name = self.model_name  # pylint: disable=E1101
 
@@ -127,22 +127,22 @@ class PredictClient(GrpcClient):
         try:
             t = timeit.default_timer()
             predict_response = stub.Predict(request, timeout=request_timeout)
-            self.logger.debug('gRPC TensorFlowServingRequest finished in %s '
-                              'seconds.', timeit.default_timer() - t)
+            self.logger.debug('gRPC PredictRequest finished in %s seconds.',
+                              timeit.default_timer() - t)
 
             t = timeit.default_timer()
             predict_response_dict = grpc_response_to_dict(predict_response)
-            self.logger.debug('gRPC TensorFlowServingProtobufConversion took '
+            self.logger.debug('gRPC PredictResponseProtobufConversion took '
                               '%s seconds.', timeit.default_timer() - t)
 
             keys = [k for k in predict_response_dict]
-            self.logger.info('Got TensorFlowServingResponse with keys: %s ',
+            self.logger.info('Got PredictResponse with keys: %s ',
                              keys)
             channel.close()
             return predict_response_dict
 
         except RpcError as err:
-            self.logger.error('Prediction failed due to: %s', err)
+            self.logger.error('PredictRequest failed due to: %s', err)
             channel.close()
             raise err
 
