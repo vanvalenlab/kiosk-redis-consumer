@@ -12,13 +12,13 @@ _sym_db = _symbol_database.Default()
 
 
 from google.protobuf import any_pb2 as google_dot_protobuf_dot_any__pb2
-import graph_pb2 as graph__pb2
-import op_def_pb2 as op__def__pb2
-import tensor_shape_pb2 as tensor__shape__pb2
-import types_pb2 as types__pb2
-import saved_object_graph_pb2 as saved__object__graph__pb2
-import saver_pb2 as saver__pb2
-import struct_pb2 as struct__pb2
+import redis_consumer.pbs.graph_pb2 as graph__pb2
+import redis_consumer.pbs.op_def_pb2 as op__def__pb2
+import redis_consumer.pbs.tensor_shape_pb2 as tensor__shape__pb2
+import redis_consumer.pbs.types_pb2 as types__pb2
+import redis_consumer.pbs.saved_object_graph_pb2 as saved__object__graph__pb2
+import redis_consumer.pbs.saver_pb2 as saver__pb2
+import redis_consumer.pbs.struct_pb2 as struct__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(

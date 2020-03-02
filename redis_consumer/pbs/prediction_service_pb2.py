@@ -11,8 +11,8 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
-import get_model_metadata_pb2 as get__model__metadata__pb2
-import predict_pb2 as predict__pb2
+import redis_consumer.pbs.get_model_metadata_pb2 as get__model__metadata__pb2
+import redis_consumer.pbs.predict_pb2 as predict__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(

@@ -11,12 +11,12 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
-import trackable_object_graph_pb2 as trackable__object__graph__pb2
-import struct_pb2 as struct__pb2
-import tensor_shape_pb2 as tensor__shape__pb2
-import types_pb2 as types__pb2
-import versions_pb2 as versions__pb2
-import variable_pb2 as variable__pb2
+import redis_consumer.pbs.trackable_object_graph_pb2 as trackable__object__graph__pb2
+import redis_consumer.pbs.struct_pb2 as struct__pb2
+import redis_consumer.pbs.tensor_shape_pb2 as tensor__shape__pb2
+import redis_consumer.pbs.types_pb2 as types__pb2
+import redis_consumer.pbs.versions_pb2 as versions__pb2
+import redis_consumer.pbs.variable_pb2 as variable__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
