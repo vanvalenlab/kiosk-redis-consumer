@@ -393,7 +393,7 @@ class TestTensorFlowServingConsumer(object):
         def hmget_fail(key, *others):
             shape = ','.join(str(s) for s in model_shape)
             dtype = 'DT_FLOAT'
-            return None
+            return [None] * len(others)
 
         def _get_predict_client(model_name, model_version):
             return Bunch(get_model_metadata=lambda: {
