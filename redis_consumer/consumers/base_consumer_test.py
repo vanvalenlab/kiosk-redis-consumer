@@ -404,7 +404,7 @@ class TestTensorFlowServingConsumer(object):
                                 'inputs': {
                                     settings.TF_TENSOR_NAME: {
                                         'dtype': model_dtype,
-                                        'tensor_shape': {
+                                        'tensorShape': {
                                             'dim': [
                                                 {'size': str(x)}
                                                 for x in model_shape

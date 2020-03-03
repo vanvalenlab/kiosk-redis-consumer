@@ -362,7 +362,7 @@ class TensorFlowServingConsumer(Consumer):
             inputs = inputs['serving_default']['inputs'][settings.TF_TENSOR_NAME]
 
             dtype = inputs['dtype']
-            shape = ','.join([d['size'] for d in inputs['tensor_shape']['dim']])
+            shape = ','.join([d['size'] for d in inputs['tensorShape']['dim']])
 
             parsed_metadata = dict(zip(fields, [dtype, shape]))
 
