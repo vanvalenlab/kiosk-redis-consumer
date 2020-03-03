@@ -30,6 +30,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import logging
 import time
 import timeit
@@ -40,6 +41,8 @@ import grpc.beta.implementations
 from grpc._cython import cygrpc
 
 import numpy as np
+
+from google.protobuf.json_format import MessageToJson
 
 from redis_consumer import settings
 from redis_consumer.pbs.prediction_service_pb2_grpc import PredictionServiceStub
@@ -173,19 +176,21 @@ class PredictClient(GrpcClient):
                 if self.model_version > 0:
                     request.model_spec.version.value = self.model_version
 
-                predict_response = stub.GetModelMetadata(
-                    request, timeout=request_timeout)
+                response = stub.GetModelMetadata(request, timeout=request_timeout)
 
                 self.logger.debug('gRPC GetModelMetadataRequest finished in %s '
                                   'seconds.', timeit.default_timer() - t)
 
                 t = timeit.default_timer()
-                predict_response_dict = grpc_response_to_dict(predict_response)
+
+                response_dict = json.loads(MessageToJson(response))
+
+                # signature_def = response.metadata['signature_def']
                 self.logger.debug('gRPC GetModelMetadataProtobufConversion took '
                                   '%s seconds.', timeit.default_timer() - t)
 
                 channel.close()
-                return predict_response_dict
+                return response_dict
 
             except grpc.RpcError as err:
                 channel.close()

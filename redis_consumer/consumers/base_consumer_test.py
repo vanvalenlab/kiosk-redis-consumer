@@ -399,7 +399,7 @@ class TestTensorFlowServingConsumer(object):
             return Bunch(get_model_metadata=lambda: {
                 'metadata': {
                     'signature_def': {
-                        'signature_def': {
+                        'signatureDef': {
                             'serving_default': {
                                 'inputs': {
                                     settings.TF_TENSOR_NAME: {

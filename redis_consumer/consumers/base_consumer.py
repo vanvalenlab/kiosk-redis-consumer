@@ -358,7 +358,7 @@ class TensorFlowServingConsumer(Consumer):
         model_metadata = client.get_model_metadata()
 
         try:
-            inputs = model_metadata['metadata']['signature_def']['signature_def']
+            inputs = model_metadata['metadata']['signature_def']['signatureDef']
             inputs = inputs['serving_default']['inputs'][settings.TF_TENSOR_NAME]
 
             dtype = inputs['dtype']
