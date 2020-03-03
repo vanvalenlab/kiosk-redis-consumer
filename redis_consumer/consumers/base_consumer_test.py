@@ -361,24 +361,6 @@ class TestTensorFlowServingConsumer(object):
         assert img.shape == out.shape[1:]
         assert img.sum() == out.sum()
 
-    def test_process_big_image(self):
-        name = 'model'
-        version = 0
-        field = 11
-        cuts = 2
-
-        img = np.expand_dims(_get_image(100, 100), axis=-1)
-        img = np.expand_dims(img, axis=0)
-
-        redis_client = None
-        storage = None
-        consumer = consumers.TensorFlowServingConsumer(redis_client, storage, 'predict')
-
-        # image should be chopped into cuts**2 pieces and reassembled
-        consumer.grpc_image = lambda x, y, z: x
-        res = consumer.process_big_image(cuts, img, field, name, version)
-        np.testing.assert_equal(res, img)
-
     def test_get_model_metadata(self):
         # pytest: disable=W0613
         redis_client = DummyRedis([])
@@ -443,6 +425,41 @@ class TestTensorFlowServingConsumer(object):
             consumer._get_predict_client = _get_bad_predict_client
             consumer.get_model_metadata('model', 1)
 
+    def test_predict(self):
+        redis_client = DummyRedis([])
+        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+
+        def grpc_image(data, *args, **kwargs):
+            data = np.expand_dims(data, axis=0)
+            return data
+
+        def grpc_image_list(data, *args, **kwargs):  # pylint: disable=W0613
+            data = np.expand_dims(data, axis=0)
+            return [data, data]
+
+        model_shape = (1, 128, 128, 1)
+
+        image_shapes = [
+            (256, 256, 1),
+            (128, 128, 1),
+            (64, 64, 1),
+            (100, 100, 1),
+            (300, 300, 1),
+        ]
+
+        for image_shape in image_shapes:
+            for grpc_func in (grpc_image, grpc_image_list):
+
+                x = np.random.random(image_shape)
+                consumer.grpc_image = grpc_func
+                consumer.get_model_metadata = lambda x, y: {
+                    'in_tensor_dtype': 'DT_FLOAT',
+                    'in_tensor_shape': ','.join(str(s) for s in model_shape),
+                }
+
+                y = consumer.predict(x, model_name='modelname', model_version=0)
+                pass
+
     def test_detect_label(self):
         redis_client = DummyRedis([])
         model_shape = (1, 216, 216, 1)
@@ -455,13 +472,13 @@ class TestTensorFlowServingConsumer(object):
 
         settings.LABEL_DETECT_MODEL = 'dummymodel:1'
 
-        def dummydata(*_, **__):
+        def predict(*_, **__):
             data = np.zeros((3,))
             i = np.random.randint(3)
             data[i] = 1
             return data
 
-        consumer.grpc_image = dummydata
+        consumer.predict = predict
 
         settings.LABEL_DETECT_ENABLED = False
 
@@ -475,6 +492,7 @@ class TestTensorFlowServingConsumer(object):
 
     def test_detect_scale(self):
         redis_client = DummyRedis([])
+
         model_shape = (1, 216, 216, 1)
         consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
         consumer.get_model_metadata = lambda x, y: {
@@ -488,11 +506,11 @@ class TestTensorFlowServingConsumer(object):
 
         settings.SCALE_DETECT_MODEL = 'dummymodel:1'
 
-        def grpc_image(*_, **__):
+        def predict(*_, **__):
             sign = -1 if np.random.randint(1, 5) > 2 else 1
             return expected + sign * 1e-8  # small differences get averaged out
 
-        consumer.grpc_image = grpc_image
+        consumer.predict = predict
 
         settings.SCALE_DETECT_ENABLED = False
 
@@ -501,7 +519,7 @@ class TestTensorFlowServingConsumer(object):
 
         settings.SCALE_DETECT_ENABLED = True
 
-        consumer.grpc_image = grpc_image
+        consumer.predict = predict
 
         scale = consumer.detect_scale(image)
         assert isinstance(scale, (float, int))

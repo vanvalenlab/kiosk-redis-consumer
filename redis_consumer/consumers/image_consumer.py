@@ -167,9 +167,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             'identity_started': self.hostname,
         })
 
-        cuts = hvals.get('cuts', '0')  # TODO: deprecated
-        field = hvals.get('field_size', '61')  # TODO: deprecated
-
         # Overridden with LABEL_DETECT_ENABLED
         model_name = hvals.get('model_name')
         model_version = hvals.get('model_version')
@@ -178,8 +175,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             _ = timeit.default_timer()
             fname = self.storage.download(hvals.get('input_file_name'), tempdir)
             image = utils.get_image(fname)
-
-            streaming = str(cuts).isdigit() and int(cuts) > 0
 
             # Pre-process data before sending to the model
             self.update_key(redis_hash, {
@@ -223,86 +218,13 @@ class ImageFileConsumer(TensorFlowServingConsumer):
                 # Grap appropriate model
                 model_name, model_version = utils._pick_model(label)
 
-            model_metadata = self.get_model_metadata(model_name, model_version)
-
-            model_dtype = model_metadata['in_tensor_dtype']
-            model_shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
-
-            size_x = model_shape[len(model_shape) - 3]
-            size_y = model_shape[len(model_shape) - 2]
-
             pre_funcs = hvals.get('preprocess_function', '').split(',')
             image = self.preprocess(image, pre_funcs, True)
 
             # Send data to the model
             self.update_key(redis_hash, {'status': 'predicting'})
 
-            if (image.shape[image.ndim - 3] < size_x or
-                    image.shape[image.ndim - 2] < size_y):
-                # tiling not necessary, but image must be padded.
-                pad_width = []
-                for i in range(image.ndim):
-                    if i in {image.ndim - 3, image.ndim - 2}:
-                        if i == image.ndim - 3:
-                            diff = size_x - image.shape[i]
-                        else:
-                            diff = size_y - image.shape[i]
-
-                        if diff % 2:
-                            pad_width.append((diff // 2, diff // 2 + 1))
-                        else:
-                            pad_width.append((diff // 2, diff // 2))
-
-                    else:
-                        pad_width.append((0, 0))
-
-                padded_img = np.pad(image, pad_width, 'reflect')
-                image = self.grpc_image(padded_img, model_name, model_version,
-                                        in_tensor_dtype=model_dtype)
-
-                # pad batch_size and frames.
-                while len(pad_width) < padded_img.ndim:
-                    pad_width.insert(0, (0, 0))
-
-                # unpad results
-                if isinstance(image, list):
-                    image = [utils.unpad_image(i, pad_width) for i in image]
-                else:
-                    image = utils.unpad_image(image, pad_width)
-
-            elif (image.shape[image.ndim - 3] > size_x or
-                  image.shape[image.ndim - 2] > size_y):
-
-                # need to tile!
-                tiles, tiles_info = tile_image(
-                    np.expand_dims(image, axis=0),
-                    model_input_shape=(size_x, size_y),
-                    stride_ratio=0.75)
-
-                # max_batch_size is 1 by default.
-                # dependent on the tf-serving configuration
-                results = []
-                for t in range(tiles.shape[0]):
-                    output = self.grpc_image(tiles[t], model_name, model_version)
-
-                    if not isinstance(output, list):
-                        output = [output]
-
-                    if results == []:
-                        results = output
-
-                    else:
-                        for i, o in enumerate(output):
-                            results[i] = np.vstack((results[i], o))
-
-                image = [
-                    untile_image(r, tiles_info, model_input_shape=(size_x, size_y))
-                    for r in results
-                ]
-                image = image[0] if len(image) == 1 else image
-
-            else:
-                image = self.grpc_image(image, model_name, model_version)
+            image = self.predict(image, model_name, model_version)
 
             # Post-process model results
             self.update_key(redis_hash, {'status': 'post-processing'})

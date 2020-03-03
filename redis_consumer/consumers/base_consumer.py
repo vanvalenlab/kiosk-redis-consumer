@@ -377,58 +377,133 @@ class TensorFlowServingConsumer(Consumer):
             self.logger.error('Malformed metadata: %s', model_metadata)
             raise err
 
-    def process_big_image(self,
-                          cuts,
-                          img,
-                          field,
-                          model_name,
-                          model_version):
-        """Slice big image into smaller images for prediction,
-        then stitches all the smaller images back together.
+    def _predict_big_image(self,
+                           image,
+                           model_name,
+                           model_version,
+                           model_shape,
+                           model_dtype='DT_FLOAT'):
+        """Use tile_image to tile image for the model and untile the results.
 
         Args:
-        cuts: number of cuts in x and y to slice smaller images
-        img: image data as numpy array
-        field: receptive field size of model, changes padding sizes
-        model_name: hosted model to send image data
-        model_version: model version to query
+            img (numpy.array): image data as numpy.
+            model_name (str): hosted model to send image data.
+            model_version (str): model version to query.
+            model_shape (tuple): shape of the model's expected input.
+            model_dtype (str): dtype of the model's input array.
 
         Returns:
-        tf_results: single numpy array of predictions on big input image
+            numpy.array: untiled results from the model.
         """
-        start = timeit.default_timer()
-        cuts = int(cuts)
-        field = int(field)
-        winx, winy = (field - 1) // 2, (field - 1) // 2
+        model_ndim = len(model_shape)
+        input_shape = (model_shape[model_ndim - 3], model_shape[model_ndim - 2])
+        tiles, tiles_info = tile_image(
+            np.expand_dims(image, axis=0),
+            model_input_shape=input_shape,
+            stride_ratio=0.75)
 
-        def iter_cuts(img, cuts, field):
-            padded_img = utils.pad_image(img, field)
-            crop_x = img.shape[img.ndim - 3] // cuts
-            crop_y = img.shape[img.ndim - 2] // cuts
-            for i in range(cuts):
-                for j in range(cuts):
-                    a, b = i * crop_x, (i + 1) * crop_x
-                    c, d = j * crop_y, (j + 1) * crop_y
-                    data = padded_img[..., a:b + 2 * winx, c:d + 2 * winy, :]
-                    coord = (a, b, c, d)
-                    yield data, coord
+        # max_batch_size is 1 by default.
+        # dependent on the tf-serving configuration
+        results = []
+        for t in range(tiles.shape[0]):
+            output = self.grpc_image(tiles[t], model_name, model_version,
+                                     in_tensor_dtype=model_dtype)
 
-        slcs, coords = zip(*iter_cuts(img, cuts, field))
-        reqs = (self.grpc_image(s, model_name, model_version) for s in slcs)
+            if not isinstance(output, list):
+                output = [output]
 
-        tf_results = None
-        for resp, (a, b, c, d) in zip(reqs, coords):
-            # resp = await asyncio.ensure_future(req)
-            if tf_results is None:
-                tf_results = np.zeros(list(img.shape)[:-1] + [resp.shape[-1]])
-                self.logger.debug('Initialized output tensor of shape %s',
-                                  tf_results.shape)
+            if results == []:
+                results = output
 
-            tf_results[..., a:b, c:d, :] = resp[..., winx:-winx, winy:-winy, :]
+            else:
+                for i, o in enumerate(output):
+                    results[i] = np.vstack((results[i], o))
 
-        self.logger.debug('Segmented image into shape %s in %s s',
-                          tf_results.shape, timeit.default_timer() - start)
-        return tf_results
+        image = [
+            untile_image(r, tiles_info, model_input_shape=input_shape)
+            for r in results
+        ]
+        image = image[0] if len(image) == 1 else image
+        return image
+
+    def _predict_small_image(self,
+                             image,
+                             model_name,
+                             model_version,
+                             model_shape,
+                             model_dtype='DT_FLOAT'):
+        """Pad an image that is too small for the model, and unpad the results.
+
+        Args:
+            img (numpy.array): The too-small image to be predicted with
+                model_name and model_version.
+            model_name (str): hosted model to send image data.
+            model_version (str): model version to query.
+            model_shape (tuple): shape of the model's expected input.
+            model_dtype (str): dtype of the model's input array.
+
+        Returns:
+            numpy.array: unpadded results from the model.
+        """
+        pad_width = []
+        model_ndim = len(model_shape)
+        for i in range(image.ndim):
+            if i in {image.ndim - 3, image.ndim - 2}:
+                if i == image.ndim - 3:
+                    diff = model_shape[model_ndim - 3] - image.shape[i]
+                else:
+                    diff = model_shape[model_ndim - 2] - image.shape[i]
+
+                if diff % 2:
+                    pad_width.append((diff // 2, diff // 2 + 1))
+                else:
+                    pad_width.append((diff // 2, diff // 2))
+            else:
+                pad_width.append((0, 0))
+
+        padded_img = np.pad(image, pad_width, 'reflect')
+        image = self.grpc_image(padded_img, model_name, model_version,
+                                in_tensor_dtype=model_dtype)
+
+        # pad batch_size and frames.
+        while len(pad_width) < padded_img.ndim:
+            pad_width.insert(0, (0, 0))
+
+        # unpad results
+        if isinstance(image, list):
+            image = [utils.unpad_image(i, pad_width) for i in image]
+        else:
+            image = utils.unpad_image(image, pad_width)
+        return image
+
+    def predict(self, image, model_name, model_version):
+        model_metadata = self.get_model_metadata(model_name, model_version)
+
+        model_dtype = model_metadata['in_tensor_dtype']
+
+        model_shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
+        model_ndim = len(model_shape)
+
+        size_x = model_shape[model_ndim - 3]
+        size_y = model_shape[model_ndim - 2]
+
+        size_x = image.shape[image.ndim - 3] if size_x <= 0 else size_x
+        size_y = image.shape[image.ndim - 2] if size_y <= 0 else size_y
+
+        if (image.shape[image.ndim - 3] < size_x or
+                image.shape[image.ndim - 2] < size_y):
+            # image is too small for the model, pad the image.
+            self._predict_small_image(image, model_name, model_version,
+                                      model_shape, model_dtype)
+        elif (image.shape[image.ndim - 3] > size_x or
+              image.shape[image.ndim - 2] > size_y):
+            # image is too big for the model, multiple images are tiled.
+            image = self._predict_big_image(image, model_name, model_version,
+                                            model_shape, model_dtype)
+        else:
+            image = self.grpc_image(image, model_name, model_version,
+                                    in_tensor_dtype=model_dtype)
+        return image
 
     def detect_scale(self, image):
         start = timeit.default_timer()
@@ -438,13 +513,6 @@ class TensorFlowServingConsumer(Consumer):
             return 1
 
         model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
-        model_metadata = self.get_model_metadata(model_name, model_version)
-
-        model_dtype = model_metadata['in_tensor_dtype']
-        model_shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
-
-        size_x = model_shape[len(model_shape) - 3]
-        size_y = model_shape[len(model_shape) - 2]
 
         # Rescale image for compatibility with scale model
         # TODO Generalize to prevent from breaking on new input data types
@@ -453,18 +521,7 @@ class TensorFlowServingConsumer(Consumer):
         else:
             image = np.expand_dims(image, axis=-1)
 
-        tiles, _ = tile_image(
-            np.expand_dims(image, axis=0),
-            model_input_shape=(size_x, size_y),
-            stride_ratio=0.75)
-
-        # Loop over each image in the batch dimension for scale prediction
-        # TODO Calculate scale_detect_sample based on batch size
-        # Could be based on fraction or sampling a minimum set number of frames
-        scales = []
-        for i in range(0, tiles.shape[0], settings.SCALE_DETECT_SAMPLE):
-            scales.append(self.grpc_image(tiles[i], model_name, model_version,
-                                          in_tensor_dtype=model_dtype))
+        scales = self.predict(image, model_name, model_version)
 
         detected_scale = np.mean(scales)
 
@@ -480,13 +537,6 @@ class TensorFlowServingConsumer(Consumer):
             return None
 
         model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
-        model_metadata = self.get_model_metadata(model_name, model_version)
-
-        model_dtype = model_metadata['in_tensor_dtype']
-        model_shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
-
-        size_x = model_shape[len(model_shape) - 3]
-        size_y = model_shape[len(model_shape) - 2]
 
         # Rescale for model compatibility
         # TODO Generalize to prevent from breaking on new input data types
@@ -495,16 +545,7 @@ class TensorFlowServingConsumer(Consumer):
         else:
             image = np.expand_dims(image, axis=-1)
 
-        tiles, _ = tile_image(
-            np.expand_dims(image, axis=0),
-            model_input_shape=(size_x, size_y),
-            stride_ratio=0.75)
-
-        # Loop over each image in batch
-        labels = []
-        for i in range(0, tiles.shape[0], settings.LABEL_DETECT_SAMPLE):
-            labels.append(self.grpc_image(tiles[i], model_name, model_version,
-                                          in_tensor_dtype=model_dtype))
+        labels = self.predict(image, model_name, model_version)
 
         labels = np.array(labels)
         vote = labels.sum(axis=0)
