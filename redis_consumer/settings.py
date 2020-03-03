@@ -105,6 +105,8 @@ GCLOUD_STORAGE_BUCKET = config('GKE_BUCKET', default='default-bucket')
 # Pod Meteadta
 HOSTNAME = config('HOSTNAME', default='host-unkonwn')
 
+CUTS = config('CUTS', default=0, cast=int)  # TODO: deprecated
+
 # Redis queue
 QUEUE = config('QUEUE', default='predict')
 SEGMENTATION_QUEUE = config('SEGMENTATION_QUEUE', default='predict')
@@ -135,14 +137,13 @@ PROCESSING_FUNCTIONS = {
 TRACKING_SEGMENT_MODEL = config('TRACKING_SEGMENT_MODEL', default='panoptic:3', cast=str)
 TRACKING_POSTPROCESS_FUNCTION = config('TRACKING_POSTPROCESS_FUNCTION',
                                        default='retinanet', cast=str)
-CUTS = config('CUTS', default=0, cast=int)
 
 TRACKING_MODEL = config('TRACKING_MODEL', default='TrackingModel:0', cast=str)
 
 DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=False, cast=bool)
 NORMALIZE_TRACKING = config('NORMALIZE_TRACKING', default=True, cast=bool)
 
-# tracking.cell_tracker settings
+# tracking.cell_tracker settings TODO: can we extract from model_metadata?
 MAX_DISTANCE = config('MAX_DISTANCE', default=50, cast=int)
 TRACK_LENGTH = config('TRACK_LENGTH', default=5, cast=int)
 DIVISION = config('DIVISION', default=0.9, cast=float)
