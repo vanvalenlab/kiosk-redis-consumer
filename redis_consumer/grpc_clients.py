@@ -166,7 +166,8 @@ class PredictClient(GrpcClient):
 
                 request = GetModelMetadataRequest()
 
-                request.metadata_field = 'signature_def'
+                request.metadata_field.append('signature_def')
+
                 request.model_spec.name = self.model_name
 
                 if self.model_version > 0:
