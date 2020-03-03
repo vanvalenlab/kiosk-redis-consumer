@@ -225,8 +225,7 @@ class TestImageFileConsumer(object):
         settings.PROCESSING_FUNCTIONS = _funcs
 
     def test__consume(self):
-        settings.LABEL_DETECT_ENABLED = False
-        settings.SCALE_DETECT_ENABLED = False
+        # pylint: disable=W0613
         prefix = 'predict'
         status = 'new'
         redis_client = DummyRedis(prefix, status)
@@ -234,11 +233,20 @@ class TestImageFileConsumer(object):
 
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
 
-        def _handle_error(err, rhash):  # pylint: disable=W0613
+        def _handle_error(err, rhash):
             raise err
 
-        def grpc_image_multi(data, *args, **kwargs):  # pylint: disable=W0613
+        def grpc_image(data, *args, **kwargs):
+            data = np.expand_dims(data, axis=0)
+            return data
+
+        def grpc_image_multi(data, *args, **kwargs):
+            data = np.expand_dims(data, axis=0)
             return np.array(tuple(list(data.shape) + [2]))
+
+        def grpc_image_list(data, *args, **kwargs):  # pylint: disable=W0613
+            data = np.expand_dims(data, axis=0)
+            return [data, data]
 
         def detect_scale(_):
             return 1
@@ -246,20 +254,54 @@ class TestImageFileConsumer(object):
         def detect_label(_):
             return 0
 
+        def make_model_metadata_of_size(model_shape=(-1, 256, 256, 1)):
+
+            def get_model_metadata(model_name, model_version):
+                return {
+                    'in_tensor_dtype': 'DT_FLOAT',
+                    'in_tensor_shape': ','.join(str(s) for s in model_shape),
+                }
+
+            return get_model_metadata
+
         dummyhash = '{}:test.tiff:{}'.format(prefix, status)
 
-        # consumer._handle_error = _handle_error
-        consumer.grpc_image = grpc_image_multi
-        consumer.detect_scale = detect_scale
-        result = consumer._consume(dummyhash)
-        assert result == consumer.final_status
-        # test with a finished hash
-        result = consumer._consume('{}:test.tiff:{}'.format(prefix, 'done'))
-        assert result == 'done'
+        model_shapes = [
+            (1, 600, 600, 1),  # image too small, pad
+            (1, 300, 300, 1),  # image is exactly the right size
+            (1, 150, 150, 1),  # image too big, tile
+        ]
 
-        # test mutli-channel
-        def grpc_image(data, *args, **kwargs):  # pylint: disable=W0613
-            return data
+        consumer._handle_error = _handle_error
+        consumer.grpc_image = grpc_image
+        consumer.detect_scale = detect_scale
+        consumer.detect_label = detect_label
+
+        # consumer.grpc_image = grpc_image_multi
+        # consumer.get_model_metadata = make_model_metadata_of_size(model_shapes[0])
+        #
+        # result = consumer._consume(dummyhash)
+        # assert result == consumer.final_status
+        #
+        # # test with a finished hash
+        # result = consumer._consume('{}:test.tiff:{}'.format(prefix, 'done'))
+        # assert result == 'done'
+
+        for b in (False, True):
+            settings.SCALE_DETECT_ENABLED = settings.LABEL_DETECT_ENABLED = b
+            for model_shape in model_shapes:
+                for grpc_func in (grpc_image, grpc_image_list):
+
+                    consumer.grpc_image = grpc_func
+                    consumer.get_model_metadata = \
+                        make_model_metadata_of_size(model_shape)
+
+                    result = consumer._consume(dummyhash)
+                    assert result == consumer.final_status
+                    # test with a finished hash
+                    result = consumer._consume('{}:test.tiff:{}'.format(
+                        prefix, consumer.final_status))
+                    assert result == consumer.final_status
 
         # test with cuts > 0
         redis_client.hgetall = lambda x: {
@@ -278,26 +320,10 @@ class TestImageFileConsumer(object):
         consumer._handle_error = _handle_error
         consumer.detect_scale = detect_scale
         consumer.detect_label = detect_label
+        consumer.get_model_metadata = make_model_metadata_of_size((1, 300, 300, 1))
         consumer.grpc_image = grpc_image
         result = consumer._consume(dummyhash)
         assert result == consumer.final_status
-
-        # test with multiple outputs from model and cuts == 0
-
-        def grpc_image_list(data, *args, **kwargs):  # pylint: disable=W0613
-            return [data, data]
-
-        redis_client = DummyRedis(prefix, status)
-        consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
-        consumer._handle_error = _handle_error
-        consumer.detect_scale = detect_scale
-        consumer.detect_label = detect_label
-        consumer.grpc_image = grpc_image_list
-        result = consumer._consume(dummyhash)
-        assert result == consumer.final_status
-
-        settings.LABEL_DETECT_ENABLED = True
-        settings.SCALE_DETECT_ENABLED = True
 
         # test with model_name and model_version
         redis_client.hgetall = lambda x: {
@@ -316,6 +342,7 @@ class TestImageFileConsumer(object):
         consumer._handle_error = _handle_error
         consumer.detect_scale = detect_scale
         consumer.detect_label = detect_label
+        consumer.get_model_metadata = make_model_metadata_of_size((1, 300, 300, 1))
         consumer.grpc_image = grpc_image
         result = consumer._consume(dummyhash)
         assert result == consumer.final_status

@@ -155,13 +155,11 @@ SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:3')
 SCALE_DETECT_SAMPLE = config('SCALE_DETECT_SAMPLE', default=3, cast=int)
 # Not supported for tracking. Always detects scale
 SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
-SCALE_RESHAPE_SIZE = config('SCALE_RESHAPE_SIZE', default=216, cast=int)
 
 # Type detection settings
 LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:2', cast=str)
 LABEL_DETECT_SAMPLE = config('LABEL_DETECT_SAMPLE', default=3, cast=int)
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
-LABEL_RESHAPE_SIZE = config('LABEL_RESHAPE_SIZE', default=216, cast=int)
 
 # Set default models based on label type
 PHASE_MODEL = config('PHASE_MODEL', default='panoptic_phase:0', cast=str)
@@ -177,16 +175,6 @@ MODEL_CHOICES = {
 PHASE_POSTPROCESS = config('PHASE_POSTPROCESS', default='deep_watershed', cast=str)
 CYTOPLASM_POSTPROCESS = config('CYTOPLASM_POSTPROCESS', default='deep_watershed', cast=str)
 NUCLEAR_POSTPROCESS = config('NUCLEAR_POSTPROCESS', default='deep_watershed', cast=str)
-
-PHASE_RESHAPE_SIZE = config('PHASE_RESHAPE_SIZE', default=512, cast=int)
-CYTOPLASM_RESHAPE_SIZE = config('CYTOPLASM_RESHAPE_SIZE', default=512, cast=int)
-NUCLEAR_RESHAPE_SIZE = config('NUCLEAR_RESHAPE_SIZE', default=512, cast=int)
-
-MODEL_SIZES = {
-    NUCLEAR_MODEL: NUCLEAR_RESHAPE_SIZE,
-    PHASE_MODEL: PHASE_RESHAPE_SIZE,
-    CYTOPLASM_MODEL: CYTOPLASM_RESHAPE_SIZE,
-}
 
 POSTPROCESS_CHOICES = {
     0: NUCLEAR_POSTPROCESS,
