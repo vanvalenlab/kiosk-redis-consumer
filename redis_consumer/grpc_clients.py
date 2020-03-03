@@ -157,6 +157,7 @@ class PredictClient(GrpcClient):
 
         retrying = True
         while retrying:
+            # pylint: disable=E1101
             try:
                 t = timeit.default_timer()
                 channel = self.insecure_channel()
@@ -165,10 +166,10 @@ class PredictClient(GrpcClient):
 
                 request = GetModelMetadataRequest()
 
-                request.model_spec.name = self.model_name  # pylint: disable=E1101
+                request.metadata_field = 'signature_def'
+                request.model_spec.name = self.model_name
 
                 if self.model_version > 0:
-                    # pylint: disable=E1101
                     request.model_spec.version.value = self.model_version
 
                 predict_response = stub.GetModelMetadata(
@@ -186,7 +187,6 @@ class PredictClient(GrpcClient):
                 return predict_response_dict
 
             except grpc.RpcError as err:
-                # pylint: disable=E1101
                 channel.close()
                 if true_failures > settings.MAX_RETRY > 0:
                     retrying = False
