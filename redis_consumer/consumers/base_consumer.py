@@ -348,7 +348,7 @@ class TensorFlowServingConsumer(Consumer):
         fields = ['in_tensor_dtype', 'in_tensor_shape']
         response = self.redis.hmget(model, *fields)
 
-        if response:
+        if all(response):
             self.logger.debug('Got cached metadata for model %s.', model)
             return dict(zip(fields, response))
 
