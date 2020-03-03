@@ -419,10 +419,8 @@ class TensorFlowServingConsumer(Consumer):
                 for i, o in enumerate(output):
                     results[i] = np.vstack((results[i], o))
 
-        image = [
-            untile_image(r, tiles_info, model_input_shape=input_shape)
-            for r in results
-        ]
+        image = [untile_image(r, tiles_info, model_input_shape=input_shape)
+                 for r in results]
         image = image[0] if len(image) == 1 else image
         return image
 
