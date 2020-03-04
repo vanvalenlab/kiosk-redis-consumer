@@ -535,14 +535,8 @@ class TensorFlowServingConsumer(Consumer):
 
         model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
 
-        # Rescale image for compatibility with scale model
-        # TODO Generalize to prevent from breaking on new input data types
-        if image.shape[-1] == 1:
-            image = np.expand_dims(image, axis=0)
-        else:
-            image = np.expand_dims(image, axis=-1)
-
-        scales = self.predict(image, model_name, model_version)
+        scales = self.predict(image, model_name, model_version,
+                              sample=settings.SCALE_DETECT_SAMPLE)
 
         detected_scale = np.mean(scales)
 
@@ -559,14 +553,8 @@ class TensorFlowServingConsumer(Consumer):
 
         model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
 
-        # Rescale for model compatibility
-        # TODO Generalize to prevent from breaking on new input data types
-        if image.shape[-1] == 1:
-            image = np.expand_dims(image, axis=0)
-        else:
-            image = np.expand_dims(image, axis=-1)
-
-        labels = self.predict(image, model_name, model_version)
+        labels = self.predict(image, model_name, model_version,
+                              sample=settings.SCALE_DETECT_SAMPLE)
 
         labels = np.array(labels)
         vote = labels.sum(axis=0)
