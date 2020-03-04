@@ -95,15 +95,16 @@ class TrackingConsumer(TensorFlowServingConsumer):
                 raw[frame, :, :, 0] = processing.normalize(raw[frame, :, :, 0])
 
         features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
-        tracker = tracking.CellTracker(raw, segmented,
-                                       tracking_model,
-                                       max_distance=settings.MAX_DISTANCE,
-                                       track_length=settings.TRACK_LENGTH,
-                                       division=settings.DIVISION,
-                                       birth=settings.BIRTH,
-                                       death=settings.DEATH,
-                                       neighborhood_scale_size=settings.NEIGHBORHOOD_SCALE_SIZE,
-                                       features=features)
+        tracker = tracking.CellTracker(
+            raw, segmented,
+            tracking_model,
+            max_distance=settings.MAX_DISTANCE,
+            track_length=settings.TRACK_LENGTH,
+            division=settings.DIVISION,
+            birth=settings.BIRTH,
+            death=settings.DEATH,
+            neighborhood_scale_size=settings.NEIGHBORHOOD_SCALE_SIZE,
+            features=features)
 
         self.logger.debug('Created tracker!')
         return tracker
@@ -139,9 +140,9 @@ class TrackingConsumer(TensorFlowServingConsumer):
         # remove the last dimensions added by `get_image`
         tiff_stack = np.squeeze(raw, -1)  # TODO: required? check the ndim?
         if len(tiff_stack.shape) != 3:
-            raise ValueError("This tiff file has shape {}, which is not 3 "
-                             "dimensions. Tracking can only be done on images "
-                             "with 3 dimensions, (time, width, height)".format(
+            raise ValueError('This tiff file has shape {}, which is not 3 '
+                             'dimensions. Tracking can only be done on images '
+                             'with 3 dimensions, (time, width, height)'.format(
                                  tiff_stack.shape))
 
         # Calculate scale of a subset of raw
@@ -194,7 +195,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
                     # 'label': str(label)
                 }
 
-                self.logger.debug("Setting %s", frame_hvalues)
+                self.logger.debug('Setting %s', frame_hvalues)
 
                 # make a hash for this frame
                 segment_hash = '{prefix}:{file}:{hash}'.format(
@@ -233,7 +234,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
                             '\nSegmentation Error: {}'.format(
                                 hash_to_frame[segment_hash], reason))
 
-                    elif status == self.final_status:
+                    if status == self.final_status:
                         # if it's done, save the frame, as they'll be packed up
                         # later
                         frame_zip = self.storage.download(
@@ -245,9 +246,9 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
                         if len(frame_files) != 1:
                             raise RuntimeError(
-                                "After unzipping predicted frame, got "
-                                "back multiple files {}. Expected a "
-                                "single file.".format(frame_files))
+                                'After unzipping predicted frame, got '
+                                'back multiple files {}. Expected a '
+                                'single file.'.format(frame_files))
 
                         frame_idx = hash_to_frame[segment_hash]
                         frames[frame_idx] = utils.get_image(frame_files[0])
@@ -259,7 +260,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
         frames = [frames[i] for i in range(num_frames)]
 
         # Cast y to int to avoid issues during fourier transform/drift correction
-        return {"X": np.expand_dims(tiff_stack, axis=-1), "y": np.array(frames, dtype='uint16')}
+        return {'X': np.expand_dims(tiff_stack, axis=-1),
+                'y': np.array(frames, dtype='uint16')}
 
     def _consume(self, redis_hash):
         hvalues = self.redis.hgetall(redis_hash)

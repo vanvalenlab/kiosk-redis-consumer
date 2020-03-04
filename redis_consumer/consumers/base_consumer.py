@@ -199,7 +199,7 @@ class Consumer(object):
                     'postprocess_function',
                 ]
                 result = self.redis.hmget(redis_hash, *required_fields)
-                hvals = {f: v for f, v in zip(required_fields, result)}
+                hvals = dict(zip(required_fields, result))
                 self.logger.debug('Consumed key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s) '
                                   '(%s retries) in %s seconds.',
