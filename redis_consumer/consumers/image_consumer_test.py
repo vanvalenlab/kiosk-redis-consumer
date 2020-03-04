@@ -128,8 +128,6 @@ class DummyRedis(object):
         return {
             'model_name': 'model',
             'model_version': '0',
-            'field': '61',
-            'cuts': '0',
             'postprocess_function': '',
             'preprocess_function': '',
             'file_name': rhash.split(':')[1],
@@ -225,6 +223,7 @@ class TestImageFileConsumer(object):
         settings.PROCESSING_FUNCTIONS = _funcs
 
     def test_detect_label(self):
+        # pylint: disable=W0613
         redis_client = DummyRedis([])
         model_shape = (1, 216, 216, 1)
         consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
@@ -255,6 +254,7 @@ class TestImageFileConsumer(object):
         assert label in set(list(range(4)))
 
     def test_detect_scale(self):
+        # pylint: disable=W0613
         redis_client = DummyRedis([])
 
         model_shape = (1, 216, 216, 1)
@@ -371,28 +371,6 @@ class TestImageFileConsumer(object):
                     result = consumer._consume('{}:test.tiff:{}'.format(
                         prefix, consumer.final_status))
                     assert result == consumer.final_status
-
-        # test with cuts > 0
-        redis_client.hgetall = lambda x: {
-            'model_name': 'model',
-            'model_version': '0',
-            'field': '61',
-            'cuts': '2',
-            'postprocess_function': '',
-            'preprocess_function': '',
-            'file_name': 'test_image.tiff',
-            'input_file_name': 'test_image.tiff',
-            'output_file_name': 'test_image.tiff'
-        }
-        redis_client.hmset = lambda x, y: True
-        consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
-        consumer._handle_error = _handle_error
-        consumer.detect_scale = detect_scale
-        consumer.detect_label = detect_label
-        consumer.get_model_metadata = make_model_metadata_of_size((1, 300, 300, 1))
-        consumer.grpc_image = grpc_image
-        result = consumer._consume(dummyhash)
-        assert result == consumer.final_status
 
         # test with model_name and model_version
         redis_client.hgetall = lambda x: {

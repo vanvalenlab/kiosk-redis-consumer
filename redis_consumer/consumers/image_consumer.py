@@ -155,7 +155,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
                           detected, timeit.default_timer() - start)
         return detected
 
-    def preprocess(self, image, keys, streaming=False):
+    def preprocess(self, image, keys):
         """Wrapper for _process_image but can only call with type="pre".
 
         Args:
@@ -169,11 +169,10 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         pre = None
         for key in keys:
             x = pre if pre else image
-            # pre = self._process(x, key, 'pre', streaming)
             pre = self.process(x, key, 'pre')
         return pre
 
-    def postprocess(self, image, keys, streaming=False):
+    def postprocess(self, image, keys):
         """Wrapper for _process_image but can only call with type="post".
 
         Args:
@@ -187,7 +186,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         post = None
         for key in keys:
             x = post if post else image
-            # post = self._process(x, key, 'post', streaming)
             post = self.process(x, key, 'post')
         return post
 
@@ -263,7 +261,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
                 model_name, model_version = utils._pick_model(label)
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
-            image = self.preprocess(image, pre_funcs, True)
+            image = self.preprocess(image, pre_funcs)
 
             # Send data to the model
             self.update_key(redis_hash, {'status': 'predicting'})
@@ -278,7 +276,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             else:
                 post_funcs = hvals.get('postprocess_function', '').split(',')
 
-            image = self.postprocess(image, post_funcs, True)
+            image = self.postprocess(image, post_funcs)
 
             # Save the post-processed results to a file
             _ = timeit.default_timer()
