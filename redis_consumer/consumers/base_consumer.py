@@ -533,47 +533,17 @@ class TensorFlowServingConsumer(Consumer):
             # image size is perfect, just send it to the model
             image = self.grpc_image(image, model_name, model_version,
                                     in_tensor_dtype=model_dtype)
+
+        if isinstance(image, list):
+            output_shapes = [i.shape for i in image]
+        else:
+            output_shapes = [image.shape]  # cast as list
+
+        self.logger.debug('Got response from model %s:%s of shape %s in %s '
+                          'seconds.', model_name, model_version, output_shapes,
+                          timeit.default_timer() - start)
+
         return image
-
-    def detect_scale(self, image):
-        start = timeit.default_timer()
-
-        if not settings.SCALE_DETECT_ENABLED:
-            self.logger.debug('Scale detection disabled. Scale set to 1.')
-            return 1
-
-        model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
-
-        scales = self.predict(image, model_name, model_version,
-                              sample=settings.SCALE_DETECT_SAMPLE)
-
-        detected_scale = np.mean(scales)
-
-        self.logger.debug('Scale %s detected in %s seconds',
-                          detected_scale, timeit.default_timer() - start)
-        return detected_scale
-
-    def detect_label(self, image):
-        start = timeit.default_timer()
-
-        if not settings.LABEL_DETECT_ENABLED:
-            self.logger.debug('Label detection disabled. Label set to None.')
-            return None
-
-        model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
-
-        labels = self.predict(image, model_name, model_version,
-                              sample=settings.SCALE_DETECT_SAMPLE)
-
-        labels = np.array(labels)
-        vote = labels.sum(axis=0)
-        maj = vote.max()
-
-        detected = np.where(vote == maj)[-1][0]
-
-        self.logger.debug('Label %s detected in %s seconds.',
-                          detected, timeit.default_timer() - start)
-        return detected
 
 
 class ZipFileConsumer(Consumer):

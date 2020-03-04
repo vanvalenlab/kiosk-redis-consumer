@@ -111,6 +111,50 @@ class ImageFileConsumer(TensorFlowServingConsumer):
 
         return results
 
+    def detect_scale(self, image):
+        start = timeit.default_timer()
+
+        if not settings.SCALE_DETECT_ENABLED:
+            self.logger.debug('Scale detection disabled. Scale set to 1.')
+            return 1
+
+        model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
+
+        scales = self.predict(image, model_name, model_version,
+                              sample=settings.SCALE_DETECT_SAMPLE)
+
+        detected_scale = np.mean(scales)
+
+        error_rate = .01  # error rate is ~1% for current model.
+        if abs(detected_scale - 1) < error_rate:
+            detected_scale = 1
+
+        self.logger.debug('Scale %s detected in %s seconds',
+                          detected_scale, timeit.default_timer() - start)
+        return detected_scale
+
+    def detect_label(self, image):
+        start = timeit.default_timer()
+
+        if not settings.LABEL_DETECT_ENABLED:
+            self.logger.debug('Label detection disabled. Label set to None.')
+            return None
+
+        model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
+
+        labels = self.predict(image, model_name, model_version,
+                              sample=settings.SCALE_DETECT_SAMPLE)
+
+        labels = np.array(labels)
+        vote = labels.sum(axis=0)
+        maj = vote.max()
+
+        detected = np.where(vote == maj)[-1][0]
+
+        self.logger.debug('Label %s detected in %s seconds.',
+                          detected, timeit.default_timer() - start)
+        return detected
+
     def preprocess(self, image, keys, streaming=False):
         """Wrapper for _process_image but can only call with type="pre".
 
