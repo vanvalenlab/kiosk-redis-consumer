@@ -502,6 +502,12 @@ class TensorFlowServingConsumer(Consumer):
         model_shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
         model_ndim = len(model_shape)
 
+        if model_ndim != image.ndim + 1:
+            raise ValueError('Image of shape {} is incompatible with model '
+                             '{}:{} with input shape {}'.format(
+                                 image.shape, model_name, model_version,
+                                 tuple(model_shape)))
+
         size_x = model_shape[model_ndim - 3]
         size_y = model_shape[model_ndim - 2]
 
