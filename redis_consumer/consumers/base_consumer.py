@@ -472,6 +472,10 @@ class TensorFlowServingConsumer(Consumer):
             else:
                 pad_width.append((0, 0))
 
+        self.logger.info('Padding image from shape %s to shape %s.',
+                         image.shape, tuple([x + y1 + y2 for x, (y1, y2) in
+                                             zip(image.shape, pad_width)]))
+
         padded_img = np.pad(image, pad_width, 'reflect')
         image = self.grpc_image(padded_img, model_name, model_version,
                                 in_tensor_dtype=model_dtype)
@@ -500,6 +504,11 @@ class TensorFlowServingConsumer(Consumer):
 
         size_x = image.shape[image.ndim - 3] if size_x <= 0 else size_x
         size_y = image.shape[image.ndim - 2] if size_y <= 0 else size_y
+
+        self.logger.debug('Calling predict on model %s:%s with input shape %s'
+                          ' and dtype %s to segment an image of shape %s.',
+                          model_name, model_version, tuple(model_shape),
+                          model_dtype, image.shape)
 
         if (image.shape[image.ndim - 3] < size_x or
                 image.shape[image.ndim - 2] < size_y):
