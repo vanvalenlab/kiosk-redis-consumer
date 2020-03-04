@@ -480,15 +480,18 @@ class TensorFlowServingConsumer(Consumer):
         image = self.grpc_image(padded_img, model_name, model_version,
                                 in_tensor_dtype=model_dtype)
 
-        # pad batch_size and frames.
-        while len(pad_width) < padded_img.ndim:
-            pad_width.insert(0, (0, 0))
+        image = [image] if not isinstance(image, list) else image
+
+        # pad batch_size and frames for each output.
+        pad_widths = [pad_width] * len(image)
+        for i, im in enumerate(image):
+            while len(pad_widths[i]) < im.ndim:
+                pad_widths[i].insert(0, (0, 0))
 
         # unpad results
-        if isinstance(image, list):
-            image = [utils.unpad_image(i, pad_width) for i in image]
-        else:
-            image = utils.unpad_image(image, pad_width)
+        image = [utils.unpad_image(i, p) for i, p in zip(image, pad_widths)]
+        image = image[0] if len(image) == 1 else image
+
         return image
 
     def predict(self, image, model_name, model_version, sample=None):
