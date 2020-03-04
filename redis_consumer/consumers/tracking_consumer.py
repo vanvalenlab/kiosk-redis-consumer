@@ -156,16 +156,14 @@ class TrackingConsumer(TensorFlowServingConsumer):
         #     self.logger.debug('Image scale already calculated: %s', scale)
 
         # Pick model and postprocess based on either label or defaults
-        # if settings.LABEL_DETECT_ENABLED:
-        #     label = self.detect_label(tiff_stack)  # Predict label type
-        #
-        #     # Get appropriate model and postprocess function for the label
-        #     model_name, model_version = utils._pick_model(label)
-        #     postprocess_function = utils._pick_postprocess(label)
-        # else:
-        #     label = 99  # Equivalent to none
-        #     model_name, model_version = settings.TRACKING_SEGMENT_MODEL.split(':')
-        #     postprocess_function = settings.TRACKING_POSTPROCESS_FUNCTION
+        if settings.LABEL_DETECT_ENABLED:
+            # model and postprocessing will be determined automatically
+            # by the ImageFileConsumer
+            model_name, model_version = '', ''
+            postprocess_function = ''
+        else:
+            model_name, model_version = settings.TRACKING_SEGMENT_MODEL.split(':')
+            postprocess_function = settings.TRACKING_POSTPROCESS_FUNCTION
 
         num_frames = len(tiff_stack)
         hash_to_frame = {}
@@ -192,9 +190,9 @@ class TrackingConsumer(TensorFlowServingConsumer):
                     'identity_upload': self.hostname,
                     'input_file_name': upload_file_name,
                     'original_name': segment_fname,
-                    # 'model_name': model_name,
-                    # 'model_version': model_version,
-                    # 'postprocess_function': postprocess_function,
+                    'model_name': model_name,
+                    'model_version': model_version,
+                    'postprocess_function': postprocess_function,
                     'status': 'new',
                     'created_at': current_timestamp,
                     'updated_at': current_timestamp,
