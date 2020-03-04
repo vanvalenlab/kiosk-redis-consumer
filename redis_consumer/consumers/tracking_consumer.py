@@ -145,15 +145,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
                                  tiff_stack.shape))
 
         # Calculate scale of a subset of raw
-        # scale = hvalues.get('scale', '')
-        # if not scale:
-        #     # Detect scale of image
-        #     scale = self.detect_scale(tiff_stack)
-        #     self.logger.debug('Image scale detected: %s', scale)
-        #     self.update_key(redis_hash, {'scale': scale})
-        # else:
-        #     scale = float(scale)
-        #     self.logger.debug('Image scale already calculated: %s', scale)
+        scale = hvalues.get('scale', '')
+        scale = scale if settings.SCALE_DETECT_ENABLED else 1
 
         # Pick model and postprocess based on either label or defaults
         if settings.LABEL_DETECT_ENABLED:
@@ -197,7 +190,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
                     'created_at': current_timestamp,
                     'updated_at': current_timestamp,
                     'url': upload_file_url,
-                    # 'scale': scale,
+                    'scale': scale,
                     # 'label': str(label)
                 }
 
