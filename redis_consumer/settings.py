@@ -152,33 +152,25 @@ DEATH = config('DEATH', default=0.95, cast=float)
 NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30, cast=int)
 
 # Scale detection settings
-SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:3')
+SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:1')
 SCALE_DETECT_SAMPLE = config('SCALE_DETECT_SAMPLE', default=3, cast=int)
 # Not supported for tracking. Always detects scale
 SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
 
 # Type detection settings
-LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:2', cast=str)
+LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', cast=str)
 LABEL_DETECT_SAMPLE = config('LABEL_DETECT_SAMPLE', default=3, cast=int)
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 
 # Set default models based on label type
-PHASE_MODEL = config('PHASE_MODEL', default='panoptic_phase:0', cast=str)
-CYTOPLASM_MODEL = config('CYTOPLASM_MODEL', default='panoptic_cytoplasm:0', cast=str)
-NUCLEAR_MODEL = config('NUCLEAR_MODEL', default='panoptic:3', cast=str)
-
 MODEL_CHOICES = {
-    0: NUCLEAR_MODEL,
-    1: PHASE_MODEL,
-    2: CYTOPLASM_MODEL
+    0: config('NUCLEAR_MODEL', default='NuclearSegmentation:0', cast=str),
+    1: config('PHASE_MODEL', default='PhaseCytoSegmentation:0', cast=str),
+    2: config('CYTOPLASM_MODEL', default='FluoCytoSegmentation:0', cast=str)
 }
 
-PHASE_POSTPROCESS = config('PHASE_POSTPROCESS', default='deep_watershed', cast=str)
-CYTOPLASM_POSTPROCESS = config('CYTOPLASM_POSTPROCESS', default='deep_watershed', cast=str)
-NUCLEAR_POSTPROCESS = config('NUCLEAR_POSTPROCESS', default='deep_watershed', cast=str)
-
 POSTPROCESS_CHOICES = {
-    0: NUCLEAR_POSTPROCESS,
-    1: PHASE_POSTPROCESS,
-    2: CYTOPLASM_POSTPROCESS
+    0: config('NUCLEAR_POSTPROCESS', default='deep_watershed', cast=str),
+    1: config('PHASE_POSTPROCESS', default='deep_watershed', cast=str),
+    2: config('CYTOPLASM_POSTPROCESS', default='deep_watershed', cast=str)
 }
