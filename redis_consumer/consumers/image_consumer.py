@@ -33,8 +33,6 @@ import timeit
 
 import numpy as np
 
-from deepcell_toolbox.utils import tile_image, untile_image
-
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import utils
 from redis_consumer import settings
