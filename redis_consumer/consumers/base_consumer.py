@@ -495,6 +495,7 @@ class TensorFlowServingConsumer(Consumer):
         return image
 
     def predict(self, image, model_name, model_version, sample=None):
+        start = timeit.default_timer()
         model_metadata = self.get_model_metadata(model_name, model_version)
 
         model_dtype = model_metadata['in_tensor_dtype']
