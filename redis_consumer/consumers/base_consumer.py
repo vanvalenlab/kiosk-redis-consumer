@@ -382,30 +382,40 @@ class TensorFlowServingConsumer(Consumer):
                            model_name,
                            model_version,
                            model_shape,
-                           model_dtype='DT_FLOAT'):
+                           model_dtype='DT_FLOAT',
+                           sample=None):
         """Use tile_image to tile image for the model and untile the results.
 
         Args:
-            img (numpy.array): image data as numpy.
+            image (numpy.array): image data as numpy.
             model_name (str): hosted model to send image data.
             model_version (str): model version to query.
             model_shape (tuple): shape of the model's expected input.
             model_dtype (str): dtype of the model's input array.
+            sample (int): Only predict every sample'th tile.
+                If sample is not None, no untiling will be performed,
+                as the untiling data will be incomplete.
 
         Returns:
             numpy.array: untiled results from the model.
         """
+        is_untile_required = sample is None
+        sample = 1 if sample is None else sample
         model_ndim = len(model_shape)
         input_shape = (model_shape[model_ndim - 3], model_shape[model_ndim - 2])
+
         tiles, tiles_info = tile_image(
             np.expand_dims(image, axis=0),
             model_input_shape=input_shape,
             stride_ratio=0.75)
 
+        self.logger.debug('Tiling image of shape %s into shape %s.',
+                          image.shape, tiles.shape)
+
         # max_batch_size is 1 by default.
         # dependent on the tf-serving configuration
         results = []
-        for t in range(tiles.shape[0]):
+        for t in range(0, tiles.shape[0], sample):
             output = self.grpc_image(tiles[t], model_name, model_version,
                                      in_tensor_dtype=model_dtype)
 
@@ -414,13 +424,16 @@ class TensorFlowServingConsumer(Consumer):
 
             if results == []:
                 results = output
-
             else:
                 for i, o in enumerate(output):
                     results[i] = np.vstack((results[i], o))
 
-        image = [untile_image(r, tiles_info, model_input_shape=input_shape)
-                 for r in results]
+        if not is_untile_required:
+            image = results
+        else:
+            image = [untile_image(r, tiles_info, model_input_shape=input_shape)
+                     for r in results]
+
         image = image[0] if len(image) == 1 else image
         return image
 
@@ -474,7 +487,7 @@ class TensorFlowServingConsumer(Consumer):
             image = utils.unpad_image(image, pad_width)
         return image
 
-    def predict(self, image, model_name, model_version):
+    def predict(self, image, model_name, model_version, sample=None):
         model_metadata = self.get_model_metadata(model_name, model_version)
 
         model_dtype = model_metadata['in_tensor_dtype']
@@ -491,14 +504,15 @@ class TensorFlowServingConsumer(Consumer):
         if (image.shape[image.ndim - 3] < size_x or
                 image.shape[image.ndim - 2] < size_y):
             # image is too small for the model, pad the image.
-            self._predict_small_image(image, model_name, model_version,
-                                      model_shape, model_dtype)
+            image = self._predict_small_image(image, model_name, model_version,
+                                              model_shape, model_dtype)
         elif (image.shape[image.ndim - 3] > size_x or
               image.shape[image.ndim - 2] > size_y):
             # image is too big for the model, multiple images are tiled.
             image = self._predict_big_image(image, model_name, model_version,
-                                            model_shape, model_dtype)
+                                            model_shape, model_dtype, sample)
         else:
+            # image size is perfect, just send it to the model
             image = self.grpc_image(image, model_name, model_version,
                                     in_tensor_dtype=model_dtype)
         return image
