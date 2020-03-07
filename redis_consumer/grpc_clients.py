@@ -62,6 +62,12 @@ class GrpcClient(object):
     def __init__(self, host):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.host = host
+        self.options = [
+            (cygrpc.ChannelArgKey.max_send_message_length, -1),
+            (cygrpc.ChannelArgKey.max_receive_message_length, -1),
+            ('grpc.default_compression_algorithm', cygrpc.CompressionAlgorithm.gzip),
+            ('grpc.grpc.default_compression_level', cygrpc.CompressionLevel.high)
+        ]
 
     def insecure_channel(self):
         """Create an insecure channel with max message length.
@@ -70,13 +76,7 @@ class GrpcClient(object):
             channel: grpc.insecure channel object
         """
         t = timeit.default_timer()
-        options = [
-            (cygrpc.ChannelArgKey.max_send_message_length, -1),
-            (cygrpc.ChannelArgKey.max_receive_message_length, -1),
-            ('grpc.default_compression_algorithm', cygrpc.CompressionAlgorithm.gzip),
-            ('grpc.grpc.default_compression_level', cygrpc.CompressionLevel.high)
-        ]
-        channel = grpc.insecure_channel(target=self.host, options=options)
+        channel = grpc.insecure_channel(target=self.host, options=self.options)
         self.logger.debug('Establishing insecure channel took: %s',
                           timeit.default_timer() - t)
         return channel
@@ -96,135 +96,123 @@ class PredictClient(GrpcClient):
         self.model_name = model_name
         self.model_version = model_version
 
+        self.stub_lookup = {
+            GetModelMetadataRequest: 'GetModelMetadata',
+            PredictRequest: 'Predict',
+        }
+
+    def _retry_grpc(self, request, request_timeout):
+        request_name = request.__class__.__name__
+        self.logger.info('Sending %s to %s model %s:%s.',
+                         request_name, self.host,
+                         self.model_name, self.model_version)
+
+        true_failures, count = 0, 0
+
+        retrying = True
+        while retrying:
+            with self.insecure_channel() as channel:
+                # pylint: disable=E1101
+                try:
+                    t = timeit.default_timer()
+
+                    stub = PredictionServiceStub(channel)
+
+                    api_endpoint_name = self.stub_lookup.get(request.__class__)
+                    api_call = getattr(stub, api_endpoint_name)
+                    response = api_call(request, timeout=request_timeout)
+
+                    self.logger.debug('%s finished in %s seconds.',
+                                      request_name, timeit.default_timer() - t)
+                    return response
+
+                except grpc.RpcError as err:
+                    if true_failures > settings.MAX_RETRY > 0:
+                        retrying = False
+                        self.logger.error('%s has failed %s times due to err '
+                                          '%s', request_name, count, err)
+                        raise err
+
+                    if err.code() in settings.GRPC_RETRY_STATUSES:
+                        count += 1
+                        is_true_failure = err.code() != grpc.StatusCode.UNAVAILABLE
+                        true_failures += int(is_true_failure)
+
+                        self.logger.warning('%sException `%s: %s` during '
+                                            '%s %s to model %s:%s. Waiting %s '
+                                            'seconds before retrying.',
+                                            type(err).__name__,
+                                            err.code().name, err.details(),
+                                            self.__class__.__name__,
+                                            request_name,
+                                            self.model_name, self.model_version,
+                                            settings.GRPC_BACKOFF)
+
+                        time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
+                        retrying = True  # Unneccessary but explicit
+                    else:
+                        retrying = False
+                        raise err
+                except Exception as err:
+                    retrying = False
+                    self.logger.error('Encountered %s during %s to model '
+                                      '%s:%s: %s', type(err).__name__,
+                                      request_name, self.model_name,
+                                      self.model_version, err)
+                    raise err
+
     def predict(self, request_data, request_timeout=10):
         self.logger.info('Sending PredictRequest to %s model %s:%s.',
                          self.host, self.model_name, self.model_version)
-
-        channel = self.insecure_channel()
-
-        t = timeit.default_timer()
-        stub = PredictionServiceStub(channel)
-        self.logger.debug('Created PredictionServiceStub in %s seconds.',
-                          timeit.default_timer() - t)
 
         t = timeit.default_timer()
         request = PredictRequest()
         self.logger.debug('Created PredictRequest object in %s seconds.',
                           timeit.default_timer() - t)
 
-        request.model_spec.name = self.model_name  # pylint: disable=E1101
+        # pylint: disable=E1101
+        request.model_spec.name = self.model_name
 
         if self.model_version > 0:
-            # pylint: disable=E1101
             request.model_spec.version.value = self.model_version
 
         t = timeit.default_timer()
         for d in request_data:
             tensor_proto = make_tensor_proto(d['data'], d['in_tensor_dtype'])
-            # pylint: disable=E1101
             request.inputs[d['in_tensor_name']].CopyFrom(tensor_proto)
 
         self.logger.debug('Made tensor protos in %s seconds.',
                           timeit.default_timer() - t)
 
-        try:
-            t = timeit.default_timer()
-            predict_response = stub.Predict(request, timeout=request_timeout)
-            self.logger.debug('gRPC PredictRequest finished in %s seconds.',
-                              timeit.default_timer() - t)
+        response = self._retry_grpc(request, request_timeout)
+        response_dict = grpc_response_to_dict(response)
 
-            t = timeit.default_timer()
-            predict_response_dict = grpc_response_to_dict(predict_response)
-            self.logger.debug('gRPC PredictResponseProtobufConversion took '
-                              '%s seconds.', timeit.default_timer() - t)
+        self.logger.info('Got PredictResponse with keys: %s ',
+                         list(response_dict))
 
-            keys = [k for k in predict_response_dict]
-            self.logger.info('Got PredictResponse with keys: %s ',
-                             keys)
-            channel.close()
-            return predict_response_dict
-
-        except RpcError as err:
-            self.logger.error('PredictRequest failed due to: %s', err)
-            channel.close()
-            raise err
-
-        channel.close()
-        return {}
+        return response_dict
 
     def get_model_metadata(self, request_timeout=10):
         self.logger.info('Sending GetModelMetadataRequest to %s model %s:%s.',
                          self.host, self.model_name, self.model_version)
 
-        true_failures, count = 0, 0
+        # pylint: disable=E1101
+        request = GetModelMetadataRequest()
+        request.metadata_field.append('signature_def')
+        request.model_spec.name = self.model_name
+        if self.model_version > 0:
+            request.model_spec.version.value = self.model_version
 
-        retrying = True
-        while retrying:
-            # pylint: disable=E1101
-            try:
-                t = timeit.default_timer()
-                channel = self.insecure_channel()
+        response = self._retry_grpc(request, request_timeout)
 
-                stub = PredictionServiceStub(channel)
+        t = timeit.default_timer()
 
-                request = GetModelMetadataRequest()
+        response_dict = json.loads(MessageToJson(response))
 
-                request.metadata_field.append('signature_def')
+        self.logger.debug('gRPC GetModelMetadataProtobufConversion took '
+                          '%s seconds.', timeit.default_timer() - t)
 
-                request.model_spec.name = self.model_name
-
-                if self.model_version > 0:
-                    request.model_spec.version.value = self.model_version
-
-                response = stub.GetModelMetadata(request, timeout=request_timeout)
-
-                self.logger.debug('gRPC GetModelMetadataRequest finished in %s '
-                                  'seconds.', timeit.default_timer() - t)
-
-                t = timeit.default_timer()
-
-                response_dict = json.loads(MessageToJson(response))
-
-                # signature_def = response.metadata['signature_def']
-                self.logger.debug('gRPC GetModelMetadataProtobufConversion took '
-                                  '%s seconds.', timeit.default_timer() - t)
-
-                channel.close()
-                return response_dict
-
-            except grpc.RpcError as err:
-                channel.close()
-                if true_failures > settings.MAX_RETRY > 0:
-                    retrying = False
-                    self.logger.error('GetModelMetadataRequest has failed %s '
-                                      'times due to err %s', count, err)
-                    raise err
-
-                if err.code() in settings.GRPC_RETRY_STATUSES:
-                    count += 1
-                    is_true_failure = err.code() != grpc.StatusCode.UNAVAILABLE
-                    true_failures += int(is_true_failure)
-
-                    self.logger.warning('%sException `%s: %s` during '
-                                        'PredictClient GetModelMetadataRequest to '
-                                        'model %s:%s. Waiting %s seconds before '
-                                        'retrying.', type(err).__name__,
-                                        err.code().name, err.details(),
-                                        self.model_name, self.model_version,
-                                        settings.GRPC_BACKOFF)
-
-                    time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
-                    retrying = True  # Unneccessary but explicit
-                else:
-                    retrying = False
-                    raise err
-            except Exception as err:
-                channel.close()
-                retrying = False
-                self.logger.error('Encountered %s during GetModelMetadataRequest'
-                                  ' to model %s:%s: %s', type(err).__name__,
-                                  self.model_name, self.model_version, err)
-                raise err
+        return response_dict
 
 
 class TrackingClient(GrpcClient):

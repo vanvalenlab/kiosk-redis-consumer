@@ -40,7 +40,6 @@ import urllib
 import uuid
 import zipfile
 
-import grpc
 import numpy as np
 import pytz
 
@@ -254,82 +253,42 @@ class TensorFlowServingConsumer(Consumer):
                    in_tensor_dtype='DT_FLOAT'):
 
         in_tensor_dtype = str(in_tensor_dtype).upper()
-        true_failures, count = 0, 0
+
         start = timeit.default_timer()
         self.logger.debug('Segmenting image of shape %s with model %s:%s',
                           img.shape, model_name, model_version)
-        retrying = True
-        while retrying:
-            try:
-                if in_tensor_dtype == 'DT_HALF':
-                    # TODO: seems like should cast to "half"
-                    # but the model rejects the type, wants "int" or "long"
-                    img = img.astype('int')
 
-                req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
-                             'in_tensor_dtype': in_tensor_dtype,
-                             'data': np.expand_dims(img, axis=0)}]
+        if in_tensor_dtype == 'DT_HALF':
+            # TODO: seems like should cast to "half"
+            # but the model rejects the type, wants "int" or "long"
+            img = img.astype('int')
 
-                client = self._get_predict_client(model_name, model_version)
+        req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
+                     'in_tensor_dtype': in_tensor_dtype,
+                     'data': np.expand_dims(img, axis=0)}]
 
-                prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
-                results = [prediction[k] for k in sorted(prediction.keys())
-                           if k.startswith('prediction')]
+        client = self._get_predict_client(model_name, model_version)
 
-                if len(results) == 1:
-                    results = results[0]
+        prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
+        results = [prediction[k] for k in sorted(prediction.keys())
+                   if k.startswith('prediction')]
 
-                retrying = False
+        if len(results) == 1:
+            results = results[0]
 
-                finished = timeit.default_timer() - start
-                if self._redis_hash is not None:
-                    self.update_key(self._redis_hash, {
-                        'prediction_time': finished,
-                        'predict_retries': count,
-                    })
-                self.logger.debug('Segmented key %s (model %s:%s, '
-                                  'preprocessing: %s, postprocessing: %s)'
-                                  ' (%s retries) in %s seconds.',
-                                  self._redis_hash, model_name, model_version,
-                                  self._redis_values.get('preprocess_function'),
-                                  self._redis_values.get('postprocess_function'),
-                                  count, finished)
-                return results
-            except grpc.RpcError as err:
-                # pylint: disable=E1101
-                if true_failures > settings.MAX_RETRY > 0:
-                    retrying = False
-                    raise RuntimeError('Prediction has failed {} times due to '
-                                       'error {}'.format(count, err))
-                if err.code() in settings.GRPC_RETRY_STATUSES:
-                    count += 1
-                    is_true_failure = err.code() != grpc.StatusCode.UNAVAILABLE
-                    true_failures += int(is_true_failure)
-                    # write update to Redis
-                    temp_status = 'retry-predicting - {} - {}'.format(
-                        count, err.code().name)
-                    if self._redis_hash is not None:
-                        self.update_key(self._redis_hash, {
-                            'status': temp_status,
-                            'predict_retries': count,
-                        })
-                    self.logger.warning('%sException `%s: %s` during '
-                                        'PredictClient request to model %s:%s.'
-                                        ' Waiting %s seconds before retrying.',
-                                        type(err).__name__, err.code().name,
-                                        err.details(), model_name,
-                                        model_version, settings.GRPC_BACKOFF)
-                    time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
-                    retrying = True  # Unneccessary but explicit
-                else:
-                    retrying = False
-                    raise err
-            except Exception as err:
-                retrying = False
-                self.logger.error('Encountered %s during tf-serving request to '
-                                  'model %s:%s: %s', type(err).__name__,
-                                  model_name, model_version, err)
-                raise err
+        finished = timeit.default_timer() - start
+        if self._redis_hash is not None:
+            self.update_key(self._redis_hash, {
+                'prediction_time': finished,
+            })
+        self.logger.debug('Segmented key %s (model %s:%s, '
+                          'preprocessing: %s, postprocessing: %s)'
+                          ' (%s retries) in %s seconds.',
+                          self._redis_hash, model_name, model_version,
+                          self._redis_values.get('preprocess_function'),
+                          self._redis_values.get('postprocess_function'),
+                          0, finished)
+        return results
 
     def get_model_metadata(self, model_name, model_version):
         """Check Redis for saved model metadata or get from TensorFlow Serving.
