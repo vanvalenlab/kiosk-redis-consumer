@@ -359,7 +359,10 @@ class TensorFlowServingConsumer(Consumer):
             numpy.array: untiled results from the model.
         """
         is_untile_required = sample is None
-        sample = 1 if sample is None else sample
+
+        if sample is None:
+            sample = settings.TF_MAX_BATCH_SIZE
+
         model_ndim = len(model_shape)
         input_shape = (model_shape[model_ndim - 3], model_shape[model_ndim - 2])
 
@@ -375,7 +378,8 @@ class TensorFlowServingConsumer(Consumer):
         # dependent on the tf-serving configuration
         results = []
         for t in range(0, tiles.shape[0], sample):
-            output = self.grpc_image(tiles[t], model_name, model_version,
+            batch = tiles[t:t + sample] if is_untile_required else tiles[t]
+            output = self.grpc_image(tiles[batch], model_name, model_version,
                                      in_tensor_dtype=model_dtype)
 
             if not isinstance(output, list):
