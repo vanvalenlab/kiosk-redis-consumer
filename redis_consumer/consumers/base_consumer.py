@@ -250,7 +250,7 @@ class TensorFlowServingConsumer(Consumer):
                           timeit.default_timer() - t)
         return client
 
-    def grpc_image(self, img, model_name, model_version,
+    def grpc_image(self, img, model_name, model_version, model_shape,
                    in_tensor_dtype='DT_FLOAT'):
 
         in_tensor_dtype = str(in_tensor_dtype).upper()
@@ -259,6 +259,9 @@ class TensorFlowServingConsumer(Consumer):
         self.logger.debug('Segmenting image of shape %s with model %s:%s',
                           img.shape, model_name, model_version)
 
+        if len(model_shape) == img.ndim + 1:
+            img = np.expand_dims(img, axis=0)
+
         if in_tensor_dtype == 'DT_HALF':
             # TODO: seems like should cast to "half"
             # but the model rejects the type, wants "int" or "long"
@@ -266,7 +269,7 @@ class TensorFlowServingConsumer(Consumer):
 
         req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
                      'in_tensor_dtype': in_tensor_dtype,
-                     'data': np.expand_dims(img, axis=0)}]
+                     'data': img}]
 
         client = self._get_predict_client(model_name, model_version)
 
@@ -380,8 +383,8 @@ class TensorFlowServingConsumer(Consumer):
         results = []
         for t in range(0, tiles.shape[0], sample):
             batch = tiles[t:t + sample] if is_untile_required else tiles[t]
-            output = self.grpc_image(tiles[batch], model_name, model_version,
-                                     in_tensor_dtype=model_dtype)
+            output = self.grpc_image(batch, model_name, model_version,
+                                     model_shape, in_tensor_dtype=model_dtype)
 
             if not isinstance(output, list):
                 output = [output]
@@ -442,7 +445,7 @@ class TensorFlowServingConsumer(Consumer):
 
         padded_img = np.pad(image, pad_width, 'reflect')
         image = self.grpc_image(padded_img, model_name, model_version,
-                                in_tensor_dtype=model_dtype)
+                                model_shape, in_tensor_dtype=model_dtype)
 
         image = [image] if not isinstance(image, list) else image
 
@@ -497,7 +500,7 @@ class TensorFlowServingConsumer(Consumer):
         else:
             # image size is perfect, just send it to the model
             image = self.grpc_image(image, model_name, model_version,
-                                    in_tensor_dtype=model_dtype)
+                                    model_shape, in_tensor_dtype=model_dtype)
 
         if isinstance(image, list):
             output_shapes = [i.shape for i in image]
