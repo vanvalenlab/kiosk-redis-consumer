@@ -346,7 +346,8 @@ class TensorFlowServingConsumer(Consumer):
                            model_version,
                            model_shape,
                            model_dtype='DT_FLOAT',
-                           untile=True):
+                           untile=True,
+                           stride_ratio=0.75):
         """Use tile_image to tile image for the model and untile the results.
 
         Args:
@@ -356,6 +357,7 @@ class TensorFlowServingConsumer(Consumer):
             model_shape (tuple): shape of the model's expected input.
             model_dtype (str): dtype of the model's input array.
             untile (bool): untiles results back to image shape if True.
+            stride_ratio (float): amount to overlap between tiles, (0, 1].
 
         Returns:
             numpy.array: untiled results from the model.
@@ -372,7 +374,7 @@ class TensorFlowServingConsumer(Consumer):
         tiles, tiles_info = tile_image(
             np.expand_dims(image, axis=0),
             model_input_shape=input_shape,
-            stride_ratio=0.75)
+            stride_ratio=stride_ratio)
 
         self.logger.debug('Tiling image of shape %s into shape %s.',
                           image.shape, tiles.shape)
