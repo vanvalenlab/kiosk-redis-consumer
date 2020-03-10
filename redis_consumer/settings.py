@@ -53,13 +53,16 @@ MAX_RETRY = config('MAX_RETRY', default=5, cast=int)
 REDIS_HOST = config('REDIS_HOST', default='redis-master')
 REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
 
-# tensorflow-serving client connection
+# TensorFlow Serving client connection
 TF_HOST = config('TF_HOST', default='tf-serving')
 TF_PORT = config('TF_PORT', default=8500, cast=int)
 TF_TENSOR_NAME = config('TF_TENSOR_NAME', default='image')
-TF_MAX_BATCH_SIZE = config('TF_MAX_BATCH_SIZE', default=1, cast=int)
+# maximum batch allowed by TensorFlow Serving
+TF_MAX_BATCH_SIZE = config('TF_MAX_BATCH_SIZE', default=128, cast=int)
+# minimum expected model size, dynamically change batches proportionately.
+TF_MIN_MODEL_SIZE = config('TF_MIN_MODEL_SIZE', default=128, cast=int)
 
-# gRPC API timeout in seconds (scales with `cuts`)
+# gRPC API timeout in seconds
 GRPC_TIMEOUT = config('GRPC_TIMEOUT', default=30, cast=int)
 GRPC_BACKOFF = config('GRPC_BACKOFF', default=3, cast=int)
 
@@ -100,8 +103,6 @@ GCLOUD_STORAGE_BUCKET = config('GKE_BUCKET', default='default-bucket')
 
 # Pod Meteadta
 HOSTNAME = config('HOSTNAME', default='host-unkonwn')
-
-CUTS = config('CUTS', default=0, cast=int)  # TODO: deprecated
 
 # Redis queue
 QUEUE = config('QUEUE', default='predict')
@@ -149,13 +150,11 @@ NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30, cast=int
 
 # Scale detection settings
 SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:1')
-SCALE_DETECT_SAMPLE = config('SCALE_DETECT_SAMPLE', default=3, cast=int)
 # Not supported for tracking. Always detects scale
 SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
 
 # Type detection settings
 LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', cast=str)
-LABEL_DETECT_SAMPLE = config('LABEL_DETECT_SAMPLE', default=3, cast=int)
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 
 # Set default models based on label type

@@ -346,7 +346,7 @@ class TensorFlowServingConsumer(Consumer):
                            model_version,
                            model_shape,
                            model_dtype='DT_FLOAT',
-                           sample=None):
+                           untile=True):
         """Use tile_image to tile image for the model and untile the results.
 
         Args:
@@ -355,20 +355,19 @@ class TensorFlowServingConsumer(Consumer):
             model_version (str): model version to query.
             model_shape (tuple): shape of the model's expected input.
             model_dtype (str): dtype of the model's input array.
-            sample (int): Only predict every sample'th tile.
-                If sample is not None, no untiling will be performed,
-                as the untiling data will be incomplete.
+            untile (bool): untiles results back to image shape if True.
 
         Returns:
             numpy.array: untiled results from the model.
         """
-        is_untile_required = sample is None
-
-        if sample is None:
-            sample = settings.TF_MAX_BATCH_SIZE
-
         model_ndim = len(model_shape)
         input_shape = (model_shape[model_ndim - 3], model_shape[model_ndim - 2])
+
+        ratio = (model_shape[model_ndim - 3] / settings.TF_MIN_MODEL_SIZE) * \
+                (model_shape[model_ndim - 2] / settings.TF_MIN_MODEL_SIZE) * \
+                (model_shape[model_ndim - 1])
+
+        batch_size = int(settings.TF_MAX_BATCH_SIZE // ratio)
 
         tiles, tiles_info = tile_image(
             np.expand_dims(image, axis=0),
@@ -381,8 +380,8 @@ class TensorFlowServingConsumer(Consumer):
         # max_batch_size is 1 by default.
         # dependent on the tf-serving configuration
         results = []
-        for t in range(0, tiles.shape[0], sample):
-            batch = tiles[t:t + sample] if is_untile_required else tiles[t]
+        for t in range(0, tiles.shape[0], batch_size):
+            batch = tiles[t:t + batch_size]
             output = self.grpc_image(batch, model_name, model_version,
                                      model_shape, in_tensor_dtype=model_dtype)
 
@@ -395,7 +394,7 @@ class TensorFlowServingConsumer(Consumer):
                 for i, o in enumerate(output):
                     results[i] = np.vstack((results[i], o))
 
-        if not is_untile_required:
+        if not untile:
             image = results
         else:
             image = [untile_image(r, tiles_info, model_input_shape=input_shape)
@@ -461,7 +460,7 @@ class TensorFlowServingConsumer(Consumer):
 
         return image
 
-    def predict(self, image, model_name, model_version, sample=None):
+    def predict(self, image, model_name, model_version, untile=True):
         start = timeit.default_timer()
         model_metadata = self.get_model_metadata(model_name, model_version)
 
@@ -496,11 +495,12 @@ class TensorFlowServingConsumer(Consumer):
               image.shape[image.ndim - 2] > size_y):
             # image is too big for the model, multiple images are tiled.
             image = self._predict_big_image(image, model_name, model_version,
-                                            model_shape, model_dtype, sample)
+                                            model_shape, model_dtype,
+                                            untile=untile)
         else:
             # image size is perfect, just send it to the model
             image = self.grpc_image(image, model_name, model_version,
-                                    model_shape, in_tensor_dtype=model_dtype)
+                                    model_shape, model_dtype)
 
         if isinstance(image, list):
             output_shapes = [i.shape for i in image]

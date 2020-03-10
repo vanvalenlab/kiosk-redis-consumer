@@ -119,7 +119,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
 
         scales = self.predict(image, model_name, model_version,
-                              sample=settings.SCALE_DETECT_SAMPLE)
+                              untile=False)
 
         detected_scale = np.mean(scales)
 
@@ -141,7 +141,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
 
         labels = self.predict(image, model_name, model_version,
-                              sample=settings.SCALE_DETECT_SAMPLE)
+                              untile=False)
 
         labels = np.array(labels)
         vote = labels.sum(axis=0)
