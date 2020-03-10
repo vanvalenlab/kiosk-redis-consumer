@@ -390,7 +390,7 @@ class TensorFlowServingConsumer(Consumer):
             if not isinstance(output, list):
                 output = [output]
 
-            if results == []:
+            if len(results) == 0:
                 results = output
             else:
                 for i, o in enumerate(output):
