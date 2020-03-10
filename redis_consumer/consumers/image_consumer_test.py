@@ -306,15 +306,12 @@ class TestImageFileConsumer(object):
             raise err
 
         def grpc_image(data, *args, **kwargs):
-            data = np.expand_dims(data, axis=0)
             return data
 
         def grpc_image_multi(data, *args, **kwargs):
-            data = np.expand_dims(data, axis=0)
             return np.array(tuple(list(data.shape) + [2]))
 
         def grpc_image_list(data, *args, **kwargs):  # pylint: disable=W0613
-            data = np.expand_dims(data, axis=0)
             return [data, data]
 
         def detect_scale(_):
@@ -336,9 +333,9 @@ class TestImageFileConsumer(object):
         dummyhash = '{}:test.tiff:{}'.format(prefix, status)
 
         model_shapes = [
-            (1, 600, 600, 1),  # image too small, pad
-            (1, 300, 300, 1),  # image is exactly the right size
-            (1, 150, 150, 1),  # image too big, tile
+            (-1, 600, 600, 1),  # image too small, pad
+            (-1, 300, 300, 1),  # image is exactly the right size
+            (-1, 150, 150, 1),  # image too big, tile
         ]
 
         consumer._handle_error = _handle_error

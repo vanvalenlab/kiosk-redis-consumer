@@ -347,6 +347,7 @@ class TestTensorFlowServingConsumer(object):
     def test_grpc_image(self):
         redis_client = DummyRedis([])
         consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+        model_shape = (-1, 128, 128, 1)
 
         def _get_predict_client(model_name, model_version):
             return Bunch(predict=lambda x, y: {
@@ -356,8 +357,9 @@ class TestTensorFlowServingConsumer(object):
         consumer._get_predict_client = _get_predict_client
 
         img = np.zeros((1, 32, 32, 3))
-        out = consumer.grpc_image(img, 'f16model', 1)
-        assert img.shape == out.shape[1:]
+        out = consumer.grpc_image(img, 'model', 1, model_shape, 'DT_HALF')
+
+        assert img.shape == out.shape
         assert img.sum() == out.sum()
 
     def test_get_model_metadata(self):
@@ -426,14 +428,12 @@ class TestTensorFlowServingConsumer(object):
         consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
 
         def grpc_image(data, *args, **kwargs):
-            data = np.expand_dims(data, axis=0)
             return data
 
         def grpc_image_list(data, *args, **kwargs):  # pylint: disable=W0613
-            data = np.expand_dims(data, axis=0)
             return [data, data]
 
-        model_shape = (1, 128, 128, 1)
+        model_shape = (-1, 128, 128, 1)
 
         image_shapes = [
             (256, 256, 1),
@@ -445,15 +445,17 @@ class TestTensorFlowServingConsumer(object):
 
         for image_shape in image_shapes:
             for grpc_func in (grpc_image, grpc_image_list):
+                for untile in (False, True):
 
-                x = np.random.random(image_shape)
-                consumer.grpc_image = grpc_func
-                consumer.get_model_metadata = lambda x, y: {
-                    'in_tensor_dtype': 'DT_FLOAT',
-                    'in_tensor_shape': ','.join(str(s) for s in model_shape),
-                }
+                    x = np.random.random(image_shape)
+                    consumer.grpc_image = grpc_func
+                    consumer.get_model_metadata = lambda x, y: {
+                        'in_tensor_dtype': 'DT_HALF',
+                        'in_tensor_shape': ','.join(str(s) for s in model_shape),
+                    }
 
-                consumer.predict(x, model_name='modelname', model_version=0)
+                    consumer.predict(x, model_name='modelname', model_version=0,
+                                     untile=untile)
 
 
 class TestZipFileConsumer(object):
