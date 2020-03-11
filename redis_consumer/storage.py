@@ -152,6 +152,7 @@ class GoogleStorage(Storage):
             google_exceptions.TooManyRequests,
             google_exceptions.InternalServerError,
             google_exceptions.ServiceUnavailable,
+            google_exceptions.GatewayTimeout,
             urllib3.exceptions.MaxRetryError,
             urllib3.exceptions.NewConnectionError,
             requests.exceptions.ConnectionError,
