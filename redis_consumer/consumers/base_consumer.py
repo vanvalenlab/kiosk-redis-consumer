@@ -143,13 +143,14 @@ class Consumer(object):
 
     def purge_processing_queue(self):
         """Move all items from the processing queue to the work queue"""
-        while True:
+        queue_has_items = True
+        while queue_has_items:
             key = self.redis.rpoplpush(self.processing_queue, self.queue)
-            if key is None:
-                break
-            self.logger.debug('Found stranded key `%s` in queue `%s`. '
-                              'Moving it back to `%s`.',
-                              key, self.processing_queue, self.queue)
+            queue_has_items = key is not None
+
+        self.logger.debug('Found stranded key `%s` in queue `%s`. '
+                          'Moving it back to `%s`.',
+                          key, self.processing_queue, self.queue)
 
     def update_key(self, redis_hash, data=None):
         """Update the hash with `data` and updated_by & updated_at stamps.
