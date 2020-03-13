@@ -219,7 +219,7 @@ class Consumer(object):
                 self._put_back_hash(redis_hash)
                 time.sleep(.5)
 
-        else:
+        else:  # queue is empty
             self.logger.debug('Queue `%s` is empty. Waiting for %s seconds.',
                               self.queue, settings.EMPTY_QUEUE_TIMEOUT)
             time.sleep(settings.EMPTY_QUEUE_TIMEOUT)
