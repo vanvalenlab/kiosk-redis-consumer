@@ -112,7 +112,7 @@ We welcome contributions to the [kiosk-console](https://github.com/vanvalenlab/k
 
 ## License
 
-This software is license under a modified Apache 2 license. See [LICENSE](/LICENSE) for full  details.
+This software is license under a modified Apache-2.0 license. See [LICENSE](/LICENSE) for full  details.
 
 ## Copyright
 
