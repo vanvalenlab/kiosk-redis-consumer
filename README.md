@@ -3,10 +3,11 @@
 [![Build Status](https://travis-ci.org/vanvalenlab/kiosk-redis-consumer.svg?branch=master)](https://travis-ci.org/vanvalenlab/kiosk-redis-consumer)
 [![Coverage Status](https://coveralls.io/repos/github/vanvalenlab/kiosk-redis-consumer/badge.svg?branch=master)](https://coveralls.io/github/vanvalenlab/kiosk-redis-consumer?branch=master)
 [![Documentation Status](https://readthedocs.org/projects/kiosk-redis-consumer/badge/?version=master)](https://deepcell-kiosk.readthedocs.io/projects/kiosk-redis-consumer/)
+[![Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](/LICENSE)
 
 Reads events in redis, downloads image data from the cloud, and send the data to TensorFlow Serving via gRPC. The prediction is post-processed, zipped up, and uploaded to the cloud.
 
-This repository is part of the [DeepCell Kiosk](https://github.com/vanvalenlab/kiosk). More information about the Kiosk project is available through [Read the Docs](https://deepcell-kiosk.readthedocs.io/en/master) and our [FAQ](http://www.deepcell.org.faq) page.
+This repository is part of the [DeepCell Kiosk](https://github.com/vanvalenlab/kiosk-console). More information about the Kiosk project is available through [Read the Docs](https://deepcell-kiosk.readthedocs.io/en/master) and our [FAQ](http://www.deepcell.org/faq) page.
 
 ## Custom Consumers
 
@@ -107,11 +108,11 @@ The consumer is configured using environment variables. Please find a table of a
 
 ## Contribute
 
-We welcome contributions to the [kiosk](https://github.com/vanvalenlab/kiosk) and its associated projects. If you are interested, please refer to our [Developer Documentation](https://deepcell-kiosk.readthedocs.io/en/master/DEVELOPER.html), [Code of Conduct](https://github.com/vanvalenlab/kiosk/blob/master/CODE_OF_CONDUCT.md) and [Contributing Guidelines](https://github.com/vanvalenlab/kiosk/blob/master/CONTRIBUTING.md).
+We welcome contributions to the [kiosk-console](https://github.com/vanvalenlab/kiosk-console) and its associated projects. If you are interested, please refer to our [Developer Documentation](https://deepcell-kiosk.readthedocs.io/en/master/DEVELOPER.html), [Code of Conduct](https://github.com/vanvalenlab/kiosk-console/blob/master/CODE_OF_CONDUCT.md) and [Contributing Guidelines](https://github.com/vanvalenlab/kiosk-console/blob/master/CONTRIBUTING.md).
 
 ## License
 
-This software is license under a modified [APACHE2](https://opensource.org/licenses/Apache-2.0). See [LICENSE](/LICENSE) for full  details.
+This software is license under a modified Apache-2.0 license. See [LICENSE](/LICENSE) for full  details.
 
 ## Copyright
 
