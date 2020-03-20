@@ -217,7 +217,6 @@ class Consumer(object):
                 # this key is not done yet.
                 # remove it from processing and push it back to the work queue.
                 self._put_back_hash(redis_hash)
-                time.sleep(.5)
 
         else:  # queue is empty
             self.logger.debug('Queue `%s` is empty. Waiting for %s seconds.',
