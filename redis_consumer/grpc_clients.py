@@ -30,6 +30,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import logging
 import time
 import timeit
@@ -41,11 +42,12 @@ from grpc._cython import cygrpc
 
 import numpy as np
 
+from google.protobuf.json_format import MessageToJson
+
+from redis_consumer import settings
 from redis_consumer.pbs.prediction_service_pb2_grpc import PredictionServiceStub
-from redis_consumer.pbs.processing_service_pb2_grpc import ProcessingServiceStub
 from redis_consumer.pbs.predict_pb2 import PredictRequest
-from redis_consumer.pbs.process_pb2 import ProcessRequest
-from redis_consumer.pbs.process_pb2 import ChunkedProcessRequest
+from redis_consumer.pbs.get_model_metadata_pb2 import GetModelMetadataRequest
 from redis_consumer.utils import grpc_response_to_dict
 from redis_consumer.utils import make_tensor_proto
 
@@ -60,6 +62,12 @@ class GrpcClient(object):
     def __init__(self, host):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.host = host
+        self.options = [
+            (cygrpc.ChannelArgKey.max_send_message_length, -1),
+            (cygrpc.ChannelArgKey.max_receive_message_length, -1),
+            ('grpc.default_compression_algorithm', cygrpc.CompressionAlgorithm.gzip),
+            ('grpc.grpc.default_compression_level', cygrpc.CompressionLevel.high)
+        ]
 
     def insecure_channel(self):
         """Create an insecure channel with max message length.
@@ -68,13 +76,7 @@ class GrpcClient(object):
             channel: grpc.insecure channel object
         """
         t = timeit.default_timer()
-        options = [
-            (cygrpc.ChannelArgKey.max_send_message_length, -1),
-            (cygrpc.ChannelArgKey.max_receive_message_length, -1),
-            ('grpc.default_compression_algorithm', cygrpc.CompressionAlgorithm.gzip),
-            ('grpc.grpc.default_compression_level', cygrpc.CompressionLevel.high)
-        ]
-        channel = grpc.insecure_channel(target=self.host, options=options)
+        channel = grpc.insecure_channel(target=self.host, options=self.options)
         self.logger.debug('Establishing insecure channel took: %s',
                           timeit.default_timer() - t)
         return channel
@@ -94,202 +96,123 @@ class PredictClient(GrpcClient):
         self.model_name = model_name
         self.model_version = model_version
 
+        self.stub_lookup = {
+            GetModelMetadataRequest: 'GetModelMetadata',
+            PredictRequest: 'Predict',
+        }
+
+    def _retry_grpc(self, request, request_timeout):
+        request_name = request.__class__.__name__
+        self.logger.info('Sending %s to %s model %s:%s.',
+                         request_name, self.host,
+                         self.model_name, self.model_version)
+
+        true_failures, count = 0, 0
+
+        retrying = True
+        while retrying:
+            with self.insecure_channel() as channel:
+                # pylint: disable=E1101
+                try:
+                    t = timeit.default_timer()
+
+                    stub = PredictionServiceStub(channel)
+
+                    api_endpoint_name = self.stub_lookup.get(request.__class__)
+                    api_call = getattr(stub, api_endpoint_name)
+                    response = api_call(request, timeout=request_timeout)
+
+                    self.logger.debug('%s finished in %s seconds.',
+                                      request_name, timeit.default_timer() - t)
+                    return response
+
+                except grpc.RpcError as err:
+                    if true_failures > settings.MAX_RETRY > 0:
+                        retrying = False
+                        self.logger.error('%s has failed %s times due to err '
+                                          '%s', request_name, count, err)
+                        raise err
+
+                    if err.code() in settings.GRPC_RETRY_STATUSES:
+                        count += 1
+                        is_true_failure = err.code() != grpc.StatusCode.UNAVAILABLE
+                        true_failures += int(is_true_failure)
+
+                        self.logger.warning('%sException `%s: %s` during '
+                                            '%s %s to model %s:%s. Waiting %s '
+                                            'seconds before retrying.',
+                                            type(err).__name__,
+                                            err.code().name, err.details(),
+                                            self.__class__.__name__,
+                                            request_name,
+                                            self.model_name, self.model_version,
+                                            settings.GRPC_BACKOFF)
+
+                        time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
+                        retrying = True  # Unneccessary but explicit
+                    else:
+                        retrying = False
+                        raise err
+                except Exception as err:
+                    retrying = False
+                    self.logger.error('Encountered %s during %s to model '
+                                      '%s:%s: %s', type(err).__name__,
+                                      request_name, self.model_name,
+                                      self.model_version, err)
+                    raise err
+
     def predict(self, request_data, request_timeout=10):
-        self.logger.info('Sending request to %s model %s:%s.',
+        self.logger.info('Sending PredictRequest to %s model %s:%s.',
                          self.host, self.model_name, self.model_version)
-
-        channel = self.insecure_channel()
-
-        t = timeit.default_timer()
-        stub = PredictionServiceStub(channel)
-        self.logger.debug('Created TensorFlowServingServiceStub in %s seconds.',
-                          timeit.default_timer() - t)
 
         t = timeit.default_timer()
         request = PredictRequest()
-        self.logger.debug('Created TensorFlowServingRequest object in %s '
-                          'seconds.', timeit.default_timer() - t)
+        self.logger.debug('Created PredictRequest object in %s seconds.',
+                          timeit.default_timer() - t)
 
-        request.model_spec.name = self.model_name  # pylint: disable=E1101
+        # pylint: disable=E1101
+        request.model_spec.name = self.model_name
 
         if self.model_version > 0:
-            # pylint: disable=E1101
             request.model_spec.version.value = self.model_version
 
         t = timeit.default_timer()
         for d in request_data:
             tensor_proto = make_tensor_proto(d['data'], d['in_tensor_dtype'])
-            # pylint: disable=E1101
             request.inputs[d['in_tensor_name']].CopyFrom(tensor_proto)
 
         self.logger.debug('Made tensor protos in %s seconds.',
                           timeit.default_timer() - t)
 
-        try:
-            t = timeit.default_timer()
-            predict_response = stub.Predict(request, timeout=request_timeout)
-            self.logger.debug('gRPC TensorFlowServingRequest finished in %s '
-                              'seconds.', timeit.default_timer() - t)
+        response = self._retry_grpc(request, request_timeout)
+        response_dict = grpc_response_to_dict(response)
 
-            t = timeit.default_timer()
-            predict_response_dict = grpc_response_to_dict(predict_response)
-            self.logger.debug('gRPC TensorFlowServingProtobufConversion took '
-                              '%s seconds.', timeit.default_timer() - t)
+        self.logger.info('Got PredictResponse with keys: %s ',
+                         list(response_dict))
 
-            keys = [k for k in predict_response_dict]
-            self.logger.info('Got TensorFlowServingResponse with keys: %s ',
-                             keys)
-            channel.close()
-            return predict_response_dict
+        return response_dict
 
-        except RpcError as err:
-            self.logger.error('Prediction failed due to: %s', err)
-            channel.close()
-            raise err
-
-        channel.close()
-        return {}
-
-
-class ProcessClient(GrpcClient):
-    """gRPC Client for data-processing API.
-
-    Arguments:
-        host: string, the hostname and port of the server (`localhost:8080`)
-        process_type: string, pre or post processing
-        function_name: string, name of processing function
-    """
-
-    def __init__(self, host, process_type, function_name):
-        super(ProcessClient, self).__init__(host)
-        self.process_type = process_type
-        self.function_name = function_name
-
-    def process(self, request_data, request_timeout=10):
-        self.logger.info('Sending request to %s %s-process data with the '
-                         'data-processing API at %s.', self.function_name,
-                         self.process_type, self.host)
-
-        # Create gRPC client and request
-        channel = self.insecure_channel()
-
-        t = timeit.default_timer()
-        stub = ProcessingServiceStub(channel)
-        self.logger.debug('Created DataProcessingProcessingServiceStub in %s '
-                          'seconds.', timeit.default_timer() - t)
-
-        t = timeit.default_timer()
-        request = ProcessRequest()
-        self.logger.debug('Created DataProcessingRequest object in %s seconds.',
-                          timeit.default_timer() - t)
+    def get_model_metadata(self, request_timeout=10):
+        self.logger.info('Sending GetModelMetadataRequest to %s model %s:%s.',
+                         self.host, self.model_name, self.model_version)
 
         # pylint: disable=E1101
-        request.function_spec.name = self.function_name
-        request.function_spec.type = self.process_type
-        # pylint: enable=E1101
+        request = GetModelMetadataRequest()
+        request.metadata_field.append('signature_def')
+        request.model_spec.name = self.model_name
+        if self.model_version > 0:
+            request.model_spec.version.value = self.model_version
+
+        response = self._retry_grpc(request, request_timeout)
 
         t = timeit.default_timer()
-        for d in request_data:
-            tensor_proto = make_tensor_proto(d['data'], d['in_tensor_dtype'])
-            # pylint: disable=E1101
-            request.inputs[d['in_tensor_name']].CopyFrom(tensor_proto)
 
-        self.logger.debug('Made tensor protos in %s seconds.',
-                          timeit.default_timer() - t)
+        response_dict = json.loads(MessageToJson(response))
 
-        try:
-            t = timeit.default_timer()
-            response = stub.Process(request, timeout=request_timeout)
-            self.logger.debug('gRPC DataProcessingRequest finished in %s '
-                              'seconds.', timeit.default_timer() - t)
+        self.logger.debug('gRPC GetModelMetadataProtobufConversion took '
+                          '%s seconds.', timeit.default_timer() - t)
 
-            t = timeit.default_timer()
-            response_dict = grpc_response_to_dict(response)
-            self.logger.debug('gRPC DataProcessingProtobufConversion took %s '
-                              'seconds.', timeit.default_timer() - t)
-
-            keys = [k for k in response_dict]
-            self.logger.debug('Got processing_response with keys: %s', keys)
-            channel.close()
-            return response_dict
-
-        except RpcError as err:
-            self.logger.error('Processing failed due to: %s', err)
-            channel.close()
-            raise err
-
-        channel.close()
-        return {}
-
-    def stream_process(self, request_data, request_timeout=10):
-        self.logger.info('Sending request to %s %s-process data with the '
-                         'data-processing API at %s.', self.function_name,
-                         self.process_type, self.host)
-
-        # Create gRPC client and request
-        channel = self.insecure_channel()
-
-        t = timeit.default_timer()
-        stub = ProcessingServiceStub(channel)
-        self.logger.debug('Created stub in %s seconds.',
-                          timeit.default_timer() - t)
-        chunk_size = 64 * 1024  # 64 kB is recommended payload size
-
-        def request_iterator(image):
-            dtype = str(image.dtype)
-            shape = list(image.shape)
-            bytearr = image.tobytes()
-
-            self.logger.info('Streaming %s bytes in %s requests',
-                             len(bytearr), chunk_size % len(bytearr))
-
-            for i in range(0, len(bytearr), chunk_size):
-                request = ChunkedProcessRequest()
-                # pylint: disable=E1101
-                request.function_spec.name = self.function_name
-                request.function_spec.type = self.process_type
-                request.shape[:] = shape
-                request.dtype = dtype
-                request.inputs['data'] = bytearr[i: i + chunk_size]
-                # pylint: enable=E1101
-                yield request
-
-        try:
-            t = timeit.default_timer()
-            req_iter = request_iterator(request_data[0]['data'])
-            res_iter = stub.StreamProcess(req_iter, timeout=request_timeout)
-
-            shape = None
-            dtype = None
-            processed_bytes = []
-            for response in res_iter:
-                shape = tuple(response.shape)
-                dtype = str(response.dtype)
-                processed_bytes.append(response.outputs['data'])
-
-            npbytes = b''.join(processed_bytes)
-            # Got response stream of %s bytes in %s seconds.
-            self.logger.info('gRPC DataProcessingStreamRequest of %s bytes '
-                             'finished in %s seconds.', len(npbytes),
-                             timeit.default_timer() - t)
-
-            t = timeit.default_timer()
-            processed_image = np.frombuffer(npbytes, dtype=dtype)
-            results = processed_image.reshape(shape)
-            self.logger.info('gRPC DataProcessingStreamConversion from %s bytes'
-                             ' to a numpy array of shape %s in %s seconds.',
-                             len(npbytes), results.shape,
-                             timeit.default_timer() - t)
-            channel.close()
-            return {'results': results}
-
-        except RpcError as err:
-            self.logger.error('Processing failed due to: %s', err)
-            channel.close()
-            raise err
-
-        channel.close()
-        return {}
+        return response_dict
 
 
 class TrackingClient(GrpcClient):

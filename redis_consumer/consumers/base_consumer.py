@@ -40,9 +40,10 @@ import urllib
 import uuid
 import zipfile
 
-import grpc
 import numpy as np
 import pytz
+
+from deepcell_toolbox.utils import tile_image, untile_image
 
 from redis_consumer.grpc_clients import PredictClient
 from redis_consumer import utils
@@ -142,13 +143,14 @@ class Consumer(object):
 
     def purge_processing_queue(self):
         """Move all items from the processing queue to the work queue"""
-        while True:
+        queue_has_items = True
+        while queue_has_items:
             key = self.redis.rpoplpush(self.processing_queue, self.queue)
-            if key is None:
-                break
-            self.logger.debug('Found stranded key `%s` in queue `%s`. '
-                              'Moving it back to `%s`.',
-                              key, self.processing_queue, self.queue)
+            queue_has_items = key is not None
+
+        self.logger.debug('Found stranded key `%s` in queue `%s`. '
+                          'Moving it back to `%s`.',
+                          key, self.processing_queue, self.queue)
 
     def update_key(self, redis_hash, data=None):
         """Update the hash with `data` and updated_by & updated_at stamps.
@@ -197,7 +199,7 @@ class Consumer(object):
                     'postprocess_function',
                 ]
                 result = self.redis.hmget(redis_hash, *required_fields)
-                hvals = {f: v for f, v in zip(required_fields, result)}
+                hvals = dict(zip(required_fields, result))
                 self.logger.debug('Consumed key %s (model %s:%s, '
                                   'preprocessing: %s, postprocessing: %s) '
                                   '(%s retries) in %s seconds.',
@@ -216,7 +218,7 @@ class Consumer(object):
                 # remove it from processing and push it back to the work queue.
                 self._put_back_hash(redis_hash)
 
-        else:
+        else:  # queue is empty
             self.logger.debug('Queue `%s` is empty. Waiting for %s seconds.',
                               self.queue, settings.EMPTY_QUEUE_TIMEOUT)
             time.sleep(settings.EMPTY_QUEUE_TIMEOUT)
@@ -248,200 +250,270 @@ class TensorFlowServingConsumer(Consumer):
                           timeit.default_timer() - t)
         return client
 
-    def grpc_image(self, img, model_name, model_version):
-        true_failures, count = 0, 0
+    def grpc_image(self, img, model_name, model_version, model_shape,
+                   in_tensor_dtype='DT_FLOAT'):
+
+        in_tensor_dtype = str(in_tensor_dtype).upper()
+
         start = timeit.default_timer()
         self.logger.debug('Segmenting image of shape %s with model %s:%s',
                           img.shape, model_name, model_version)
-        retrying = True
-        while retrying:
-            try:
-                floatx = settings.TF_TENSOR_DTYPE
-                if 'f16' in model_name:
-                    floatx = 'DT_HALF'
-                    # TODO: seems like should cast to "half"
-                    # but the model rejects the type, wants "int" or "long"
-                    img = img.astype('int')
 
-                req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
-                             'in_tensor_dtype': floatx,
-                             'data': np.expand_dims(img, axis=0)}]
+        if len(model_shape) == img.ndim + 1:
+            img = np.expand_dims(img, axis=0)
 
-                client = self._get_predict_client(model_name, model_version)
+        if in_tensor_dtype == 'DT_HALF':
+            # TODO: seems like should cast to "half"
+            # but the model rejects the type, wants "int" or "long"
+            img = img.astype('int')
 
-                prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
-                results = [prediction[k] for k in sorted(prediction.keys())
-                           if k.startswith('prediction')]
+        req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
+                     'in_tensor_dtype': in_tensor_dtype,
+                     'data': img}]
 
-                if len(results) == 1:
-                    results = results[0]
+        client = self._get_predict_client(model_name, model_version)
 
-                retrying = False
+        prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
+        results = [prediction[k] for k in sorted(prediction.keys())
+                   if k.startswith('prediction')]
 
-                finished = timeit.default_timer() - start
-                if self._redis_hash is not None:
-                    self.update_key(self._redis_hash, {
-                        'prediction_time': finished,
-                        'predict_retries': count,
-                    })
-                self.logger.debug('Segmented key %s (model %s:%s, '
-                                  'preprocessing: %s, postprocessing: %s)'
-                                  ' (%s retries) in %s seconds.',
-                                  self._redis_hash, model_name, model_version,
-                                  self._redis_values.get('preprocess_function'),
-                                  self._redis_values.get('postprocess_function'),
-                                  count, finished)
-                return results
-            except grpc.RpcError as err:
-                # pylint: disable=E1101
-                if true_failures > settings.MAX_RETRY > 0:
-                    retrying = False
-                    raise RuntimeError('Prediction has failed {} times due to '
-                                       'error {}'.format(count, err))
-                if err.code() in settings.GRPC_RETRY_STATUSES:
-                    count += 1
-                    is_true_failure = err.code() != grpc.StatusCode.UNAVAILABLE
-                    true_failures += int(is_true_failure)
-                    # write update to Redis
-                    temp_status = 'retry-predicting - {} - {}'.format(
-                        count, err.code().name)
-                    if self._redis_hash is not None:
-                        self.update_key(self._redis_hash, {
-                            'status': temp_status,
-                            'predict_retries': count,
-                        })
-                    self.logger.warning('%sException `%s: %s` during '
-                                        'PredictClient request to model %s:%s.'
-                                        ' Waiting %s seconds before retrying.',
-                                        type(err).__name__, err.code().name,
-                                        err.details(), model_name,
-                                        model_version, settings.GRPC_BACKOFF)
-                    time.sleep(settings.GRPC_BACKOFF)  # sleep before retry
-                    retrying = True  # Unneccessary but explicit
-                else:
-                    retrying = False
-                    raise err
-            except Exception as err:
-                retrying = False
-                self.logger.error('Encountered %s during tf-serving request to '
-                                  'model %s:%s: %s', type(err).__name__,
-                                  model_name, model_version, err)
-                raise err
+        if len(results) == 1:
+            results = results[0]
 
-    def process_big_image(self,
-                          cuts,
-                          img,
-                          field,
-                          model_name,
-                          model_version):
-        """Slice big image into smaller images for prediction,
-        then stitches all the smaller images back together.
+        finished = timeit.default_timer() - start
+        if self._redis_hash is not None:
+            self.update_key(self._redis_hash, {
+                'prediction_time': finished,
+            })
+        self.logger.debug('Segmented key %s (model %s:%s, '
+                          'preprocessing: %s, postprocessing: %s)'
+                          ' (%s retries) in %s seconds.',
+                          self._redis_hash, model_name, model_version,
+                          self._redis_values.get('preprocess_function'),
+                          self._redis_values.get('postprocess_function'),
+                          0, finished)
+        return results
+
+    def get_model_metadata(self, model_name, model_version):
+        """Check Redis for saved model metadata or get from TensorFlow Serving.
+
+        The Consumer prefers to get the model metadata from Redis,
+        but if the metadata does not exist or is too stale,
+        a TensorFlow Serving request will be made.
 
         Args:
-        cuts: number of cuts in x and y to slice smaller images
-        img: image data as numpy array
-        field: receptive field size of model, changes padding sizes
-        model_name: hosted model to send image data
-        model_version: model version to query
+            model_name (str): The model name to get metadata.
+            model_version (int): The model version to get metadata.
+        """
+        model = '{}:{}'.format(model_name, model_version)
+        self.logger.debug('Getting model metadata for model %s.', model)
+
+        fields = ['in_tensor_dtype', 'in_tensor_shape']
+        response = self.redis.hmget(model, *fields)
+
+        if all(response):
+            self.logger.debug('Got cached metadata for model %s.', model)
+            return dict(zip(fields, response))
+
+        # No response! The key was expired. Get from TFS and update it.
+        start = timeit.default_timer()
+        client = self._get_predict_client(model_name, model_version)
+        model_metadata = client.get_model_metadata()
+
+        try:
+            inputs = model_metadata['metadata']['signature_def']['signatureDef']
+            inputs = inputs['serving_default']['inputs'][settings.TF_TENSOR_NAME]
+
+            dtype = inputs['dtype']
+            shape = ','.join([d['size'] for d in inputs['tensorShape']['dim']])
+
+            parsed_metadata = dict(zip(fields, [dtype, shape]))
+
+            finished = timeit.default_timer() - start
+            self.logger.debug('Got model metadata for %s in %s seconds.',
+                              model, finished)
+
+            self.redis.hmset(model, parsed_metadata)
+            self.redis.expire(model, settings.METADATA_EXPIRE_TIME)
+            return parsed_metadata
+        except (KeyError, IndexError) as err:
+            self.logger.error('Malformed metadata: %s', model_metadata)
+            raise err
+
+    def _predict_big_image(self,
+                           image,
+                           model_name,
+                           model_version,
+                           model_shape,
+                           model_dtype='DT_FLOAT',
+                           untile=True,
+                           stride_ratio=0.75):
+        """Use tile_image to tile image for the model and untile the results.
+
+        Args:
+            image (numpy.array): image data as numpy.
+            model_name (str): hosted model to send image data.
+            model_version (str): model version to query.
+            model_shape (tuple): shape of the model's expected input.
+            model_dtype (str): dtype of the model's input array.
+            untile (bool): untiles results back to image shape if True.
+            stride_ratio (float): amount to overlap between tiles, (0, 1].
 
         Returns:
-        tf_results: single numpy array of predictions on big input image
+            numpy.array: untiled results from the model.
         """
-        start = timeit.default_timer()
-        cuts = int(cuts)
-        field = int(field)
-        winx, winy = (field - 1) // 2, (field - 1) // 2
+        model_ndim = len(model_shape)
+        input_shape = (model_shape[model_ndim - 3], model_shape[model_ndim - 2])
 
-        def iter_cuts(img, cuts, field):
-            padded_img = utils.pad_image(img, field)
-            crop_x = img.shape[img.ndim - 3] // cuts
-            crop_y = img.shape[img.ndim - 2] // cuts
-            for i in range(cuts):
-                for j in range(cuts):
-                    a, b = i * crop_x, (i + 1) * crop_x
-                    c, d = j * crop_y, (j + 1) * crop_y
-                    data = padded_img[..., a:b + 2 * winx, c:d + 2 * winy, :]
-                    coord = (a, b, c, d)
-                    yield data, coord
+        ratio = (model_shape[model_ndim - 3] / settings.TF_MIN_MODEL_SIZE) * \
+                (model_shape[model_ndim - 2] / settings.TF_MIN_MODEL_SIZE) * \
+                (model_shape[model_ndim - 1])
 
-        slcs, coords = zip(*iter_cuts(img, cuts, field))
-        reqs = (self.grpc_image(s, model_name, model_version) for s in slcs)
+        batch_size = int(settings.TF_MAX_BATCH_SIZE // ratio)
 
-        tf_results = None
-        for resp, (a, b, c, d) in zip(reqs, coords):
-            # resp = await asyncio.ensure_future(req)
-            if tf_results is None:
-                tf_results = np.zeros(list(img.shape)[:-1] + [resp.shape[-1]])
-                self.logger.debug('Initialized output tensor of shape %s',
-                                  tf_results.shape)
+        tiles, tiles_info = tile_image(
+            np.expand_dims(image, axis=0),
+            model_input_shape=input_shape,
+            stride_ratio=stride_ratio)
 
-            tf_results[..., a:b, c:d, :] = resp[..., winx:-winx, winy:-winy, :]
+        self.logger.debug('Tiling image of shape %s into shape %s.',
+                          image.shape, tiles.shape)
 
-        self.logger.debug('Segmented image into shape %s in %s s',
-                          tf_results.shape, timeit.default_timer() - start)
-        return tf_results
+        # max_batch_size is 1 by default.
+        # dependent on the tf-serving configuration
+        results = []
+        for t in range(0, tiles.shape[0], batch_size):
+            batch = tiles[t:t + batch_size]
+            output = self.grpc_image(batch, model_name, model_version,
+                                     model_shape, in_tensor_dtype=model_dtype)
 
-    def detect_scale(self, image):
-        start = timeit.default_timer()
+            if not isinstance(output, list):
+                output = [output]
 
-        if not settings.SCALE_DETECT_ENABLED:
-            self.logger.debug('Scale detection disabled. Scale set to 1.')
-            return 1
+            if len(results) == 0:
+                results = output
+            else:
+                for i, o in enumerate(output):
+                    results[i] = np.vstack((results[i], o))
 
-        # Rescale image for compatibility with scale model
-        # TODO Generalize to prevent from breaking on new input data types
-        if image.shape[-1] == 1:
-            image = np.expand_dims(image, axis=0)
+        if not untile:
+            image = results
         else:
-            image = np.expand_dims(image, axis=-1)
+            image = [untile_image(r, tiles_info, model_input_shape=input_shape)
+                     for r in results]
 
-        # Reshape data to match size of data that model was trained on
-        # TODO Generalize to support rectangular and other shapes
-        size = settings.SCALE_RESHAPE_SIZE
-        if (image.shape[1] >= size) and (image.shape[2] >= size):
-            image, _ = utils.reshape_matrix(image, image, reshape_size=size)
+        image = image[0] if len(image) == 1 else image
+        return image
 
-        model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
+    def _predict_small_image(self,
+                             image,
+                             model_name,
+                             model_version,
+                             model_shape,
+                             model_dtype='DT_FLOAT'):
+        """Pad an image that is too small for the model, and unpad the results.
 
-        # Loop over each image in the batch dimension for scale prediction
-        # TODO Calculate scale_detect_sample based on batch size
-        # Could be based on fraction or sampling a minimum set number of frames
-        scales = []
-        for i in range(0, image.shape[0], settings.SCALE_DETECT_SAMPLE):
-            scales.append(self.grpc_image(image[i], model_name, model_version))
+        Args:
+            img (numpy.array): The too-small image to be predicted with
+                model_name and model_version.
+            model_name (str): hosted model to send image data.
+            model_version (str): model version to query.
+            model_shape (tuple): shape of the model's expected input.
+            model_dtype (str): dtype of the model's input array.
 
-        self.logger.debug('Scale detection complete in %s seconds',
-                          timeit.default_timer() - start)
-        return np.mean(scales)
+        Returns:
+            numpy.array: unpadded results from the model.
+        """
+        pad_width = []
+        model_ndim = len(model_shape)
+        for i in range(image.ndim):
+            if i in {image.ndim - 3, image.ndim - 2}:
+                if i == image.ndim - 3:
+                    diff = model_shape[model_ndim - 3] - image.shape[i]
+                else:
+                    diff = model_shape[model_ndim - 2] - image.shape[i]
 
-    def detect_label(self, image):
+                if diff % 2:
+                    pad_width.append((diff // 2, diff // 2 + 1))
+                else:
+                    pad_width.append((diff // 2, diff // 2))
+            else:
+                pad_width.append((0, 0))
+
+        self.logger.info('Padding image from shape %s to shape %s.',
+                         image.shape, tuple([x + y1 + y2 for x, (y1, y2) in
+                                             zip(image.shape, pad_width)]))
+
+        padded_img = np.pad(image, pad_width, 'reflect')
+        image = self.grpc_image(padded_img, model_name, model_version,
+                                model_shape, in_tensor_dtype=model_dtype)
+
+        image = [image] if not isinstance(image, list) else image
+
+        # pad batch_size and frames for each output.
+        pad_widths = [pad_width] * len(image)
+        for i, im in enumerate(image):
+            while len(pad_widths[i]) < im.ndim:
+                pad_widths[i].insert(0, (0, 0))
+
+        # unpad results
+        image = [utils.unpad_image(i, p) for i, p in zip(image, pad_widths)]
+        image = image[0] if len(image) == 1 else image
+
+        return image
+
+    def predict(self, image, model_name, model_version, untile=True):
         start = timeit.default_timer()
-        # Rescale for model compatibility
-        # TODO Generalize to prevent from breaking on new input data types
-        if image.shape[-1] == 1:
-            image = np.expand_dims(image, axis=0)
+        model_metadata = self.get_model_metadata(model_name, model_version)
+
+        model_dtype = model_metadata['in_tensor_dtype']
+
+        model_shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
+        model_ndim = len(model_shape)
+
+        if model_ndim != image.ndim + 1:
+            raise ValueError('Image of shape {} is incompatible with model '
+                             '{}:{} with input shape {}'.format(
+                                 image.shape, model_name, model_version,
+                                 tuple(model_shape)))
+
+        size_x = model_shape[model_ndim - 3]
+        size_y = model_shape[model_ndim - 2]
+
+        size_x = image.shape[image.ndim - 3] if size_x <= 0 else size_x
+        size_y = image.shape[image.ndim - 2] if size_y <= 0 else size_y
+
+        self.logger.debug('Calling predict on model %s:%s with input shape %s'
+                          ' and dtype %s to segment an image of shape %s.',
+                          model_name, model_version, tuple(model_shape),
+                          model_dtype, image.shape)
+
+        if (image.shape[image.ndim - 3] < size_x or
+                image.shape[image.ndim - 2] < size_y):
+            # image is too small for the model, pad the image.
+            image = self._predict_small_image(image, model_name, model_version,
+                                              model_shape, model_dtype)
+        elif (image.shape[image.ndim - 3] > size_x or
+              image.shape[image.ndim - 2] > size_y):
+            # image is too big for the model, multiple images are tiled.
+            image = self._predict_big_image(image, model_name, model_version,
+                                            model_shape, model_dtype,
+                                            untile=untile)
         else:
-            image = np.expand_dims(image, axis=-1)
+            # image size is perfect, just send it to the model
+            image = self.grpc_image(image, model_name, model_version,
+                                    model_shape, model_dtype)
 
-        # TODO Generalize to support rectangular and other shapes
-        size = settings.LABEL_RESHAPE_SIZE
-        if (image.shape[1] >= size) and (image.shape[2] >= size):
-            image, _ = utils.reshape_matrix(image, image, reshape_size=size)
+        if isinstance(image, list):
+            output_shapes = [i.shape for i in image]
+        else:
+            output_shapes = [image.shape]  # cast as list
 
-        model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
-
-        # Loop over each image in batch
-        labels = []
-        for i in range(0, image.shape[0], settings.LABEL_DETECT_SAMPLE):
-            labels.append(self.grpc_image(image[i], model_name, model_version))
-
-        labels = np.array(labels)
-        vote = labels.sum(axis=0)
-        maj = vote.max()
-
-        self.logger.debug('Label detection complete %s seconds.',
+        self.logger.debug('Got response from model %s:%s of shape %s in %s '
+                          'seconds.', model_name, model_version, output_shapes,
                           timeit.default_timer() - start)
-        return np.where(vote == maj)[-1][0]
+
+        return image
 
 
 class ZipFileConsumer(Consumer):

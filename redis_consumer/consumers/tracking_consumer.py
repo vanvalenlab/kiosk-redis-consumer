@@ -95,15 +95,16 @@ class TrackingConsumer(TensorFlowServingConsumer):
                 raw[frame, :, :, 0] = processing.normalize(raw[frame, :, :, 0])
 
         features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
-        tracker = tracking.CellTracker(raw, segmented,
-                                       tracking_model,
-                                       max_distance=settings.MAX_DISTANCE,
-                                       track_length=settings.TRACK_LENGTH,
-                                       division=settings.DIVISION,
-                                       birth=settings.BIRTH,
-                                       death=settings.DEATH,
-                                       neighborhood_scale_size=settings.NEIGHBORHOOD_SCALE_SIZE,
-                                       features=features)
+        tracker = tracking.CellTracker(
+            raw, segmented,
+            tracking_model,
+            max_distance=settings.MAX_DISTANCE,
+            track_length=settings.TRACK_LENGTH,
+            division=settings.DIVISION,
+            birth=settings.BIRTH,
+            death=settings.DEATH,
+            neighborhood_scale_size=settings.NEIGHBORHOOD_SCALE_SIZE,
+            features=features)
 
         self.logger.debug('Created tracker!')
         return tracker
@@ -139,31 +140,22 @@ class TrackingConsumer(TensorFlowServingConsumer):
         # remove the last dimensions added by `get_image`
         tiff_stack = np.squeeze(raw, -1)  # TODO: required? check the ndim?
         if len(tiff_stack.shape) != 3:
-            raise ValueError("This tiff file has shape {}, which is not 3 "
-                             "dimensions. Tracking can only be done on images "
-                             "with 3 dimensions, (time, width, height)".format(
+            raise ValueError('This tiff file has shape {}, which is not 3 '
+                             'dimensions. Tracking can only be done on images '
+                             'with 3 dimensions, (time, width, height)'.format(
                                  tiff_stack.shape))
 
         # Calculate scale of a subset of raw
         scale = hvalues.get('scale', '')
-        if not scale:
-            # Detect scale of image
-            scale = self.detect_scale(tiff_stack)
-            self.logger.debug('Image scale detected: %s', scale)
-            self.update_key(redis_hash, {'scale': scale})
-        else:
-            scale = float(scale)
-            self.logger.debug('Image scale already calculated: %s', scale)
+        scale = scale if settings.SCALE_DETECT_ENABLED else 1
 
         # Pick model and postprocess based on either label or defaults
         if settings.LABEL_DETECT_ENABLED:
-            label = self.detect_label(tiff_stack)  # Predict label type
-
-            # Get appropriate model and postprocess function for the label
-            model_name, model_version = utils._pick_model(label)
-            postprocess_function = utils._pick_postprocess(label)
+            # model and postprocessing will be determined automatically
+            # by the ImageFileConsumer
+            model_name, model_version = '', ''
+            postprocess_function = ''
         else:
-            label = 99  # Equivalent to none
             model_name, model_version = settings.TRACKING_SEGMENT_MODEL.split(':')
             postprocess_function = settings.TRACKING_POSTPROCESS_FUNCTION
 
@@ -195,16 +187,15 @@ class TrackingConsumer(TensorFlowServingConsumer):
                     'model_name': model_name,
                     'model_version': model_version,
                     'postprocess_function': postprocess_function,
-                    'cuts': settings.CUTS,
                     'status': 'new',
                     'created_at': current_timestamp,
                     'updated_at': current_timestamp,
                     'url': upload_file_url,
                     'scale': scale,
-                    'label': str(label)
+                    # 'label': str(label)
                 }
 
-                self.logger.debug("Setting %s", frame_hvalues)
+                self.logger.debug('Setting %s', frame_hvalues)
 
                 # make a hash for this frame
                 segment_hash = '{prefix}:{file}:{hash}'.format(
@@ -243,7 +234,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
                             '\nSegmentation Error: {}'.format(
                                 hash_to_frame[segment_hash], reason))
 
-                    elif status == self.final_status:
+                    if status == self.final_status:
                         # if it's done, save the frame, as they'll be packed up
                         # later
                         frame_zip = self.storage.download(
@@ -255,9 +246,9 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
                         if len(frame_files) != 1:
                             raise RuntimeError(
-                                "After unzipping predicted frame, got "
-                                "back multiple files {}. Expected a "
-                                "single file.".format(frame_files))
+                                'After unzipping predicted frame, got '
+                                'back multiple files {}. Expected a '
+                                'single file.'.format(frame_files))
 
                         frame_idx = hash_to_frame[segment_hash]
                         frames[frame_idx] = utils.get_image(frame_files[0])
@@ -269,7 +260,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
         frames = [frames[i] for i in range(num_frames)]
 
         # Cast y to int to avoid issues during fourier transform/drift correction
-        return {"X": np.expand_dims(tiff_stack, axis=-1), "y": np.array(frames, dtype='uint16')}
+        return {'X': np.expand_dims(tiff_stack, axis=-1),
+                'y': np.array(frames, dtype='uint16')}
 
     def _consume(self, redis_hash):
         hvalues = self.redis.hgetall(redis_hash)

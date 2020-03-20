@@ -33,8 +33,6 @@ import timeit
 
 import numpy as np
 
-from deepcell_toolbox.utils import tile_image, untile_image
-
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import utils
 from redis_consumer import settings
@@ -111,7 +109,51 @@ class ImageFileConsumer(TensorFlowServingConsumer):
 
         return results
 
-    def preprocess(self, image, keys, streaming=False):
+    def detect_scale(self, image):
+        start = timeit.default_timer()
+
+        if not settings.SCALE_DETECT_ENABLED:
+            self.logger.debug('Scale detection disabled. Scale set to 1.')
+            return 1
+
+        model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
+
+        scales = self.predict(image, model_name, model_version,
+                              untile=False)
+
+        detected_scale = np.mean(scales)
+
+        error_rate = .01  # error rate is ~1% for current model.
+        if abs(detected_scale - 1) < error_rate:
+            detected_scale = 1
+
+        self.logger.debug('Scale %s detected in %s seconds',
+                          detected_scale, timeit.default_timer() - start)
+        return detected_scale
+
+    def detect_label(self, image):
+        start = timeit.default_timer()
+
+        if not settings.LABEL_DETECT_ENABLED:
+            self.logger.debug('Label detection disabled. Label set to None.')
+            return None
+
+        model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
+
+        labels = self.predict(image, model_name, model_version,
+                              untile=False)
+
+        labels = np.array(labels)
+        vote = labels.sum(axis=0)
+        maj = vote.max()
+
+        detected = np.where(vote == maj)[-1][0]
+
+        self.logger.debug('Label %s detected in %s seconds.',
+                          detected, timeit.default_timer() - start)
+        return detected
+
+    def preprocess(self, image, keys):
         """Wrapper for _process_image but can only call with type="pre".
 
         Args:
@@ -125,11 +167,10 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         pre = None
         for key in keys:
             x = pre if pre else image
-            # pre = self._process(x, key, 'pre', streaming)
             pre = self.process(x, key, 'pre')
         return pre
 
-    def postprocess(self, image, keys, streaming=False):
+    def postprocess(self, image, keys):
         """Wrapper for _process_image but can only call with type="post".
 
         Args:
@@ -143,7 +184,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         post = None
         for key in keys:
             x = post if post else image
-            # post = self._process(x, key, 'post', streaming)
             post = self.process(x, key, 'post')
         return post
 
@@ -167,9 +207,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             'identity_started': self.hostname,
         })
 
-        cuts = hvals.get('cuts', '0')  # TODO: deprecated
-        field = hvals.get('field_size', '61')  # TODO: deprecated
-
         # Overridden with LABEL_DETECT_ENABLED
         model_name = hvals.get('model_name')
         model_version = hvals.get('model_version')
@@ -178,8 +215,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             _ = timeit.default_timer()
             fname = self.storage.download(hvals.get('input_file_name'), tempdir)
             image = utils.get_image(fname)
-
-            streaming = str(cuts).isdigit() and int(cuts) > 0
 
             # Pre-process data before sending to the model
             self.update_key(redis_hash, {
@@ -224,64 +259,12 @@ class ImageFileConsumer(TensorFlowServingConsumer):
                 model_name, model_version = utils._pick_model(label)
 
             pre_funcs = hvals.get('preprocess_function', '').split(',')
-            image = self.preprocess(image, pre_funcs, True)
+            image = self.preprocess(image, pre_funcs)
 
             # Send data to the model
             self.update_key(redis_hash, {'status': 'predicting'})
 
-            model_shape = settings.MODEL_SIZES.get(
-                '{}:{}'.format(model_name, model_version), max(image.shape))
-
-            if (image.shape[image.ndim - 3] < model_shape or
-                    image.shape[image.ndim - 2] < model_shape):
-                # tiling not necessary, but image must be padded.
-                pad_width = []
-                for i in range(image.ndim):
-                    if i in {image.ndim - 3, image.ndim - 2}:
-                        diff = model_shape - image.shape[i]
-                        if diff % 2:
-                            pad_width.append((diff // 2, diff // 2 + 1))
-                        else:
-                            pad_width.append((diff // 2, diff // 2))
-                    else:
-                        pad_width.append((0, 0))
-                padded_img = np.pad(image, pad_width, 'reflect')
-                image = self.grpc_image(padded_img, model_name, model_version)
-
-                for i, j in enumerate(image):
-
-                    self.logger.critical('output %s shape is %s', i, j.shape)
-
-                # unpad results
-                pad_width.insert(0, (0, 0))  # batch size
-                if isinstance(image, list):
-                    image = [utils.unpad_image(i, pad_width) for i in image]
-                else:
-                    image = utils.unpad_image(image, pad_width)
-
-            elif (image.shape[image.ndim - 3] > model_shape or
-                  image.shape[image.ndim - 2] > model_shape):
-                # need to tile!
-                tiles, tiles_info = tile_image(
-                    np.expand_dims(image, axis=0),
-                    model_input_shape=(model_shape, model_shape),
-                    stride_ratio=0.75)
-
-                # max_batch_size is 1 by default.
-                # dependent on the tf-serving configuration
-                results = []
-                for t in range(tiles.shape[0]):
-                    output = self.grpc_image(tiles[t], model_name, model_version)
-                    if not results:
-                        results = output
-                    else:
-                        for i, o in enumerate(output):
-                            results[i] = np.vstack((results[i], o))
-
-                image = [untile_image(r, tiles_info) for r in results]
-
-            else:
-                image = self.grpc_image(image, model_name, model_version)
+            image = self.predict(image, model_name, model_version)
 
             # Post-process model results
             self.update_key(redis_hash, {'status': 'post-processing'})
@@ -291,7 +274,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             else:
                 post_funcs = hvals.get('postprocess_function', '').split(',')
 
-            image = self.postprocess(image, post_funcs, True)
+            image = self.postprocess(image, post_funcs)
 
             # Save the post-processed results to a file
             _ = timeit.default_timer()

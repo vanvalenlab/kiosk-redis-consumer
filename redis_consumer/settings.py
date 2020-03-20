@@ -53,17 +53,16 @@ MAX_RETRY = config('MAX_RETRY', default=5, cast=int)
 REDIS_HOST = config('REDIS_HOST', default='redis-master')
 REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
 
-# tensorflow-serving client connection
+# TensorFlow Serving client connection
 TF_HOST = config('TF_HOST', default='tf-serving')
 TF_PORT = config('TF_PORT', default=8500, cast=int)
 TF_TENSOR_NAME = config('TF_TENSOR_NAME', default='image')
-TF_TENSOR_DTYPE = config('TF_TENSOR_DTYPE', default='DT_FLOAT')
+# maximum batch allowed by TensorFlow Serving
+TF_MAX_BATCH_SIZE = config('TF_MAX_BATCH_SIZE', default=128, cast=int)
+# minimum expected model size, dynamically change batches proportionately.
+TF_MIN_MODEL_SIZE = config('TF_MIN_MODEL_SIZE', default=128, cast=int)
 
-# data-processing client connection
-DP_HOST = config('DP_HOST', default='data-processing')
-DP_PORT = config('DP_PORT', default=8080, cast=int)
-
-# gRPC API timeout in seconds (scales with `cuts`)
+# gRPC API timeout in seconds
 GRPC_TIMEOUT = config('GRPC_TIMEOUT', default=30, cast=int)
 GRPC_BACKOFF = config('GRPC_BACKOFF', default=3, cast=int)
 
@@ -112,6 +111,9 @@ SEGMENTATION_QUEUE = config('SEGMENTATION_QUEUE', default='predict')
 # Configure expiration time for child keys
 EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
 
+# Configure expiration for cached model metadata
+METADATA_EXPIRE_TIME = config('METADATA_EXPIRE_TIME', default=30, cast=int)
+
 # Pre- and Post-processing settings
 PROCESSING_FUNCTIONS = {
     'pre': {
@@ -132,14 +134,13 @@ PROCESSING_FUNCTIONS = {
 TRACKING_SEGMENT_MODEL = config('TRACKING_SEGMENT_MODEL', default='panoptic:3', cast=str)
 TRACKING_POSTPROCESS_FUNCTION = config('TRACKING_POSTPROCESS_FUNCTION',
                                        default='retinanet', cast=str)
-CUTS = config('CUTS', default=0, cast=int)
 
 TRACKING_MODEL = config('TRACKING_MODEL', default='TrackingModel:0', cast=str)
 
 DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=False, cast=bool)
 NORMALIZE_TRACKING = config('NORMALIZE_TRACKING', default=True, cast=bool)
 
-# tracking.cell_tracker settings
+# tracking.cell_tracker settings TODO: can we extract from model_metadata?
 MAX_DISTANCE = config('MAX_DISTANCE', default=50, cast=int)
 TRACK_LENGTH = config('TRACK_LENGTH', default=5, cast=int)
 DIVISION = config('DIVISION', default=0.9, cast=float)
@@ -148,45 +149,22 @@ DEATH = config('DEATH', default=0.95, cast=float)
 NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30, cast=int)
 
 # Scale detection settings
-SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:3')
-SCALE_DETECT_SAMPLE = config('SCALE_DETECT_SAMPLE', default=3, cast=int)
-# Not supported for tracking. Always detects scale
+SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:1')
 SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
-SCALE_RESHAPE_SIZE = config('SCALE_RESHAPE_SIZE', default=216, cast=int)
 
 # Type detection settings
-LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:2', cast=str)
-LABEL_DETECT_SAMPLE = config('LABEL_DETECT_SAMPLE', default=3, cast=int)
+LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', cast=str)
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
-LABEL_RESHAPE_SIZE = config('LABEL_RESHAPE_SIZE', default=216, cast=int)
 
 # Set default models based on label type
-PHASE_MODEL = config('PHASE_MODEL', default='panoptic_phase:0', cast=str)
-CYTOPLASM_MODEL = config('CYTOPLASM_MODEL', default='panoptic_cytoplasm:0', cast=str)
-NUCLEAR_MODEL = config('NUCLEAR_MODEL', default='panoptic:3', cast=str)
-
 MODEL_CHOICES = {
-    0: NUCLEAR_MODEL,
-    1: PHASE_MODEL,
-    2: CYTOPLASM_MODEL
-}
-
-PHASE_POSTPROCESS = config('PHASE_POSTPROCESS', default='deep_watershed', cast=str)
-CYTOPLASM_POSTPROCESS = config('CYTOPLASM_POSTPROCESS', default='deep_watershed', cast=str)
-NUCLEAR_POSTPROCESS = config('NUCLEAR_POSTPROCESS', default='deep_watershed', cast=str)
-
-PHASE_RESHAPE_SIZE = config('PHASE_RESHAPE_SIZE', default=512, cast=int)
-CYTOPLASM_RESHAPE_SIZE = config('CYTOPLASM_RESHAPE_SIZE', default=512, cast=int)
-NUCLEAR_RESHAPE_SIZE = config('NUCLEAR_RESHAPE_SIZE', default=512, cast=int)
-
-MODEL_SIZES = {
-    NUCLEAR_MODEL: NUCLEAR_RESHAPE_SIZE,
-    PHASE_MODEL: PHASE_RESHAPE_SIZE,
-    CYTOPLASM_MODEL: CYTOPLASM_RESHAPE_SIZE,
+    0: config('NUCLEAR_MODEL', default='NuclearSegmentation:0', cast=str),
+    1: config('PHASE_MODEL', default='PhaseCytoSegmentation:0', cast=str),
+    2: config('CYTOPLASM_MODEL', default='FluoCytoSegmentation:0', cast=str)
 }
 
 POSTPROCESS_CHOICES = {
-    0: NUCLEAR_POSTPROCESS,
-    1: PHASE_POSTPROCESS,
-    2: CYTOPLASM_POSTPROCESS
+    0: config('NUCLEAR_POSTPROCESS', default='deep_watershed', cast=str),
+    1: config('PHASE_POSTPROCESS', default='deep_watershed', cast=str),
+    2: config('CYTOPLASM_POSTPROCESS', default='deep_watershed', cast=str)
 }

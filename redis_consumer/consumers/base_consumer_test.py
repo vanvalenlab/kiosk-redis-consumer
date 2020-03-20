@@ -54,6 +54,7 @@ class Bunch(object):
 
 
 class DummyRedis(object):
+    # pylint: disable=W0613,R0201
     def __init__(self, items=[], prefix='predict', status='new'):
         self.work_queue = copy.copy(items)
         self.processing_queue = []
@@ -95,16 +96,15 @@ class DummyRedis(object):
     def llen(self, queue):
         if queue.startswith('processing'):
             return len(self.processing_queue)
-        else:
-            return len(self.work_queue)
+        return len(self.work_queue)
 
     def hmget(self, rhash, *args):
         return [self.hget(rhash, a) for a in args]
 
-    def hmset(self, rhash, hvals):  # pylint: disable=W0613
+    def hmset(self, rhash, hvals):
         return hvals
 
-    def expire(self, name, time):  # pylint: disable=W0613
+    def expire(self, name, time):
         return 1
 
     def hget(self, rhash, field):
@@ -120,15 +120,13 @@ class DummyRedis(object):
             return 'reason'
         return False
 
-    def hset(self, rhash, status, value):  # pylint: disable=W0613
+    def hset(self, rhash, status, value):
         return {status: value}
 
-    def hgetall(self, rhash):  # pylint: disable=W0613
+    def hgetall(self, rhash):
         return {
             'model_name': 'model',
             'model_version': '0',
-            'field': '61',
-            'cuts': '0',
             'postprocess_function': '',
             'preprocess_function': '',
             'file_name': rhash.split(':')[1],
@@ -142,6 +140,7 @@ class DummyRedis(object):
 
 
 class DummyStorage(object):
+    # pylint: disable=W0613,R0201
     def __init__(self, num=3):
         self.num = num
 
@@ -159,15 +158,15 @@ class DummyStorage(object):
         tiff.imsave(os.path.join(dest, path), img)
         return path
 
-    def upload(self, zip_path, subdir=None):  # pylint: disable=W0613
+    def upload(self, zip_path, subdir=None):
         return True, True
 
-    def get_public_url(self, zip_path):  # pylint: disable=W0613
+    def get_public_url(self, zip_path):
         return True
 
 
 class TestConsumer(object):
-
+    # pylint: disable=R0201
     def test_get_redis_hash(self):
         settings.EMPTY_QUEUE_TIMEOUT = 0.01  # don't sleep too long
 
@@ -335,7 +334,7 @@ class TestConsumer(object):
 
 
 class TestTensorFlowServingConsumer(object):
-
+    # pylint: disable=R0201,W0613
     def test__get_predict_client(self):
         redis_client = DummyRedis([])
         consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
@@ -343,11 +342,12 @@ class TestTensorFlowServingConsumer(object):
         with pytest.raises(ValueError):
             consumer._get_predict_client('model_name', 'model_version')
 
-        client = consumer._get_predict_client('model_name', 1)
+        consumer._get_predict_client('model_name', 1)
 
     def test_grpc_image(self):
         redis_client = DummyRedis([])
         consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+        model_shape = (-1, 128, 128, 1)
 
         def _get_predict_client(model_name, model_version):
             return Bunch(predict=lambda x, y: {
@@ -357,83 +357,109 @@ class TestTensorFlowServingConsumer(object):
         consumer._get_predict_client = _get_predict_client
 
         img = np.zeros((1, 32, 32, 3))
-        out = consumer.grpc_image(img, 'f16model', 1)
-        assert img.shape == out.shape[1:]
+        out = consumer.grpc_image(img, 'model', 1, model_shape, 'DT_HALF')
+
+        assert img.shape == out.shape
         assert img.sum() == out.sum()
 
-    def test_process_big_image(self):
-        name = 'model'
-        version = 0
-        field = 11
-        cuts = 2
+    def test_get_model_metadata(self):
+        redis_client = DummyRedis([])
+        model_shape = (-1, 216, 216, 1)
+        model_dtype = 'DT_FLOAT'
 
-        img = np.expand_dims(_get_image(100, 100), axis=-1)
-        img = np.expand_dims(img, axis=0)
+        def hmget_success(key, *others):
+            shape = ','.join(str(s) for s in model_shape)
+            dtype = 'DT_FLOAT'
+            return dtype, shape
 
-        redis_client = None
-        storage = None
-        consumer = consumers.TensorFlowServingConsumer(redis_client, storage, 'predict')
+        def hmget_fail(key, *others):
+            return [None] * len(others)
 
-        # image should be chopped into cuts**2 pieces and reassembled
-        consumer.grpc_image = lambda x, y, z: x
-        res = consumer.process_big_image(cuts, img, field, name, version)
-        np.testing.assert_equal(res, img)
+        def _get_predict_client(model_name, model_version):
+            return Bunch(get_model_metadata=lambda: {
+                'metadata': {
+                    'signature_def': {
+                        'signatureDef': {
+                            'serving_default': {
+                                'inputs': {
+                                    settings.TF_TENSOR_NAME: {
+                                        'dtype': model_dtype,
+                                        'tensorShape': {
+                                            'dim': [
+                                                {'size': str(x)}
+                                                for x in model_shape
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            })
 
-    def test_detect_label(self):
+        def _get_bad_predict_client(model_name, model_version):
+            return Bunch(get_model_metadata=lambda: dict())
+
+        redis_client.hmget = hmget_success
+        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+        consumer._get_predict_client = _get_predict_client
+        metadata = consumer.get_model_metadata('model', 1)
+
+        assert metadata['in_tensor_dtype'] == 'DT_FLOAT'
+        assert metadata['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
+
+        redis_client.hmget = hmget_fail
+        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+        consumer._get_predict_client = _get_predict_client
+        metadata = consumer.get_model_metadata('model', 1)
+
+        assert metadata['in_tensor_dtype'] == 'DT_FLOAT'
+        assert metadata['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
+
+        with pytest.raises(KeyError):
+            redis_client.hmget = hmget_fail
+            consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+            consumer._get_predict_client = _get_bad_predict_client
+            consumer.get_model_metadata('model', 1)
+
+    def test_predict(self):
         redis_client = DummyRedis([])
         consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
-        image = _get_image(settings.LABEL_RESHAPE_SIZE * 2,
-                           settings.LABEL_RESHAPE_SIZE * 2)
 
-        settings.LABEL_DETECT_MODEL = 'dummymodel:1'
-
-        def dummydata(*_, **__):
-            data = np.zeros((3,))
-            i = np.random.randint(3)
-            data[i] = 1
+        def grpc_image(data, *args, **kwargs):
             return data
 
-        consumer.grpc_image = dummydata
+        def grpc_image_list(data, *args, **kwargs):  # pylint: disable=W0613
+            return [data, data]
 
-        label = consumer.detect_label(image)
-        assert label in set(list(range(4)))
+        model_shape = (-1, 128, 128, 1)
 
-    def test_detect_scale(self):
-        redis_client = DummyRedis([])
-        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
-        big_size = settings.SCALE_RESHAPE_SIZE * np.random.randint(2, 9)
-        image = _get_image(big_size, big_size)
+        image_shapes = [
+            (256, 256, 1),
+            (128, 128, 1),
+            (64, 64, 1),
+            (100, 100, 1),
+            (300, 300, 1),
+        ]
 
-        expected = (settings.SCALE_RESHAPE_SIZE / (big_size)) ** 2
+        for image_shape in image_shapes:
+            for grpc_func in (grpc_image, grpc_image_list):
+                for untile in (False, True):
 
-        settings.SCALE_DETECT_MODEL = 'dummymodel:1'
+                    x = np.random.random(image_shape)
+                    consumer.grpc_image = grpc_func
+                    consumer.get_model_metadata = lambda x, y: {
+                        'in_tensor_dtype': 'DT_HALF',
+                        'in_tensor_shape': ','.join(str(s) for s in model_shape),
+                    }
 
-        def grpc_image(*_, **__):
-            sign = -1 if np.random.randint(1, 5) > 2 else 1
-            return expected + sign * 1e-8  # small differences get averaged out
-
-        consumer.grpc_image = grpc_image
-
-        settings.SCALE_DETECT_ENABLED = False
-
-        scale = consumer.detect_scale(image)
-        assert scale == 1
-
-        settings.SCALE_DETECT_ENABLED = True
-
-        scale = consumer.detect_scale(image)
-        assert isinstance(scale, (float, int))
-        np.testing.assert_almost_equal(scale, expected)
-
-        consumer.grpc_image = grpc_image
-
-        scale = consumer.detect_scale(np.expand_dims(image, axis=-1))
-        assert isinstance(scale, (float, int))
-        np.testing.assert_almost_equal(scale, expected)
+                    consumer.predict(x, model_name='modelname', model_version=0,
+                                     untile=untile)
 
 
 class TestZipFileConsumer(object):
-
+    # pylint: disable=R0201,W0613
     def test_is_valid_hash(self):
         items = ['item%s' % x for x in range(1, 4)]
 
@@ -515,7 +541,6 @@ class TestZipFileConsumer(object):
     def test__cleanup(self):
         N = 3
         queue = 'predict'
-        status = 'waiting'
         items = ['item%s' % x for x in range(1, N + 1)]
         redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
@@ -524,9 +549,6 @@ class TestZipFileConsumer(object):
         children = list('abcdef')
         done = ['{}:done'.format(c) for c in children[:3]]
         failed = ['{}:failed'.format(c) for c in children[3:]]
-
-        key = '{queue}:{fname}.zip:{status}'.format(
-            queue=queue, status=status, fname=status)
 
         consumer._cleanup(items[0], children, done, failed)
 
