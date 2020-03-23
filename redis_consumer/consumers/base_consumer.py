@@ -147,10 +147,10 @@ class Consumer(object):
         while queue_has_items:
             key = self.redis.rpoplpush(self.processing_queue, self.queue)
             queue_has_items = key is not None
-
-        self.logger.debug('Found stranded key `%s` in queue `%s`. '
-                          'Moving it back to `%s`.',
-                          key, self.processing_queue, self.queue)
+            if queue_has_items:
+                self.logger.debug('Found stranded key `%s` in queue `%s`. '
+                                  'Moving it back to `%s`.',
+                                  key, self.processing_queue, self.queue)
 
     def update_key(self, redis_hash, data=None):
         """Update the hash with `data` and updated_by & updated_at stamps.
