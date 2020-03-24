@@ -65,18 +65,20 @@ class Consumer(object):
                  storage_client,
                  queue,
                  final_status='done',
-                 failed_status='failed'):
-        self.output_dir = settings.OUTPUT_DIR
-        self.hostname = settings.HOSTNAME
+                 failed_status='failed',
+                 name=settings.HOSTNAME,
+                 output_dir=settings.OUTPUT_DIR):
         self.redis = redis_client
         self.storage = storage_client
         self.queue = str(queue).lower()
+        self.name = name
+        self.output_dir = output_dir
         self.final_status = final_status
         self.failed_status = failed_status
         self.finished_statuses = {final_status, failed_status}
         self.logger = logging.getLogger(str(self.__class__.__name__))
         self.processing_queue = 'processing-{queue}:{name}'.format(
-            queue=self.queue, name=self.hostname)
+            queue=self.queue, name=self.name)
 
     def _put_back_hash(self, redis_hash):
         """Put the hash back into the work queue"""
@@ -167,7 +169,7 @@ class Consumer(object):
         data = {} if data is None else data
         data.update({
             'updated_at': self.get_current_timestamp(),
-            'updated_by': self.hostname,
+            'updated_by': self.name,
         })
         self.redis.hmset(redis_hash, data)
 
@@ -563,7 +565,7 @@ class ZipFileConsumer(Consumer):
                 new_hvals['input_file_name'] = dest
                 new_hvals['original_name'] = clean_imfile
                 new_hvals['status'] = 'new'
-                new_hvals['identity_upload'] = self.hostname
+                new_hvals['identity_upload'] = self.name
                 new_hvals['created_at'] = current_timestamp
                 new_hvals['updated_at'] = current_timestamp
 

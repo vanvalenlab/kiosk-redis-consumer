@@ -87,8 +87,11 @@ if __name__ == '__main__':
     consumer_kwargs = {
         'redis_client': redis,
         'storage_client': storage_client,
-        'final_status': 'done',
         'queue': settings.QUEUE,
+        'final_status': 'done',
+        'failed_status': 'failed',
+        'name': settings.HOSTNAME,
+        'output_dir': settings.OUTPUT_DIR,
     }
 
     consumer = get_consumer(settings.CONSUMER_TYPE, **consumer_kwargs)

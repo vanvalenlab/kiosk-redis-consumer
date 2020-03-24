@@ -181,7 +181,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
                 # prepare hvalues for this frame's hash
                 current_timestamp = self.get_current_timestamp()
                 frame_hvalues = {
-                    'identity_upload': self.hostname,
+                    'identity_upload': self.name,
                     'input_file_name': upload_file_name,
                     'original_name': segment_fname,
                     'model_name': model_name,

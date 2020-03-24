@@ -204,7 +204,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
 
         self.update_key(redis_hash, {
             'status': 'started',
-            'identity_started': self.hostname,
+            'identity_started': self.name,
         })
 
         # Overridden with LABEL_DETECT_ENABLED
