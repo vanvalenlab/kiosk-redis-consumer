@@ -34,12 +34,19 @@ import grpc
 from decouple import config
 
 from redis_consumer import processing
+from redis_consumer import consumers
 
 
 # remove leading/trailing '/'s from cloud bucket folder names
 def _strip(x):
     return '/'.join(y for y in x.split('/') if y)
 
+
+CONSUMERS = {
+    'image': consumers.ImageFileConsumer,
+    'zip': consumers.ZipFileConsumer,
+    'tracking': consumers.TrackingConsumer
+}
 
 # Debug Mode
 DEBUG = config('DEBUG', cast=bool, default=False)
