@@ -41,6 +41,7 @@ CONSUMERS = {
     'image': ImageFileConsumer,
     'zip': ZipFileConsumer,
     'tracking': TrackingConsumer,
+    # TODO: Add future custom Consumer classes here.
 }
 
 
