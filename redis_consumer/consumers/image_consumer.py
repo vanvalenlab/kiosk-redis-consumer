@@ -41,15 +41,6 @@ from redis_consumer import settings
 class ImageFileConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
-    def __init__(self,
-                 redis_client,
-                 storage_client,
-                 queue,
-                 **kwargs):
-        # Create some attributes only used during consume()
-        super(ImageFileConsumer, self).__init__(
-            redis_client, storage_client, queue, **kwargs)
-
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
             return False
