@@ -31,6 +31,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import logging
 import logging.handlers
 import sys
@@ -104,6 +105,7 @@ if __name__ == '__main__':
     while True:
         try:
             consumer.consume()
+            gc.collect()
         except Exception as err:  # pylint: disable=broad-except
             _logger.critical('Fatal Error: %s: %s\n%s',
                              type(err).__name__, err, traceback.format_exc())
