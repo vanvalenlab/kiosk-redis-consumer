@@ -45,11 +45,10 @@ class ImageFileConsumer(TensorFlowServingConsumer):
                  redis_client,
                  storage_client,
                  queue,
-                 final_status='done'):
+                 **kwargs):
         # Create some attributes only used during consume()
         super(ImageFileConsumer, self).__init__(
-            redis_client, storage_client,
-            queue, final_status)
+            redis_client, storage_client, queue, **kwargs)
 
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:

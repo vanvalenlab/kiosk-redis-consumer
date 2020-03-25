@@ -233,13 +233,12 @@ class TensorFlowServingConsumer(Consumer):
                  redis_client,
                  storage_client,
                  queue,
-                 final_status='done'):
+                 **kwargs):
         # Create some attributes only used during consume()
         self._redis_hash = None
         self._redis_values = dict()
         super(TensorFlowServingConsumer, self).__init__(
-            redis_client, storage_client,
-            queue, final_status)
+            redis_client, storage_client, queue, **kwargs)
 
     def _consume(self, redis_hash):
         raise NotImplementedError
@@ -525,13 +524,12 @@ class ZipFileConsumer(Consumer):
                  redis_client,
                  storage_client,
                  queue,
-                 final_status='done'):
+                 **kwargs):
         # zip files go in a new queue
         zip_queue = '{}-zip'.format(queue)
         self.child_queue = queue
         super(ZipFileConsumer, self).__init__(
-            redis_client, storage_client,
-            zip_queue, final_status)
+            redis_client, storage_client, zip_queue, **kwargs)
 
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
