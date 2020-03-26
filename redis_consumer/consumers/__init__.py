@@ -36,6 +36,15 @@ from redis_consumer.consumers.base_consumer import ZipFileConsumer
 from redis_consumer.consumers.image_consumer import ImageFileConsumer
 from redis_consumer.consumers.tracking_consumer import TrackingConsumer
 
+
+CONSUMERS = {
+    'image': ImageFileConsumer,
+    'zip': ZipFileConsumer,
+    'tracking': TrackingConsumer,
+    # TODO: Add future custom Consumer classes here.
+}
+
+
 del absolute_import
 del division
 del print_function

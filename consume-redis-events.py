@@ -31,6 +31,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import logging
 import logging.handlers
 import sys
@@ -66,14 +67,10 @@ def initialize_logger(debug_mode=True):
 
 def get_consumer(consumer_type, **kwargs):
     logging.debug('Getting `%s` consumer with args %s.', consumer_type, kwargs)
-    ct = str(consumer_type).lower()
-    if ct == 'image':
-        return redis_consumer.consumers.ImageFileConsumer(**kwargs)
-    if ct == 'zip':
-        return redis_consumer.consumers.ZipFileConsumer(**kwargs)
-    if ct == 'tracking':
-        return redis_consumer.consumers.TrackingConsumer(**kwargs)
-    raise ValueError('Invalid `consumer_type`: "{}"'.format(consumer_type))
+    consumer_cls = redis_consumer.consumers.CONSUMERS.get(str(consumer_type).lower())
+    if not consumer_cls:
+        raise ValueError('Invalid `consumer_type`: "{}"'.format(consumer_type))
+    return consumer_cls(**kwargs)
 
 
 if __name__ == '__main__':
@@ -91,9 +88,15 @@ if __name__ == '__main__':
     consumer_kwargs = {
         'redis_client': redis,
         'storage_client': storage_client,
-        'final_status': 'done',
         'queue': settings.QUEUE,
+        'final_status': 'done',
+        'failed_status': 'failed',
+        'name': settings.HOSTNAME,
+        'output_dir': settings.OUTPUT_DIR,
     }
+
+    _logger.debug('Getting `%s` consumer with args %s.',
+                  settings.CONSUMER_TYPE, consumer_kwargs)
 
     consumer = get_consumer(settings.CONSUMER_TYPE, **consumer_kwargs)
 
@@ -102,6 +105,7 @@ if __name__ == '__main__':
     while True:
         try:
             consumer.consume()
+            gc.collect()
         except Exception as err:  # pylint: disable=broad-except
             _logger.critical('Fatal Error: %s: %s\n%s',
                              type(err).__name__, err, traceback.format_exc())

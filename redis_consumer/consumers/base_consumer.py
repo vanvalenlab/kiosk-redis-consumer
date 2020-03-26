@@ -65,18 +65,20 @@ class Consumer(object):
                  storage_client,
                  queue,
                  final_status='done',
-                 failed_status='failed'):
-        self.output_dir = settings.OUTPUT_DIR
-        self.hostname = settings.HOSTNAME
+                 failed_status='failed',
+                 name=settings.HOSTNAME,
+                 output_dir=settings.OUTPUT_DIR):
         self.redis = redis_client
         self.storage = storage_client
         self.queue = str(queue).lower()
+        self.name = name
+        self.output_dir = output_dir
         self.final_status = final_status
         self.failed_status = failed_status
         self.finished_statuses = {final_status, failed_status}
         self.logger = logging.getLogger(str(self.__class__.__name__))
         self.processing_queue = 'processing-{queue}:{name}'.format(
-            queue=self.queue, name=self.hostname)
+            queue=self.queue, name=self.name)
 
     def _put_back_hash(self, redis_hash):
         """Put the hash back into the work queue"""
@@ -147,10 +149,10 @@ class Consumer(object):
         while queue_has_items:
             key = self.redis.rpoplpush(self.processing_queue, self.queue)
             queue_has_items = key is not None
-
-        self.logger.debug('Found stranded key `%s` in queue `%s`. '
-                          'Moving it back to `%s`.',
-                          key, self.processing_queue, self.queue)
+            if queue_has_items:
+                self.logger.debug('Found stranded key `%s` in queue `%s`. '
+                                  'Moving it back to `%s`.',
+                                  key, self.processing_queue, self.queue)
 
     def update_key(self, redis_hash, data=None):
         """Update the hash with `data` and updated_by & updated_at stamps.
@@ -167,7 +169,7 @@ class Consumer(object):
         data = {} if data is None else data
         data.update({
             'updated_at': self.get_current_timestamp(),
-            'updated_by': self.hostname,
+            'updated_by': self.name,
         })
         self.redis.hmset(redis_hash, data)
 
@@ -231,13 +233,12 @@ class TensorFlowServingConsumer(Consumer):
                  redis_client,
                  storage_client,
                  queue,
-                 final_status='done'):
+                 **kwargs):
         # Create some attributes only used during consume()
         self._redis_hash = None
         self._redis_values = dict()
         super(TensorFlowServingConsumer, self).__init__(
-            redis_client, storage_client,
-            queue, final_status)
+            redis_client, storage_client, queue, **kwargs)
 
     def _consume(self, redis_hash):
         raise NotImplementedError
@@ -523,13 +524,12 @@ class ZipFileConsumer(Consumer):
                  redis_client,
                  storage_client,
                  queue,
-                 final_status='done'):
+                 **kwargs):
         # zip files go in a new queue
         zip_queue = '{}-zip'.format(queue)
         self.child_queue = queue
         super(ZipFileConsumer, self).__init__(
-            redis_client, storage_client,
-            zip_queue, final_status)
+            redis_client, storage_client, zip_queue, **kwargs)
 
     def is_valid_hash(self, redis_hash):
         if redis_hash is None:
@@ -563,7 +563,7 @@ class ZipFileConsumer(Consumer):
                 new_hvals['input_file_name'] = dest
                 new_hvals['original_name'] = clean_imfile
                 new_hvals['status'] = 'new'
-                new_hvals['identity_upload'] = self.hostname
+                new_hvals['identity_upload'] = self.name
                 new_hvals['created_at'] = current_timestamp
                 new_hvals['updated_at'] = current_timestamp
 
