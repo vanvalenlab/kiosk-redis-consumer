@@ -65,19 +65,21 @@ If the consumer will send data to a TensorFlow Serving model, it should inherit 
         return self.final_status
 ```
 
-Finally, the new consumer needs to be registered in the script <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/consume-redis-events.py">consume-redis-events.py</a></tt> by modifying the function `get_consumer()` shown below. Add a new if statement for the new queue type (`queue_name`) and the corresponding consumer.
+Finally, the new consumer needs to be imported into the <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/redis_consumer/consumers/__init__.py">redis_consumer/consumers/\_\_init\_\_.py</a></tt> and added to the `CONSUMERS` dictionary with a correponding queue type (`queue_name`). The script <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/consume-redis-events.py">consume-redis-events.py</a></tt> will load the consumer class based on the `CONSUMER_TYPE`.
 
 ```python
-    def get_consumer(consumer_type, **kwargs):
-        logging.debug('Getting `%s` consumer with args %s.', consumer_type, kwargs)
-        ct = str(consumer_type).lower()
-        if ct == 'image':
-            return redis_consumer.consumers.ImageFileConsumer(**kwargs)
-        if ct == 'zip':
-            return redis_consumer.consumers.ZipFileConsumer(**kwargs)
-        if ct == 'tracking':
-            return redis_consumer.consumers.TrackingConsumer(**kwargs)
-        raise ValueError('Invalid `consumer_type`: "{}"'.format(consumer_type))
+# Custom Workflow consumers
+from redis_consumer.consumers.image_consumer import ImageFileConsumer
+from redis_consumer.consumers.tracking_consumer import TrackingConsumer
+# TODO: Import future custom Consumer classes.
+
+
+CONSUMERS = {
+    'image': ImageFileConsumer,
+    'zip': ZipFileConsumer,
+    'tracking': TrackingConsumer,
+    # TODO: Add future custom Consumer classes here.
+}
 ```
 
 For guidance on how to complete the deployment of a custom consumer, please return to [Tutorial: Custom Job](https://deepcell-kiosk.readthedocs.io/en/master/CUSTOM-JOB.html).
