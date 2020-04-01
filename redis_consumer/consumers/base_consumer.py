@@ -29,7 +29,6 @@ from __future__ import division
 from __future__ import print_function
 
 import datetime
-import hashlib
 import json
 import logging
 import os
@@ -617,8 +616,7 @@ class ZipFileConsumer(Consumer):
     def _upload_finished_children(self, finished_children, redis_hash):
         # saved_files = set()
         with utils.get_tempdir() as tempdir:
-            filename = '{}.zip'.format(
-                hashlib.md5(str(time.time()).encode('utf-8')).hexdigest())
+            filename = '{}.zip'.format(uuid.uuid4().hex)
 
             zip_path = os.path.join(tempdir, filename)
 
