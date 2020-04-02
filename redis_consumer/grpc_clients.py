@@ -172,9 +172,7 @@ class PredictClient(GrpcClient):
 
         # pylint: disable=E1101
         request.model_spec.name = self.model_name
-
-        if self.model_version > 0:
-            request.model_spec.version.value = self.model_version
+        request.model_spec.version.value = self.model_version
 
         t = timeit.default_timer()
         for d in request_data:
@@ -200,8 +198,7 @@ class PredictClient(GrpcClient):
         request = GetModelMetadataRequest()
         request.metadata_field.append('signature_def')
         request.model_spec.name = self.model_name
-        if self.model_version > 0:
-            request.model_spec.version.value = self.model_version
+        request.model_spec.version.value = self.model_version
 
         response = self._retry_grpc(request, request_timeout)
 
