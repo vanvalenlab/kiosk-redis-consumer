@@ -1,11 +1,11 @@
-# kiosk-redis-consumer
+# ![DeepCell Kiosk Banner](https://raw.githubusercontent.com/vanvalenlab/kiosk-console/master/docs/images/DeepCell_Kiosk_Banner.png)
 
 [![Build Status](https://travis-ci.org/vanvalenlab/kiosk-redis-consumer.svg?branch=master)](https://travis-ci.org/vanvalenlab/kiosk-redis-consumer)
 [![Coverage Status](https://coveralls.io/repos/github/vanvalenlab/kiosk-redis-consumer/badge.svg?branch=master)](https://coveralls.io/github/vanvalenlab/kiosk-redis-consumer?branch=master)
 [![Documentation Status](https://readthedocs.org/projects/kiosk-redis-consumer/badge/?version=master)](https://deepcell-kiosk.readthedocs.io/projects/kiosk-redis-consumer/)
 [![Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](/LICENSE)
 
-Reads events in redis, downloads image data from the cloud, and send the data to TensorFlow Serving via gRPC. The prediction is post-processed, zipped up, and uploaded to the cloud.
+`kiosk-redis-consumer` reads events in Redis, downloads image data from the cloud, and sends the data to TensorFlow Serving via gRPC. The prediction is post-processed, zipped, and uploaded to the cloud.
 
 This repository is part of the [DeepCell Kiosk](https://github.com/vanvalenlab/kiosk-console). More information about the Kiosk project is available through [Read the Docs](https://deepcell-kiosk.readthedocs.io/en/master) and our [FAQ](http://www.deepcell.org/faq) page.
 
@@ -13,15 +13,15 @@ This repository is part of the [DeepCell Kiosk](https://github.com/vanvalenlab/k
 
 Custom consumers can be used to implement custom model pipelines. This documentation is a continuation of a [tutorial](https://deepcell-kiosk.readthedocs.io/en/master/CUSTOM-JOB.html) on building a custom job pipeline.
 
-Consumers consume redis events. Each type of redis event is put into a separate queue (e.g. `predict`, `track`), and each consumer type will pop items to consume off that queue.
+Consumers consume Redis events. Each type of Redis event is put into a separate queue (e.g. `predict`, `track`), and each consumer type will pop items to consume off that queue.
 
-Each redis event should have the following fields:
+Each Redis event should have the following fields:
 
 - `model_name` - The name of the model that will be retrieved by TensorFlow Serving from `gs://<bucket-name>/models`
 - `model_version` - The version number of the model in TensorFlow Serving
 - `input_file_name` - The path to the data file in a cloud bucket.
 
-If the consumer will send data to a TensorFlow Serving model, it should inherit from `redis_consumer.consumers.TensorFlowServingConsumer` ([docs](https://deepcell-kiosk.readthedocs.io/projects/kiosk-redis-consumer/en/master/redis_consumer.consumers.html)), which has methods `_get_predict_client()` and `grpc_image()` which can send data to the specific model.  The new consumer must also implement the `_consume()` method which performs the bulk of the work. The `_consume()` method will fetch data from redis, download data file from the bucket, process the data with a model, and upload the results to the bucket again. See below for a basic implementation of `_consume()`:
+If the consumer will send data to a TensorFlow Serving model, it should inherit from `redis_consumer.consumers.TensorFlowServingConsumer` ([docs](https://deepcell-kiosk.readthedocs.io/projects/kiosk-redis-consumer/en/master/redis_consumer.consumers.html)), which has methods `_get_predict_client()` and `grpc_image()` which can send data to the specific model.  The new consumer must also implement the `_consume()` method which performs the bulk of the work. The `_consume()` method will fetch data from Redis, download data file from the bucket, process the data with a model, and upload the results to the bucket again. See below for a basic implementation of `_consume()`:
 
 ```python
     def _consume(self, redis_hash):
