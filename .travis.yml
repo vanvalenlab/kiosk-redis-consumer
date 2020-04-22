@@ -24,10 +24,6 @@ install:
       echo "Invalid python version for testing docs";
     fi
 
-  # install pandoc to test sphinx-build with nbconvert
-  - conda config --add channels conda-forge
-  - conda install pandoc
-
 script:
   - PYTHONPATH=$PWD:$PYTHONPATH pytest --cov=redis_consumer --pep8
   - PYTHONPATH=$PWD:$PYTHONPATH sphinx-build -nT -b dummy ./docs/source build/html
