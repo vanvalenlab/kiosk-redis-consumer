@@ -16,6 +16,7 @@ cache: pip
 
 install:
   - travis_retry pip install -r requirements.txt
+  - travis_retry pip install pytest pytest-cov==2.5.1 pytest-pep8 coveralls
   # install documentation requirements
   - if [[ "$TRAVIS_PYTHON_VERSION" == "3.7" ]]; then
       travis_retry pip install -r docs/rtd-requirements.txt;
