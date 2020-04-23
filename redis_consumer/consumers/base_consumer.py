@@ -364,6 +364,7 @@ class TensorFlowServingConsumer(Consumer):
             model_version (str): model version to query.
             model_shape (tuple): shape of the model's expected input.
             model_dtype (str): dtype of the model's input array.
+            model_input_name (str): name of the model's input array.
             untile (bool): untiles results back to image shape if True.
             stride_ratio (float): amount to overlap between tiles, (0, 1].
 
@@ -392,8 +393,10 @@ class TensorFlowServingConsumer(Consumer):
         results = []
         for t in range(0, tiles.shape[0], batch_size):
             batch = tiles[t:t + batch_size]
-            output = self.grpc_image(batch, model_name, model_version,
-                                     model_shape, in_tensor_dtype=model_dtype)
+            output = self.grpc_image(
+                batch, model_name, model_version, model_shape,
+                in_tensor_name=model_input_name,
+                in_tensor_dtype=model_dtype)
 
             if not isinstance(output, list):
                 output = [output]
@@ -418,6 +421,7 @@ class TensorFlowServingConsumer(Consumer):
                              model_name,
                              model_version,
                              model_shape,
+                             model_input_name='image',
                              model_dtype='DT_FLOAT'):
         """Pad an image that is too small for the model, and unpad the results.
 
@@ -427,6 +431,7 @@ class TensorFlowServingConsumer(Consumer):
             model_name (str): hosted model to send image data.
             model_version (str): model version to query.
             model_shape (tuple): shape of the model's expected input.
+            model_input_name (str): name of the model's input array.
             model_dtype (str): dtype of the model's input array.
 
         Returns:
@@ -454,7 +459,8 @@ class TensorFlowServingConsumer(Consumer):
 
         padded_img = np.pad(image, pad_width, 'reflect')
         image = self.grpc_image(padded_img, model_name, model_version,
-                                model_shape, in_tensor_dtype=model_dtype)
+                                model_shape, in_tensor_name=model_input_name,
+                                in_tensor_dtype=model_dtype)
 
         image = [image] if not isinstance(image, list) else image
 
@@ -474,6 +480,7 @@ class TensorFlowServingConsumer(Consumer):
         start = timeit.default_timer()
         model_metadata = self.get_model_metadata(model_name, model_version)
 
+        model_input_name = model_metadata['in_tensor_name']
         model_dtype = model_metadata['in_tensor_dtype']
 
         model_shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
@@ -500,17 +507,18 @@ class TensorFlowServingConsumer(Consumer):
                 image.shape[image.ndim - 2] < size_y):
             # image is too small for the model, pad the image.
             image = self._predict_small_image(image, model_name, model_version,
-                                              model_shape, model_dtype)
+                                              model_shape, model_input_name,
+                                              model_dtype)
         elif (image.shape[image.ndim - 3] > size_x or
               image.shape[image.ndim - 2] > size_y):
             # image is too big for the model, multiple images are tiled.
             image = self._predict_big_image(image, model_name, model_version,
-                                            model_shape, model_dtype,
-                                            untile=untile)
+                                            model_shape, model_input_name,
+                                            model_dtype, untile=untile)
         else:
             # image size is perfect, just send it to the model
             image = self.grpc_image(image, model_name, model_version,
-                                    model_shape, model_dtype)
+                                    model_shape, model_input_name, model_dtype)
 
         if isinstance(image, list):
             output_shapes = [i.shape for i in image]
