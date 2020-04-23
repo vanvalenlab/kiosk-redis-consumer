@@ -366,11 +366,11 @@ class TestTensorFlowServingConsumer(object):
         redis_client = DummyRedis([])
         model_shape = (-1, 216, 216, 1)
         model_dtype = 'DT_FLOAT'
+        model_input_name = 'input_1'
 
         def hmget_success(key, *others):
             shape = ','.join(str(s) for s in model_shape)
-            dtype = 'DT_FLOAT'
-            return dtype, shape
+            return model_input_name, model_dtype, shape
 
         def hmget_fail(key, *others):
             return [None] * len(others)
@@ -382,7 +382,39 @@ class TestTensorFlowServingConsumer(object):
                         'signatureDef': {
                             'serving_default': {
                                 'inputs': {
-                                    settings.TF_TENSOR_NAME: {
+                                    model_input_name: {
+                                        'dtype': model_dtype,
+                                        'tensorShape': {
+                                            'dim': [
+                                                {'size': str(x)}
+                                                for x in model_shape
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+
+        def _get_predict_client_multi(model_name, model_version):
+            return Bunch(get_model_metadata=lambda: {
+                'metadata': {
+                    'signature_def': {
+                        'signatureDef': {
+                            'serving_default': {
+                                'inputs': {
+                                    model_input_name: {
+                                        'dtype': model_dtype,
+                                        'tensorShape': {
+                                            'dim': [
+                                                {'size': str(x)}
+                                                for x in model_shape
+                                            ]
+                                        }
+                                    },
+                                    '{}_2'.format(model_input_name): {
                                         'dtype': model_dtype,
                                         'tensorShape': {
                                             'dim': [
@@ -406,7 +438,18 @@ class TestTensorFlowServingConsumer(object):
         consumer._get_predict_client = _get_predict_client
         metadata = consumer.get_model_metadata('model', 1)
 
-        assert metadata['in_tensor_dtype'] == 'DT_FLOAT'
+        assert metadata['in_tensor_dtype'] == model_dtype
+        assert metadata['in_tensor_name'] == model_input_name
+        assert metadata['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
+
+        # Multiple inputs will error but not fail (just uses the first one).
+        redis_client.hmget = hmget_success
+        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+        consumer._get_predict_client = _get_predict_client_multi
+        metadata = consumer.get_model_metadata('model', 1)
+
+        assert metadata['in_tensor_dtype'] == model_dtype
+        assert metadata['in_tensor_name'] == model_input_name
         assert metadata['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
 
         redis_client.hmget = hmget_fail
@@ -414,7 +457,8 @@ class TestTensorFlowServingConsumer(object):
         consumer._get_predict_client = _get_predict_client
         metadata = consumer.get_model_metadata('model', 1)
 
-        assert metadata['in_tensor_dtype'] == 'DT_FLOAT'
+        assert metadata['in_tensor_dtype'] == model_dtype
+        assert metadata['in_tensor_name'] == model_input_name
         assert metadata['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
 
         with pytest.raises(KeyError):

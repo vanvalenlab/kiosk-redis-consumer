@@ -104,7 +104,6 @@ The consumer is configured using environment variables. Please find a table of a
 | `METADATA_EXPIRE_TIME` | Expire cached model metadata after this many seconds. | `30` |
 | `TF_HOST` | The IP address or hostname of TensorFlow Serving. | `"tf-serving"` |
 | `TF_PORT` | The port used to connect to TensorFlow Serving. | `8500` |
-| `TF_TENSOR_NAME` | Name of input tensor for the exported model. | `"image"` |
 | `GRPC_TIMEOUT` | Timeout for gRPC API requests, in seconds. | `30` |
 | `GRPC_BACKOFF` | Time to wait before retrying a gRPC API request. | `3` |
 | `MAX_RETRY` | Maximum number of retries for a failed TensorFlow Serving request. | `5` |

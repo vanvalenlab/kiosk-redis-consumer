@@ -252,7 +252,7 @@ class TensorFlowServingConsumer(Consumer):
         return client
 
     def grpc_image(self, img, model_name, model_version, model_shape,
-                   in_tensor_dtype='DT_FLOAT'):
+                   in_tensor_name='image', in_tensor_dtype='DT_FLOAT'):
 
         in_tensor_dtype = str(in_tensor_dtype).upper()
 
@@ -268,7 +268,7 @@ class TensorFlowServingConsumer(Consumer):
             # but the model rejects the type, wants "int" or "long"
             img = img.astype('int')
 
-        req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
+        req_data = [{'in_tensor_name': in_tensor_name,
                      'in_tensor_dtype': in_tensor_dtype,
                      'data': img}]
 
@@ -309,7 +309,7 @@ class TensorFlowServingConsumer(Consumer):
         model = '{}:{}'.format(model_name, model_version)
         self.logger.debug('Getting model metadata for model %s.', model)
 
-        fields = ['in_tensor_dtype', 'in_tensor_shape']
+        fields = ['in_tensor_name', 'in_tensor_dtype', 'in_tensor_shape']
         response = self.redis.hmget(model, *fields)
 
         if all(response):
@@ -323,12 +323,18 @@ class TensorFlowServingConsumer(Consumer):
 
         try:
             inputs = model_metadata['metadata']['signature_def']['signatureDef']
-            inputs = inputs['serving_default']['inputs'][settings.TF_TENSOR_NAME]
+            inputs = inputs['serving_default']['inputs']
 
+            if len(inputs) > 1:
+                self.logger.error('Model has %s inputs defined but was only '
+                                  'passed a single input.')
+
+            # TODO: handle multiple inputs in a general way.
+            input_name = list(inputs.keys())[0]
+            inputs = inputs[input_name]
             dtype = inputs['dtype']
             shape = ','.join([d['size'] for d in inputs['tensorShape']['dim']])
-
-            parsed_metadata = dict(zip(fields, [dtype, shape]))
+            parsed_metadata = dict(zip(fields, [input_name, dtype, shape]))
 
             finished = timeit.default_timer() - start
             self.logger.debug('Got model metadata for %s in %s seconds.',
@@ -347,6 +353,7 @@ class TensorFlowServingConsumer(Consumer):
                            model_version,
                            model_shape,
                            model_dtype='DT_FLOAT',
+                           model_input_name='image',
                            untile=True,
                            stride_ratio=0.75):
         """Use tile_image to tile image for the model and untile the results.
