@@ -295,6 +295,27 @@ class TensorFlowServingConsumer(Consumer):
                           0, finished)
         return results
 
+    def parse_model_metadata(self, metadata):
+        """Parse the metadata response and return list of input metadata.
+
+        Args:
+            metadata (dict): model metadata response
+
+        Returns:
+            list: List of metadata objects for each defined input.
+        """
+        # TODO: handle multiple inputs in a general way.
+        all_metadata = []
+        for k, v in metadata.items():
+            shape = ','.join([d['size'] for d in v['tensorShape']['dim']])
+            data = {
+                'in_tensor_name': k,
+                'in_tensor_dtype': v['dtype'],
+                'in_tensor_shape': shape,
+            }
+            all_metadata.append(data)
+        return all_metadata
+
     def get_model_metadata(self, model_name, model_version):
         """Check Redis for saved model metadata or get from TensorFlow Serving.
 
@@ -309,12 +330,11 @@ class TensorFlowServingConsumer(Consumer):
         model = '{}:{}'.format(model_name, model_version)
         self.logger.debug('Getting model metadata for model %s.', model)
 
-        fields = ['in_tensor_name', 'in_tensor_dtype', 'in_tensor_shape']
-        response = self.redis.hmget(model, *fields)
+        response = self.redis.hget(model, 'metadata')
 
-        if all(response):
+        if response:
             self.logger.debug('Got cached metadata for model %s.', model)
-            return dict(zip(fields, response))
+            return self.parse_model_metadata(json.loads(response))
 
         # No response! The key was expired. Get from TFS and update it.
         start = timeit.default_timer()
@@ -325,25 +345,13 @@ class TensorFlowServingConsumer(Consumer):
             inputs = model_metadata['metadata']['signature_def']['signatureDef']
             inputs = inputs['serving_default']['inputs']
 
-            if len(inputs) > 1:
-                raise ValueError('Models with more than 1 required input are '
-                                 'not yet supported. Got the following named '
-                                 'inputs: {}'.format(list(inputs)))
-
-            # TODO: handle multiple inputs in a general way.
-            input_name = list(inputs.keys())[0]
-            inputs = inputs[input_name]
-            dtype = inputs['dtype']
-            shape = ','.join([d['size'] for d in inputs['tensorShape']['dim']])
-            parsed_metadata = dict(zip(fields, [input_name, dtype, shape]))
-
             finished = timeit.default_timer() - start
             self.logger.debug('Got model metadata for %s in %s seconds.',
                               model, finished)
 
-            self.redis.hmset(model, parsed_metadata)
+            self.redis.hset(model, 'metadata', json.dumps(inputs))
             self.redis.expire(model, settings.METADATA_EXPIRE_TIME)
-            return parsed_metadata
+            return self.parse_model_metadata(inputs)
         except (KeyError, IndexError) as err:
             self.logger.error('Malformed metadata: %s', model_metadata)
             raise err
@@ -480,6 +488,13 @@ class TensorFlowServingConsumer(Consumer):
     def predict(self, image, model_name, model_version, untile=True):
         start = timeit.default_timer()
         model_metadata = self.get_model_metadata(model_name, model_version)
+
+        # TODO: generalize for more than a single input.
+        if len(model_metadata) > 1:
+            raise ValueError('Model %s:%s has %s required inputs but was only '
+                             'given %s inputs.', model_name, model_version,
+                             len(model_metadata), len(image))
+        model_metadata = model_metadata[0]
 
         model_input_name = model_metadata['in_tensor_name']
         model_dtype = model_metadata['in_tensor_dtype']

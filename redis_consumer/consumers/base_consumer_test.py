@@ -28,8 +28,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import copy
+import json
+import os
 
 import numpy as np
 from skimage.external import tifffile as tiff
@@ -368,12 +369,22 @@ class TestTensorFlowServingConsumer(object):
         model_dtype = 'DT_FLOAT'
         model_input_name = 'input_1'
 
-        def hmget_success(key, *others):
-            shape = ','.join(str(s) for s in model_shape)
-            return model_input_name, model_dtype, shape
+        def hget_success(key, *others):
+            metadata = {
+                model_input_name: {
+                    'dtype': model_dtype,
+                    'tensorShape': {
+                        'dim': [
+                            {'size': str(x)}
+                            for x in model_shape
+                        ]
+                    }
+                }
+            }
+            return json.dumps(metadata)
 
-        def hmget_fail(key, *others):
-            return [None] * len(others)
+        def hget_fail(key, *others):
+            return None
 
         def _get_predict_client(model_name, model_version):
             return Bunch(get_model_metadata=lambda: {
@@ -434,34 +445,29 @@ class TestTensorFlowServingConsumer(object):
             return Bunch(get_model_metadata=lambda: dict())
 
         # test cached input
-        redis_client.hmget = hmget_success
+        redis_client.hget = hget_success
         consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
         consumer._get_predict_client = _get_predict_client
         metadata = consumer.get_model_metadata('model', 1)
 
-        assert metadata['in_tensor_dtype'] == model_dtype
-        assert metadata['in_tensor_name'] == model_input_name
-        assert metadata['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
+        for m in metadata:
+            assert m['in_tensor_dtype'] == model_dtype
+            assert m['in_tensor_name'] == model_input_name
+            assert m['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
 
         # test stale cache
-        redis_client.hmget = hmget_fail
+        redis_client.hget = hget_fail
         consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
         consumer._get_predict_client = _get_predict_client
         metadata = consumer.get_model_metadata('model', 1)
 
-        assert metadata['in_tensor_dtype'] == model_dtype
-        assert metadata['in_tensor_name'] == model_input_name
-        assert metadata['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
-
-        # Multiple inputs will fail.
-        with pytest.raises(ValueError):
-            redis_client.hmget = hmget_fail
-            consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
-            consumer._get_predict_client = _get_predict_client_multi
-            metadata = consumer.get_model_metadata('model', 1)
+        for m in metadata:
+            assert m['in_tensor_dtype'] == model_dtype
+            assert m['in_tensor_name'] == model_input_name
+            assert m['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
 
         with pytest.raises(KeyError):
-            redis_client.hmget = hmget_fail
+            redis_client.hget = hget_fail
             consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
             consumer._get_predict_client = _get_bad_predict_client
             consumer.get_model_metadata('model', 1)
@@ -492,11 +498,11 @@ class TestTensorFlowServingConsumer(object):
 
                     x = np.random.random(image_shape)
                     consumer.grpc_image = grpc_func
-                    consumer.get_model_metadata = lambda x, y: {
+                    consumer.get_model_metadata = lambda x, y: [{
                         'in_tensor_name': 'image',
                         'in_tensor_dtype': 'DT_HALF',
                         'in_tensor_shape': ','.join(str(s) for s in model_shape),
-                    }
+                    }]
 
                     consumer.predict(x, model_name='modelname', model_version=0,
                                      untile=untile)
