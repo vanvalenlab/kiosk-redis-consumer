@@ -358,9 +358,16 @@ class TestTensorFlowServingConsumer(object):
         consumer._get_predict_client = _get_predict_client
 
         img = np.zeros((1, 32, 32, 3))
-        out = consumer.grpc_image(img, 'model', 1, model_shape, 'DT_HALF')
+        out = consumer.grpc_image(img, 'model', 1, model_shape, 'i', 'DT_HALF')
 
         assert img.shape == out.shape
+        assert img.sum() == out.sum()
+
+        img = np.zeros((32, 32, 3))
+        consumer._redis_hash = None
+        out = consumer.grpc_image(img, 'model', 1, model_shape, 'i', 'DT_HALF')
+
+        assert (1,) + img.shape == out.shape
         assert img.sum() == out.sum()
 
     def test_get_model_metadata(self):
