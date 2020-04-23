@@ -494,6 +494,7 @@ class TestTensorFlowServingConsumer(object):
                     x = np.random.random(image_shape)
                     consumer.grpc_image = grpc_func
                     consumer.get_model_metadata = lambda x, y: {
+                        'in_tensor_name': 'image',
                         'in_tensor_dtype': 'DT_HALF',
                         'in_tensor_shape': ','.join(str(s) for s in model_shape),
                     }

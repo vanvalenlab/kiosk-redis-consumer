@@ -324,6 +324,7 @@ class TestImageFileConsumer(object):
 
             def get_model_metadata(model_name, model_version):
                 return {
+                    'in_tensor_name': 'image',
                     'in_tensor_dtype': 'DT_FLOAT',
                     'in_tensor_shape': ','.join(str(s) for s in model_shape),
                 }
