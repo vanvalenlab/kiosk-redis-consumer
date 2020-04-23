@@ -364,7 +364,7 @@ class TestTensorFlowServingConsumer(object):
         assert img.sum() == out.sum()
 
         img = np.zeros((32, 32, 3))
-        consumer._redis_hash = None
+        consumer._redis_hash = 'not none'
         out = consumer.grpc_image(img, 'model', 1, model_shape, 'i', 'DT_HALF')
 
         assert (1,) + img.shape == out.shape
