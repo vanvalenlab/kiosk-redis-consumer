@@ -326,8 +326,9 @@ class TensorFlowServingConsumer(Consumer):
             inputs = inputs['serving_default']['inputs']
 
             if len(inputs) > 1:
-                self.logger.error('Model has %s inputs defined but was only '
-                                  'passed a single input.')
+                raise ValueError('Models with more than 1 required input are '
+                                 'not yet supported. Got the following named '
+                                 'inputs: {}'.format(list(inputs)))
 
             # TODO: handle multiple inputs in a general way.
             input_name = list(inputs.keys())[0]

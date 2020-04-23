@@ -433,6 +433,7 @@ class TestTensorFlowServingConsumer(object):
         def _get_bad_predict_client(model_name, model_version):
             return Bunch(get_model_metadata=lambda: dict())
 
+        # test cached input
         redis_client.hmget = hmget_success
         consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
         consumer._get_predict_client = _get_predict_client
@@ -442,16 +443,7 @@ class TestTensorFlowServingConsumer(object):
         assert metadata['in_tensor_name'] == model_input_name
         assert metadata['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
 
-        # Multiple inputs will error but not fail (just uses the first one).
-        redis_client.hmget = hmget_success
-        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
-        consumer._get_predict_client = _get_predict_client_multi
-        metadata = consumer.get_model_metadata('model', 1)
-
-        assert metadata['in_tensor_dtype'] == model_dtype
-        assert metadata['in_tensor_name'] == model_input_name
-        assert metadata['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
-
+        # test stale cache
         redis_client.hmget = hmget_fail
         consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
         consumer._get_predict_client = _get_predict_client
@@ -460,6 +452,13 @@ class TestTensorFlowServingConsumer(object):
         assert metadata['in_tensor_dtype'] == model_dtype
         assert metadata['in_tensor_name'] == model_input_name
         assert metadata['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
+
+        # Multiple inputs will fail.
+        with pytest.raises(ValueError):
+            redis_client.hmget = hmget_fail
+            consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+            consumer._get_predict_client = _get_predict_client_multi
+            metadata = consumer.get_model_metadata('model', 1)
 
         with pytest.raises(KeyError):
             redis_client.hmget = hmget_fail
