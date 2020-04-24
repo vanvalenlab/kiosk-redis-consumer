@@ -17,11 +17,20 @@ cache: pip
 install:
   - travis_retry pip install -r requirements.txt
   - travis_retry pip install pytest pytest-cov==2.5.1 pytest-pep8 coveralls
-  - travis_retry pip install -r docs/rtd-requirements.txt
+  # install documentation requirements
+  - if [[ "$TRAVIS_PYTHON_VERSION" == "3.7" ]]; then
+      travis_retry pip install -r docs/rtd-requirements.txt;
+    else
+      echo "Invalid python version for testing docs";
+    fi
 
 script:
   - PYTHONPATH=$PWD:$PYTHONPATH pytest --cov=redis_consumer --pep8
-  - PYTHONPATH=$PWD:$PYTHONPATH sphinx-build -nT -b dummy ./docs/source build/html
+  - if [[ "$TRAVIS_PYTHON_VERSION" == "3.7" ]]; then
+      PYTHONPATH=$PWD:$PYTHONPATH sphinx-build -nT -b dummy ./docs/source build/html;
+    else
+      echo "Invalid python version for testing docs";
+    fi
 
 jobs:
   include:
