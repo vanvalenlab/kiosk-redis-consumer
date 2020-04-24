@@ -56,7 +56,6 @@ REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
 # TensorFlow Serving client connection
 TF_HOST = config('TF_HOST', default='tf-serving')
 TF_PORT = config('TF_PORT', default=8500, cast=int)
-TF_TENSOR_NAME = config('TF_TENSOR_NAME', default='image')
 # maximum batch allowed by TensorFlow Serving
 TF_MAX_BATCH_SIZE = config('TF_MAX_BATCH_SIZE', default=128, cast=int)
 # minimum expected model size, dynamically change batches proportionately.

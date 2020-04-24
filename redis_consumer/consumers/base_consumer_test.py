@@ -28,8 +28,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import copy
+import json
+import os
 
 import numpy as np
 from skimage.external import tifffile as tiff
@@ -357,23 +358,40 @@ class TestTensorFlowServingConsumer(object):
         consumer._get_predict_client = _get_predict_client
 
         img = np.zeros((1, 32, 32, 3))
-        out = consumer.grpc_image(img, 'model', 1, model_shape, 'DT_HALF')
+        out = consumer.grpc_image(img, 'model', 1, model_shape, 'i', 'DT_HALF')
 
         assert img.shape == out.shape
+        assert img.sum() == out.sum()
+
+        img = np.zeros((32, 32, 3))
+        consumer._redis_hash = 'not none'
+        out = consumer.grpc_image(img, 'model', 1, model_shape, 'i', 'DT_HALF')
+
+        assert (1,) + img.shape == out.shape
         assert img.sum() == out.sum()
 
     def test_get_model_metadata(self):
         redis_client = DummyRedis([])
         model_shape = (-1, 216, 216, 1)
         model_dtype = 'DT_FLOAT'
+        model_input_name = 'input_1'
 
-        def hmget_success(key, *others):
-            shape = ','.join(str(s) for s in model_shape)
-            dtype = 'DT_FLOAT'
-            return dtype, shape
+        def hget_success(key, *others):
+            metadata = {
+                model_input_name: {
+                    'dtype': model_dtype,
+                    'tensorShape': {
+                        'dim': [
+                            {'size': str(x)}
+                            for x in model_shape
+                        ]
+                    }
+                }
+            }
+            return json.dumps(metadata)
 
-        def hmget_fail(key, *others):
-            return [None] * len(others)
+        def hget_fail(key, *others):
+            return None
 
         def _get_predict_client(model_name, model_version):
             return Bunch(get_model_metadata=lambda: {
@@ -382,7 +400,39 @@ class TestTensorFlowServingConsumer(object):
                         'signatureDef': {
                             'serving_default': {
                                 'inputs': {
-                                    settings.TF_TENSOR_NAME: {
+                                    model_input_name: {
+                                        'dtype': model_dtype,
+                                        'tensorShape': {
+                                            'dim': [
+                                                {'size': str(x)}
+                                                for x in model_shape
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+
+        def _get_predict_client_multi(model_name, model_version):
+            return Bunch(get_model_metadata=lambda: {
+                'metadata': {
+                    'signature_def': {
+                        'signatureDef': {
+                            'serving_default': {
+                                'inputs': {
+                                    model_input_name: {
+                                        'dtype': model_dtype,
+                                        'tensorShape': {
+                                            'dim': [
+                                                {'size': str(x)}
+                                                for x in model_shape
+                                            ]
+                                        }
+                                    },
+                                    '{}_2'.format(model_input_name): {
                                         'dtype': model_dtype,
                                         'tensorShape': {
                                             'dim': [
@@ -401,24 +451,30 @@ class TestTensorFlowServingConsumer(object):
         def _get_bad_predict_client(model_name, model_version):
             return Bunch(get_model_metadata=lambda: dict())
 
-        redis_client.hmget = hmget_success
+        # test cached input
+        redis_client.hget = hget_success
         consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
         consumer._get_predict_client = _get_predict_client
         metadata = consumer.get_model_metadata('model', 1)
 
-        assert metadata['in_tensor_dtype'] == 'DT_FLOAT'
-        assert metadata['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
+        for m in metadata:
+            assert m['in_tensor_dtype'] == model_dtype
+            assert m['in_tensor_name'] == model_input_name
+            assert m['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
 
-        redis_client.hmget = hmget_fail
+        # test stale cache
+        redis_client.hget = hget_fail
         consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
         consumer._get_predict_client = _get_predict_client
         metadata = consumer.get_model_metadata('model', 1)
 
-        assert metadata['in_tensor_dtype'] == 'DT_FLOAT'
-        assert metadata['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
+        for m in metadata:
+            assert m['in_tensor_dtype'] == model_dtype
+            assert m['in_tensor_name'] == model_input_name
+            assert m['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
 
         with pytest.raises(KeyError):
-            redis_client.hmget = hmget_fail
+            redis_client.hget = hget_fail
             consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
             consumer._get_predict_client = _get_bad_predict_client
             consumer.get_model_metadata('model', 1)
@@ -449,10 +505,11 @@ class TestTensorFlowServingConsumer(object):
 
                     x = np.random.random(image_shape)
                     consumer.grpc_image = grpc_func
-                    consumer.get_model_metadata = lambda x, y: {
+                    consumer.get_model_metadata = lambda x, y: [{
+                        'in_tensor_name': 'image',
                         'in_tensor_dtype': 'DT_HALF',
                         'in_tensor_shape': ','.join(str(s) for s in model_shape),
-                    }
+                    }]
 
                     consumer.predict(x, model_name='modelname', model_version=0,
                                      untile=untile)

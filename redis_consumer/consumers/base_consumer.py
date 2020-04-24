@@ -252,7 +252,7 @@ class TensorFlowServingConsumer(Consumer):
         return client
 
     def grpc_image(self, img, model_name, model_version, model_shape,
-                   in_tensor_dtype='DT_FLOAT'):
+                   in_tensor_name='image', in_tensor_dtype='DT_FLOAT'):
 
         in_tensor_dtype = str(in_tensor_dtype).upper()
 
@@ -268,7 +268,7 @@ class TensorFlowServingConsumer(Consumer):
             # but the model rejects the type, wants "int" or "long"
             img = img.astype('int')
 
-        req_data = [{'in_tensor_name': settings.TF_TENSOR_NAME,
+        req_data = [{'in_tensor_name': in_tensor_name,
                      'in_tensor_dtype': in_tensor_dtype,
                      'data': img}]
 
@@ -295,6 +295,27 @@ class TensorFlowServingConsumer(Consumer):
                           0, finished)
         return results
 
+    def parse_model_metadata(self, metadata):
+        """Parse the metadata response and return list of input metadata.
+
+        Args:
+            metadata (dict): model metadata response
+
+        Returns:
+            list: List of metadata objects for each defined input.
+        """
+        # TODO: handle multiple inputs in a general way.
+        all_metadata = []
+        for k, v in metadata.items():
+            shape = ','.join([d['size'] for d in v['tensorShape']['dim']])
+            data = {
+                'in_tensor_name': k,
+                'in_tensor_dtype': v['dtype'],
+                'in_tensor_shape': shape,
+            }
+            all_metadata.append(data)
+        return all_metadata
+
     def get_model_metadata(self, model_name, model_version):
         """Check Redis for saved model metadata or get from TensorFlow Serving.
 
@@ -309,12 +330,11 @@ class TensorFlowServingConsumer(Consumer):
         model = '{}:{}'.format(model_name, model_version)
         self.logger.debug('Getting model metadata for model %s.', model)
 
-        fields = ['in_tensor_dtype', 'in_tensor_shape']
-        response = self.redis.hmget(model, *fields)
+        response = self.redis.hget(model, 'metadata')
 
-        if all(response):
+        if response:
             self.logger.debug('Got cached metadata for model %s.', model)
-            return dict(zip(fields, response))
+            return self.parse_model_metadata(json.loads(response))
 
         # No response! The key was expired. Get from TFS and update it.
         start = timeit.default_timer()
@@ -323,20 +343,15 @@ class TensorFlowServingConsumer(Consumer):
 
         try:
             inputs = model_metadata['metadata']['signature_def']['signatureDef']
-            inputs = inputs['serving_default']['inputs'][settings.TF_TENSOR_NAME]
-
-            dtype = inputs['dtype']
-            shape = ','.join([d['size'] for d in inputs['tensorShape']['dim']])
-
-            parsed_metadata = dict(zip(fields, [dtype, shape]))
+            inputs = inputs['serving_default']['inputs']
 
             finished = timeit.default_timer() - start
             self.logger.debug('Got model metadata for %s in %s seconds.',
                               model, finished)
 
-            self.redis.hmset(model, parsed_metadata)
+            self.redis.hset(model, 'metadata', json.dumps(inputs))
             self.redis.expire(model, settings.METADATA_EXPIRE_TIME)
-            return parsed_metadata
+            return self.parse_model_metadata(inputs)
         except (KeyError, IndexError) as err:
             self.logger.error('Malformed metadata: %s', model_metadata)
             raise err
@@ -346,6 +361,7 @@ class TensorFlowServingConsumer(Consumer):
                            model_name,
                            model_version,
                            model_shape,
+                           model_input_name='image',
                            model_dtype='DT_FLOAT',
                            untile=True,
                            stride_ratio=0.75):
@@ -357,6 +373,7 @@ class TensorFlowServingConsumer(Consumer):
             model_version (str): model version to query.
             model_shape (tuple): shape of the model's expected input.
             model_dtype (str): dtype of the model's input array.
+            model_input_name (str): name of the model's input array.
             untile (bool): untiles results back to image shape if True.
             stride_ratio (float): amount to overlap between tiles, (0, 1].
 
@@ -385,8 +402,10 @@ class TensorFlowServingConsumer(Consumer):
         results = []
         for t in range(0, tiles.shape[0], batch_size):
             batch = tiles[t:t + batch_size]
-            output = self.grpc_image(batch, model_name, model_version,
-                                     model_shape, in_tensor_dtype=model_dtype)
+            output = self.grpc_image(
+                batch, model_name, model_version, model_shape,
+                in_tensor_name=model_input_name,
+                in_tensor_dtype=model_dtype)
 
             if not isinstance(output, list):
                 output = [output]
@@ -411,6 +430,7 @@ class TensorFlowServingConsumer(Consumer):
                              model_name,
                              model_version,
                              model_shape,
+                             model_input_name='image',
                              model_dtype='DT_FLOAT'):
         """Pad an image that is too small for the model, and unpad the results.
 
@@ -420,6 +440,7 @@ class TensorFlowServingConsumer(Consumer):
             model_name (str): hosted model to send image data.
             model_version (str): model version to query.
             model_shape (tuple): shape of the model's expected input.
+            model_input_name (str): name of the model's input array.
             model_dtype (str): dtype of the model's input array.
 
         Returns:
@@ -447,7 +468,8 @@ class TensorFlowServingConsumer(Consumer):
 
         padded_img = np.pad(image, pad_width, 'reflect')
         image = self.grpc_image(padded_img, model_name, model_version,
-                                model_shape, in_tensor_dtype=model_dtype)
+                                model_shape, in_tensor_name=model_input_name,
+                                in_tensor_dtype=model_dtype)
 
         image = [image] if not isinstance(image, list) else image
 
@@ -467,6 +489,14 @@ class TensorFlowServingConsumer(Consumer):
         start = timeit.default_timer()
         model_metadata = self.get_model_metadata(model_name, model_version)
 
+        # TODO: generalize for more than a single input.
+        if len(model_metadata) > 1:
+            raise ValueError('Model %s:%s has %s required inputs but was only '
+                             'given %s inputs.', model_name, model_version,
+                             len(model_metadata), len(image))
+        model_metadata = model_metadata[0]
+
+        model_input_name = model_metadata['in_tensor_name']
         model_dtype = model_metadata['in_tensor_dtype']
 
         model_shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
@@ -493,17 +523,18 @@ class TensorFlowServingConsumer(Consumer):
                 image.shape[image.ndim - 2] < size_y):
             # image is too small for the model, pad the image.
             image = self._predict_small_image(image, model_name, model_version,
-                                              model_shape, model_dtype)
+                                              model_shape, model_input_name,
+                                              model_dtype)
         elif (image.shape[image.ndim - 3] > size_x or
               image.shape[image.ndim - 2] > size_y):
             # image is too big for the model, multiple images are tiled.
             image = self._predict_big_image(image, model_name, model_version,
-                                            model_shape, model_dtype,
-                                            untile=untile)
+                                            model_shape, model_input_name,
+                                            model_dtype, untile=untile)
         else:
             # image size is perfect, just send it to the model
             image = self.grpc_image(image, model_name, model_version,
-                                    model_shape, model_dtype)
+                                    model_shape, model_input_name, model_dtype)
 
         if isinstance(image, list):
             output_shapes = [i.shape for i in image]
