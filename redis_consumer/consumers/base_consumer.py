@@ -361,8 +361,8 @@ class TensorFlowServingConsumer(Consumer):
                            model_name,
                            model_version,
                            model_shape,
-                           model_dtype='DT_FLOAT',
                            model_input_name='image',
+                           model_dtype='DT_FLOAT',
                            untile=True,
                            stride_ratio=0.75):
         """Use tile_image to tile image for the model and untile the results.
