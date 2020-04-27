@@ -156,6 +156,7 @@ class GoogleStorage(Storage):
             urllib3.exceptions.MaxRetryError,
             urllib3.exceptions.NewConnectionError,
             requests.exceptions.ConnectionError,
+            requests.exceptions.ReadTimeout,
             auth_exceptions.RefreshError,
             auth_exceptions.TransportError,
         )
