@@ -81,14 +81,21 @@ class Storage(object):
         download_dir: path to local directory to save downloaded files
     """
 
-    def __init__(self, bucket, download_dir=DOWNLOAD_DIR, backoff=None):
+    def __init__(self, bucket,
+                 download_dir=DOWNLOAD_DIR,
+                 max_backoff=60):
         self.bucket = bucket
         self.download_dir = download_dir
         self.output_dir = 'output'
-        if backoff is None:
-            backoff = random.randint(10, 31) / 10.0
-        self.backoff = backoff
         self.logger = logging.getLogger(str(self.__class__.__name__))
+        self.max_backoff = max_backoff
+
+    def get_backoff(self, attempts):
+        """Get backoff time based on previous number of attempts"""
+        milis = random.randint(1, 1000) / 1000
+        exponential = 2 ** attempts + milis
+        backoff = min(exponential, self.max_backoff)
+        return backoff
 
     def get_storage_client(self):
         """Returns the storage API client"""
@@ -144,8 +151,8 @@ class GoogleStorage(Storage):
         download_dir: path to local directory to save downloaded files
     """
 
-    def __init__(self, bucket, download_dir=DOWNLOAD_DIR, backoff=1.5):
-        super(GoogleStorage, self).__init__(bucket, download_dir, backoff)
+    def __init__(self, bucket, download_dir=DOWNLOAD_DIR, max_backoff=60):
+        super(GoogleStorage, self).__init__(bucket, download_dir, max_backoff)
         self.bucket_url = 'www.googleapis.com/storage/v1/b/{}/o'.format(bucket)
         self._network_errors = (
             socket.gaierror,
@@ -169,10 +176,11 @@ class GoogleStorage(Storage):
                 return google_storage.Client()
             except OSError as err:
                 if attempts < 3:
+                    backoff = self.get_backoff(attempts)
                     attempts += 1
                     self.logger.warning('Encountered error while creating '
                                         'storage client: %s', err)
-                    time.sleep(self.backoff)
+                    time.sleep(backoff)
                 else:
                     raise err
 
@@ -186,6 +194,7 @@ class GoogleStorage(Storage):
             url: Public URL to download the file
         """
         retrying = True
+        attempts = 0
         while retrying:
             try:
                 client = self.get_storage_client()
@@ -196,10 +205,12 @@ class GoogleStorage(Storage):
                 return blob.public_url
 
             except self._network_errors as err:
+                backoff = self.get_backoff(attempts)
                 self.logger.warning('Encountered %s: %s.  Backing off for %s '
                                     'seconds...', type(err).__name__, err,
-                                    self.backoff)
-                time.sleep(self.backoff)
+                                    backoff)
+                time.sleep(backoff)
+                attempts += 1
                 retrying = True  # Unneccessary but explicit
 
             except Exception as err:
@@ -220,6 +231,7 @@ class GoogleStorage(Storage):
         start = timeit.default_timer()
         self.logger.debug('Uploading %s to bucket %s.', filepath, self.bucket)
         retrying = True
+        attempts = 0
         while retrying:
             client = self.get_storage_client()
             try:
@@ -238,10 +250,12 @@ class GoogleStorage(Storage):
                 retrying = False
                 return dest, blob.public_url
             except self._network_errors as err:
+                backoff = self.get_backoff(attempts)
                 self.logger.warning('Encountered %s: %s.  Backing off for %s '
                                     'seconds...', type(err).__name__, err,
-                                    self.backoff)
-                time.sleep(self.backoff)
+                                    backoff)
+                time.sleep(backoff)
+                attempts += 1
                 retrying = True  # Unneccessary but explicit
 
             except Exception as err:
@@ -263,6 +277,7 @@ class GoogleStorage(Storage):
         dest = self.get_download_path(filepath, download_dir)
         self.logger.debug('Downloading %s to %s.', filepath, dest)
         retrying = True
+        attempts = 0
         while retrying:
             client = self.get_storage_client()
             try:
@@ -275,10 +290,12 @@ class GoogleStorage(Storage):
                 return dest
 
             except self._network_errors as err:
+                backoff = self.get_backoff(attempts)
                 self.logger.warning('Encountered %s: %s.  Backing off for %s '
                                     'seconds and...', type(err).__name__, err,
-                                    self.backoff)
-                time.sleep(self.backoff)
+                                    backoff)
+                time.sleep(backoff)
+                attempts += 1
                 retrying = True  # Unneccessary but explicit
 
             except Exception as err:
@@ -296,8 +313,8 @@ class S3Storage(Storage):
         download_dir: path to local directory to save downloaded files
     """
 
-    def __init__(self, bucket, download_dir=DOWNLOAD_DIR, backoff=1.5):
-        super(S3Storage, self).__init__(bucket, download_dir, backoff)
+    def __init__(self, bucket, download_dir=DOWNLOAD_DIR, max_backoff=60):
+        super(S3Storage, self).__init__(bucket, download_dir, max_backoff)
         self.bucket_url = 's3.amazonaws.com/{}'.format(bucket)
 
     def get_storage_client(self):

@@ -39,10 +39,16 @@ from redis_consumer import storage
 from redis_consumer import utils
 
 
+# global var forcing storage clients to throw an error
+global storage_error
+storage_error = True
+
+global critical_error
+critical_error = False
+
+
 class DummyGoogleClient(object):
     public_url = 'public-url'
-    fail_tolerance = 2
-    fail_count = 0
 
     def get_bucket(self, *_, **__):
         return self
@@ -51,18 +57,33 @@ class DummyGoogleClient(object):
         return self
 
     def make_public(self, *_, **__):
+        global storage_error
+        global critical_error
+
+        if critical_error:
+            raise Exception('critical-error-thrown-on-purpose')
+
+        if storage_error:
+            storage_error = False
+            raise TooManyRequests('thrown-on-purpose')
+        storage_error = True
         return self
 
     def upload_from_filename(self, dest, **_):
-        # if self.fail_count < self.fail_tolerance:
-        #     self.fail_count += 1
-        #     raise TooManyRequests('thrown-on-purpose')
+        global storage_error
+
+        if storage_error:
+            storage_error = False
+            raise TooManyRequests('thrown-on-purpose')
+        storage_error = True
         assert os.path.exists(dest)
 
     def download_to_filename(self, dest, **_):
-        # if self.fail_count < self.fail_tolerance:
-        #     self.fail_count += 1
-        #     raise TooManyRequests('thrown-on-purpose')
+        global storage_error
+        if storage_error:
+            storage_error = False
+            raise TooManyRequests('thrown-on-purpose')
+        storage_error = True
         assert dest.endswith('/test/file.txt')
 
 
@@ -91,6 +112,18 @@ def test_get_client():
 
 class TestStorage(object):
 
+    def test_get_backoff(self):
+        maximum_backoff = 30
+        client = storage.Storage('bucket', maximum_backoff=maximum_backoff)
+        backoff = client.get_backoff(attempts=0)
+        assert 1 < backoff < 2
+
+        backoff = client.get_backoff(attempts=3)
+        assert 8 < backoff < 9
+
+        backoff = client.get_backoff(attempts=5)
+        assert backoff == maximum_backoff
+
     def test_get_download_path(self):
         with utils.get_tempdir() as tempdir:
             bucket = 'test-bucket'
@@ -110,12 +143,22 @@ class TestGoogleStorage(object):
 
     def test_get_public_url(self):
         with utils.get_tempdir() as tempdir:
-            bucket = 'test-bucket'
-            stg_cls = storage.GoogleStorage
-            stg_cls.get_storage_client = DummyGoogleClient
-            stg = stg_cls(bucket, tempdir, backoff=0)
-            url = stg.get_public_url('test')
-            assert url == 'public-url'
+            with tempfile.NamedTemporaryFile(dir=tempdir) as temp:
+                bucket = 'test-bucket'
+                stg_cls = storage.GoogleStorage
+                stg_cls.get_storage_client = DummyGoogleClient
+                stg = stg_cls(bucket, tempdir, backoff=0)
+                stg.get_backoff = lambda x: 0
+                url = stg.get_public_url(temp.name)
+                assert url == 'public-url'
+
+                # test bad filename
+                global critical_error
+                with pytest.raises(Exception):
+                    critical_error = True
+                    # client.make_public() raises error.
+                    stg.get_public_url('file-does-not-exist')
+                critical_error = False
 
     def test_upload(self):
         with utils.get_tempdir() as tempdir:
@@ -124,6 +167,7 @@ class TestGoogleStorage(object):
                 stg_cls = storage.GoogleStorage
                 stg_cls.get_storage_client = DummyGoogleClient
                 stg = stg_cls(bucket, tempdir, backoff=0)
+                stg.get_backoff = lambda x: 0
 
                 # test succesful upload
                 dest, url = stg.upload(temp.name)
@@ -147,6 +191,7 @@ class TestGoogleStorage(object):
             stg_cls = storage.GoogleStorage
             stg_cls.get_storage_client = DummyGoogleClient
             stg = stg_cls(bucket, tempdir, backoff=0)
+            stg.get_backoff = lambda x: 0
 
             # test succesful download
             dest = stg.download(remote_file, tempdir)
