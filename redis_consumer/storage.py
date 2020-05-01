@@ -150,7 +150,9 @@ class GoogleStorage(Storage):
         download_dir: path to local directory to save downloaded files
     """
 
-    def __init__(self, bucket, download_dir=DOWNLOAD_DIR, max_backoff=60):
+    def __init__(self, bucket,
+                 download_dir=settings.DOWNLOAD_DIR,
+                 max_backoff=settings.STORAGE_MAX_BACKOFF):
         super(GoogleStorage, self).__init__(bucket, download_dir, max_backoff)
         self.bucket_url = 'www.googleapis.com/storage/v1/b/{}/o'.format(bucket)
         self._network_errors = (
@@ -312,7 +314,9 @@ class S3Storage(Storage):
         download_dir: path to local directory to save downloaded files
     """
 
-    def __init__(self, bucket, download_dir=DOWNLOAD_DIR, max_backoff=60):
+    def __init__(self, bucket,
+                 download_dir=settings.DOWNLOAD_DIR,
+                 max_backoff=settings.STORAGE_MAX_BACKOFF):
         super(S3Storage, self).__init__(bucket, download_dir, max_backoff)
         self.bucket_url = 's3.amazonaws.com/{}'.format(bucket)
 
