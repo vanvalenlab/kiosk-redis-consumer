@@ -76,6 +76,7 @@ GRPC_RETRY_STATUSES = {
 REDIS_TIMEOUT = config('REDIS_TIMEOUT', default=3, cast=int)
 EMPTY_QUEUE_TIMEOUT = config('EMPTY_QUEUE_TIMEOUT', default=5, cast=int)
 DO_NOTHING_TIMEOUT = config('DO_NOTHING_TIMEOUT', default=0.5, cast=float)
+STORAGE_MAX_BACKOFF = config('STORAGE_MAX_BACKOFF', default=60, cast=float)
 
 # Cloud storage
 CLOUD_PROVIDER = config('CLOUD_PROVIDER', cast=str, default='gke').lower()

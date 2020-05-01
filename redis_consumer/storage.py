@@ -44,7 +44,6 @@ from google.auth import exceptions as auth_exceptions
 import requests
 
 from redis_consumer import settings
-from redis_consumer.settings import DOWNLOAD_DIR
 
 
 class StorageException(Exception):
@@ -82,8 +81,8 @@ class Storage(object):
     """
 
     def __init__(self, bucket,
-                 download_dir=DOWNLOAD_DIR,
-                 max_backoff=60):
+                 download_dir=settings.DOWNLOAD_DIR,
+                 max_backoff=settings.STORAGE_MAX_BACKOFF):
         self.bucket = bucket
         self.download_dir = download_dir
         self.output_dir = 'output'
