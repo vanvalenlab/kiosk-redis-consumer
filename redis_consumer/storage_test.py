@@ -113,8 +113,8 @@ def test_get_client():
 class TestStorage(object):
 
     def test_get_backoff(self):
-        maximum_backoff = 30
-        client = storage.Storage('bucket', maximum_backoff=maximum_backoff)
+        max_backoff = 30
+        client = storage.Storage('bucket', max_backoff=max_backoff)
         backoff = client.get_backoff(attempts=0)
         assert 1 < backoff < 2
 
@@ -122,7 +122,7 @@ class TestStorage(object):
         assert 8 < backoff < 9
 
         backoff = client.get_backoff(attempts=5)
-        assert backoff == maximum_backoff
+        assert backoff == max_backoff
 
     def test_get_download_path(self):
         with utils.get_tempdir() as tempdir:
@@ -147,7 +147,7 @@ class TestGoogleStorage(object):
                 bucket = 'test-bucket'
                 stg_cls = storage.GoogleStorage
                 stg_cls.get_storage_client = DummyGoogleClient
-                stg = stg_cls(bucket, tempdir, backoff=0)
+                stg = stg_cls(bucket, tempdir)
                 stg.get_backoff = lambda x: 0
                 url = stg.get_public_url(temp.name)
                 assert url == 'public-url'
@@ -166,7 +166,7 @@ class TestGoogleStorage(object):
                 bucket = 'test-bucket'
                 stg_cls = storage.GoogleStorage
                 stg_cls.get_storage_client = DummyGoogleClient
-                stg = stg_cls(bucket, tempdir, backoff=0)
+                stg = stg_cls(bucket, tempdir)
                 stg.get_backoff = lambda x: 0
 
                 # test succesful upload
@@ -190,7 +190,7 @@ class TestGoogleStorage(object):
             bucket = 'test-bucket'
             stg_cls = storage.GoogleStorage
             stg_cls.get_storage_client = DummyGoogleClient
-            stg = stg_cls(bucket, tempdir, backoff=0)
+            stg = stg_cls(bucket, tempdir)
             stg.get_backoff = lambda x: 0
 
             # test succesful download
