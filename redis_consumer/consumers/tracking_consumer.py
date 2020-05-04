@@ -167,10 +167,11 @@ class TrackingConsumer(TensorFlowServingConsumer):
         self.logger.debug('tiffstack num_frames %s.', num_frames)
 
         with utils.get_tempdir() as tempdir:
+            uid = uuid.uuid4().hex
             for (i, img) in enumerate(tiff_stack):
                 # make a file name for this frame
-                segment_fname = '{}-tracking-frame-{}-{}.tif'.format(
-                    hvalues.get('original_name'), i, uuid.uuid4().hex)
+                segment_fname = '{}-{}-tracking-frame-{}.tif'.format(
+                    uid, hvalues.get('original_name'), i)
                 segment_local_path = os.path.join(tempdir, segment_fname)
 
                 # upload it
