@@ -572,13 +572,15 @@ class ZipFileConsumer(Consumer):
     def _upload_archived_images(self, hvalues, redis_hash):
         """Extract all image files and upload them to storage and redis"""
         all_hashes = set()
+        archive_uuid = uuid.uuid4().hex
         with utils.get_tempdir() as tempdir:
             fname = self.storage.download(hvalues.get('input_file_name'), tempdir)
             image_files = utils.get_image_files_from_dir(fname, tempdir)
             for i, imfile in enumerate(image_files):
+
                 clean_imfile = settings._strip(imfile.replace(tempdir, ''))
                 # Save each result channel as an image file
-                subdir = os.path.dirname(clean_imfile)
+                subdir = os.path.join(archive_uuid, os.path.dirname(clean_imfile))
                 dest, _ = self.storage.upload(imfile, subdir=subdir)
 
                 os.remove(imfile)  # remove the file to save some memory
