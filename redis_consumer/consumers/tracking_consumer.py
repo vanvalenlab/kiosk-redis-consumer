@@ -138,7 +138,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
         raw = utils.get_image(os.path.join(subdir, fname))
 
         # remove the last dimensions added by `get_image`
-        tiff_stack = np.squeeze(raw, -1)  # TODO: required? check the ndim?
+        tiff_stack = np.squeeze(raw, -1)
         if len(tiff_stack.shape) != 3:
             raise ValueError('This tiff file has shape {}, which is not 3 '
                              'dimensions. Tracking can only be done on images '
