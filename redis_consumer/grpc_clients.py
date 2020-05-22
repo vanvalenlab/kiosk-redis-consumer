@@ -240,7 +240,7 @@ class TrackingClient(PredictClient):
                 d = {
                     'in_tensor_name': 'input{}'.format(i),
                     'in_tensor_dtype': 'DT_FLOAT',
-                    'data': np.expand_dims(model_input[frame], axis=0)
+                    'data': model_input[[frame]]
                 }
                 request_data.append(d)
 
