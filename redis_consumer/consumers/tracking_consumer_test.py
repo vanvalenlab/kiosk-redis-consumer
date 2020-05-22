@@ -31,10 +31,10 @@ from __future__ import print_function
 import os
 import copy
 
+import pytest
+
 import numpy as np
 from skimage.external import tifffile as tiff
-
-import pytest
 
 from redis_consumer import consumers
 from redis_consumer import settings
@@ -207,6 +207,20 @@ class TestTrackingConsumer(object):
         assert consumer.is_valid_hash('track:1234567890:file.tiff') is True
         assert consumer.is_valid_hash('track:1234567890:file.trk') is True
         assert consumer.is_valid_hash('track:1234567890:file.trks') is True
+
+    def test__load_data(self, tmpdir):
+        queue = 'track'
+        items = ['item%s' % x for x in range(1, 4)]
+        redis_hash = 'track:1234567890:file.trks'
+        storage = DummyStorage()
+        redis_client = DummyRedis(items)
+        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
+
+        # test bad filetype
+        with pytest.raises(ValueError):
+            consumer._load_data(redis_hash, str(tmpdir), 'data.npz')
+
+        # TODO: test successful workflow
 
     def test__get_tracker(self):
         queue = 'track'
