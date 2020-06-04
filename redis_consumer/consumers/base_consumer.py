@@ -116,8 +116,13 @@ class Consumer(object):
             self.logger.warning('Found invalid hash in %s: `%s` with '
                                 'hvals: %s', self.queue, redis_hash,
                                 self.redis.hgetall(redis_hash))
-            # self.redis.lrem(self.processing_queue, 1, redis_hash)
-            self._put_back_hash(redis_hash)
+            # self._put_back_hash(redis_hash)
+            self.redis.lrem(self.processing_queue, 1, redis_hash)
+            # Update redis with failed status
+            self.update_key(redis_hash, {
+                'status': self.failed_status,
+                'reason': 'Invalid filetype for "%s" job.'.format(self.queue),
+            })
 
     def _handle_error(self, err, redis_hash):
         """Update redis with failure information, and log errors.
