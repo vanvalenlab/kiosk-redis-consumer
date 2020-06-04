@@ -194,8 +194,9 @@ class TestConsumer(object):
 
         rhash = consumer.get_redis_hash()
         assert rhash == items[0]
-        assert redis_client.work_queue == items[1:]
-        assert redis_client.processing_queue == items[0:1]
+        assert not redis_client.work_queue
+        assert len(redis_client.processing_queue)
+        assert redis_client.processing_queue == [rhash]
 
     def test_purge_processing_queue(self):
         queue_name = 'q'
