@@ -233,27 +233,31 @@ class TrackingClient(PredictClient):
                          [d.shape for d in data],
                          self.host, self.model_name, self.model_version)
 
-        predictions = []
-        for frame in range(data[0].shape[0]):
+        batch_size = settings.TF_MAX_BATCH_SIZE
+        results = []
+        for frame in range(0, data[0].shape[0], batch_size):
             request_data = []
             for i, model_input in enumerate(data):
                 d = {
                     'in_tensor_name': 'input{}'.format(i),
                     'in_tensor_dtype': 'DT_FLOAT',
-                    'data': model_input[[frame]]
+                    'data': model_input[frame:frame + batch_size]
                 }
                 request_data.append(d)
 
             response_dict = super(TrackingClient, self).predict(
                 request_data, request_timeout)
 
-            # Select only last dimension in order to drop batch axis
-            predictions.append(response_dict['prediction'][-1])
+            output = response_dict['prediction']
+            if len(results) == 0:
+                results = output
+            else:
+                results = np.vstack((results, output))
 
-        self.logger.info('Predicted on %s frames in %s seconds.',
+        self.logger.info('Tracked %s input pairs in %s seconds.',
                          data[0].shape[0], timeit.default_timer() - t)
 
-        return np.array(predictions)
+        return np.array(results)
 
     def progress(self, progress):
         """Update the internal state regarding progress
