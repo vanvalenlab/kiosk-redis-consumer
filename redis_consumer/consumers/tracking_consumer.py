@@ -296,12 +296,15 @@ class TrackingConsumer(TensorFlowServingConsumer):
         tracker = self._get_tracker(redis_hash, hvalues, data['X'], data['y'])
 
         self.logger.debug('Trying to track...')
+        self.update_key(redis_hash, {'status': 'predicting'})
         tracker.track_cells()
         self.logger.debug('Tracking done!')
 
+        self.update_key(redis_hash, {'status': 'post-processing'})
         # Post-process and save the output file
         tracked_data = tracker.postprocess()
 
+        self.update_key(redis_hash, {'status': 'saving-results'})
         with utils.get_tempdir() as tempdir:
             # Save lineage data to JSON file
             lineage_file = os.path.join(tempdir, 'lineage.json')
