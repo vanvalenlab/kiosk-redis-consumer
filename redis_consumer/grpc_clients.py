@@ -233,15 +233,14 @@ class TrackingClient(PredictClient):
                          [d.shape for d in data],
                          self.host, self.model_name, self.model_version)
 
-        batch_size = settings.TF_MAX_BATCH_SIZE
         results = []
-        for frame in range(0, data[0].shape[0], batch_size):
+        for b in range(0, data[0].shape[0], settings.TF_MAX_BATCH_SIZE):
             request_data = []
             for i, model_input in enumerate(data):
                 d = {
                     'in_tensor_name': 'input{}'.format(i),
                     'in_tensor_dtype': 'DT_FLOAT',
-                    'data': model_input[frame:frame + batch_size]
+                    'data': model_input[b:b + settings.TF_MAX_BATCH_SIZE]
                 }
                 request_data.append(d)
 
