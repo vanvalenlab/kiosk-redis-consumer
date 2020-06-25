@@ -43,7 +43,7 @@ CONSUMERS = {
     'image': ImageFileConsumer,
     'zip': ZipFileConsumer,
     'tracking': TrackingConsumer,
-    'mibi':MibiConsumer,
+    'mibi': MibiConsumer,
     # TODO: Add future custom Consumer classes here.
 }
 

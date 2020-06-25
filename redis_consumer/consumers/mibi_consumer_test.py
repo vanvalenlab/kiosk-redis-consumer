@@ -166,7 +166,7 @@ class DummyStorage(object):
         return True
 
 
-class TestImageFileConsumer(object):
+class TestMibiConsumer(object):
     # pylint: disable=R0201
     def test_is_valid_hash(self):
         items = ['item%s' % x for x in range(1, 4)]
@@ -191,7 +191,7 @@ class TestImageFileConsumer(object):
         redis_client = DummyRedis(prefix, status)
         storage = DummyStorage()
 
-        consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
+        consumer = consumers.MibiConsumer(redis_client, storage, prefix)
 
         def _handle_error(err, rhash):
             raise err
@@ -252,7 +252,7 @@ class TestImageFileConsumer(object):
             'output_file_name': 'test_image.tiff'
         }
         redis_client.hmset = lambda x, y: True
-        consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
+        consumer = consumers.MibiConsumer(redis_client, storage, prefix)
         consumer._handle_error = _handle_error
         consumer.get_model_metadata = make_model_metadata_of_size((1, 256, 256, 2))
         consumer.grpc_image = grpc_image
