@@ -41,10 +41,10 @@ from redis_consumer import utils
 from redis_consumer import settings
 
 
-def _get_image(img_h=300, img_w=300):
+def _get_image(frames=2, img_h=256, img_w=256):
     bias = np.random.rand(img_w, img_h) * 64
     variance = np.random.rand(img_w, img_h) * (255 - 64)
-    img = np.random.rand(img_w, img_h) * variance + bias
+    img = np.random.rand(frames, img_w, img_h) * variance + bias
     return img
 
 

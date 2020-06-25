@@ -112,8 +112,6 @@ class MibiConsumer(TensorFlowServingConsumer):
         # Preprocess image
         if image.ndim < 4:
             image = np.expand_dims(image, 0)
-        if image.ndim < 4:
-            image = np.expand_dims(image, -1)
         image = processing.phase_preprocess(image)
         image = np.squeeze(image)
         self.logger.debug('Shape after phase_preprocess is: %s', image.shape)
