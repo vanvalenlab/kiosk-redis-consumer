@@ -1,4 +1,4 @@
-# Copyright 2016-2020 The Van Valen Lab at the California Institute of
+ # Copyright 2016-2020 The Van Valen Lab at the California Institute of
 # Technology (Caltech), with support from the Paul Allen Family Foundation,
 # Google, & National Institutes of Health (NIH) under Grant U24CA224309-01.
 # All rights reserved.
@@ -118,12 +118,11 @@ METADATA_EXPIRE_TIME = config('METADATA_EXPIRE_TIME', default=30, cast=int)
 # Pre- and Post-processing settings
 PROCESSING_FUNCTIONS = {
     'pre': {
-        'normalize': processing.normalize
+        'normalize': processing.normalize,
     },
     'post': {
         'deepcell': processing.pixelwise,  # TODO: this is deprecated.
         'pixelwise': processing.pixelwise,
-        'mibi': processing.mibi,
         'watershed': processing.watershed,
         'retinanet': processing.retinanet_to_label_image,
         'retinanet-semantic': processing.retinanet_semantic_to_label_image,
@@ -157,11 +156,14 @@ SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
 LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', cast=str)
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 
+# MIBI model Settings
+MIBI_MODEL = config('MIBI_MODEL', default='NewMIBI:0', cast=str)
+
 # Set default models based on label type
 MODEL_CHOICES = {
     0: config('NUCLEAR_MODEL', default='NuclearSegmentation:0', cast=str),
     1: config('PHASE_MODEL', default='PhaseCytoSegmentation:0', cast=str),
-    2: config('CYTOPLASM_MODEL', default='FluoCytoSegmentation:0', cast=str)
+    2: config('CYTOPLASM_MODEL', default='FluoCytoSegmentation:0', cast=str),
 }
 
 POSTPROCESS_CHOICES = {
