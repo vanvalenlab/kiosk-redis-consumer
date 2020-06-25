@@ -118,12 +118,10 @@ class MibiConsumer(TensorFlowServingConsumer):
         self.update_key(redis_hash, {'status': 'predicting'})
         image = self.predict(image, model_name, model_version)
 
-        print('Image shape is: ', image.shape)
-
-
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
-        image = np.squeeze(processing.deep_watershed_mibi(image))
+        if isinstance(image, list):
+            image = np.squeeze(processing.deep_watershed_mibi(image))
         self.logger.debug('Shape after deep_watershed_mibi is: %s', image.shape)
 
         # Save the post-processed results to a file
