@@ -118,8 +118,7 @@ class MibiConsumer(TensorFlowServingConsumer):
         self.update_key(redis_hash, {'status': 'predicting'})
         image = self.predict(image, model_name, model_version)
 
-        print('pred shape is: ', image[0].shape)
-        print('Image length is: ', len(image))
+        print('Image shape is: ', image.shape)
 
 
         # Post-process model results
