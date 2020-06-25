@@ -254,7 +254,7 @@ class TestMibiConsumer(object):
         redis_client.hmset = lambda x, y: True
         consumer = consumers.MibiConsumer(redis_client, storage, prefix)
         consumer._handle_error = _handle_error
-        consumer.get_model_metadata = make_model_metadata_of_size((1, 256, 256, 2))
+        consumer.get_model_metadata = make_model_metadata_of_size((-1, 256, 256, 2))
         consumer.grpc_image = grpc_image
         result = consumer._consume(dummyhash)
         assert result == consumer.final_status
