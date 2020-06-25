@@ -107,8 +107,6 @@ class MibiConsumer(TensorFlowServingConsumer):
         image = np.concatenate(images, -1)
         self.logger.debug('Image shape after scaling is: %s', image.shape)
 
-        print('Image shape is: ', image.shape)
-
         # Preprocess image
         if image.ndim < 4:
             image = np.expand_dims(image, 0)
@@ -119,6 +117,10 @@ class MibiConsumer(TensorFlowServingConsumer):
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
         image = self.predict(image, model_name, model_version)
+
+        print('pred shape is: ', image[0].shape)
+        print('Image length is: ', len(image))
+
 
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
