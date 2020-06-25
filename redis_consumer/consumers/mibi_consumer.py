@@ -108,7 +108,7 @@ class MibiConsumer(TensorFlowServingConsumer):
         self.logger.debug('Image shape after scaling is: %s', image.shape)
 
         # Preprocess image
-        if image.ndims < 4:
+        if image.ndim < 4:
             image = np.expand_dims(image, 0)
         image = processing.phase_preprocess(image)
         image = np.squeeze(image)
