@@ -107,6 +107,8 @@ class MibiConsumer(TensorFlowServingConsumer):
         image = np.concatenate(images, -1)
         self.logger.debug('Image shape after scaling is: %s', image.shape)
 
+        print('Image shape is: ', image.shape)
+
         # Preprocess image
         if image.ndim < 4:
             image = np.expand_dims(image, 0)

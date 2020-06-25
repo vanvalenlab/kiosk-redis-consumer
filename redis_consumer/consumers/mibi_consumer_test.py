@@ -219,9 +219,9 @@ class TestMibiConsumer(object):
         dummyhash = '{}:test.tiff:{}'.format(prefix, status)
 
         model_shapes = [
-            (-1, 2, 512, 512),  # image too small, pad
-            (-1, 2, 256, 256),  # image is exactly the right size
-            (-1, 2, 128, 128),  # image too big, tile
+            (-1, 512, 512, 2),  # image too small, pad
+            (-1, 256, 256, 2),  # image is exactly the right size
+            (-1, 128, 128, 2),  # image too big, tile
         ]
 
         consumer._handle_error = _handle_error
