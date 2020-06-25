@@ -125,9 +125,13 @@ class MibiConsumer(TensorFlowServingConsumer):
         if isinstance(image, list):
             if len(image) == 4:
                 image = np.squeeze(processing.deep_watershed_mibi(image))
-            else
+            else:
+                self.logger.warning('Output length was %s, should have been 4')
                 image = np.asarray(image)
-        
+        else:
+            image = image
+            self.logger.warning('Output was not in the form of a list)
+
         self.logger.debug('Shape after deep_watershed_mibi is: %s', image.shape)
 
         # Save the post-processed results to a file
