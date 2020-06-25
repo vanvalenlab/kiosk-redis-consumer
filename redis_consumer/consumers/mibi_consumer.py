@@ -118,6 +118,8 @@ class MibiConsumer(TensorFlowServingConsumer):
         self.update_key(redis_hash, {'status': 'predicting'})
         image = self.predict(image, model_name, model_version)
 
+        print('image type is: ', type(image))
+
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
         if isinstance(image, list):
