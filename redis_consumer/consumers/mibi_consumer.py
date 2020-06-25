@@ -130,7 +130,7 @@ class MibiConsumer(TensorFlowServingConsumer):
                 image = np.asarray(image)
         else:
             image = image
-            self.logger.warning('Output was not in the form of a list)
+            self.logger.warning('Output was not in the form of a list')
 
         self.logger.debug('Shape after deep_watershed_mibi is: %s', image.shape)
 
