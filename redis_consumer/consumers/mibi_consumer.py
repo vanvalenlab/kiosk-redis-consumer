@@ -119,34 +119,13 @@ class MibiConsumer(TensorFlowServingConsumer):
         image = np.squeeze(image)
         self.logger.debug('Shape after phase_preprocess is: %s', image.shape)
 
-        print('Image shape prior to predict is: ', image.shape)
-
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
         image = self.predict(image, model_name, model_version)
 
-        if isinstance(image, list):
-            print('Predictions are as list, length is: ', len(image))
-
-        else:
-            print('Predictions are instead type: ', type(image))
-            print('Size of ', type(image), ' is: ', image.shape)
-
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
-        # if isinstance(image, list):
-        #    if len(image) == 4:
         image = np.squeeze(processing.deep_watershed_mibi(image))
-        #    else:
-        #        print('length of image was %s', len(image))
-        #        self.logger.warning('Output length was %s, expected 4', len(image))
-        #        image = np.squeeze(processing.deep_watershed_mibi(image))
-        #        image = np.asarray(image)
-        # else:
-        #    image = image
-            #image = np.squeeze(processing.deep_watershed_mibi(image))
-        #    self.logger.warning('Output was not in the form of a list')
-
         self.logger.debug('Shape after deep_watershed_mibi is: %s', image.shape)
 
         # Save the post-processed results to a file
