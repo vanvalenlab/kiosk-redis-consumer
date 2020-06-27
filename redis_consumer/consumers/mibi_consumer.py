@@ -128,16 +128,16 @@ class MibiConsumer(TensorFlowServingConsumer):
 
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
-        if isinstance(image, list):
-            if len(image) == 4:
-                image = np.squeeze(processing.deep_watershed_mibi(image))
-            else:
-                self.logger.warning('Output length was %s, expected 4')
-                image = np.asarray(image)
-        else:
-            # image = image
+        #if isinstance(image, list):
+        if len(image) == 4:
             image = np.squeeze(processing.deep_watershed_mibi(image))
-            self.logger.warning('Output was not in the form of a list')
+        else:
+            self.logger.warning('Output length was %s, expected 4')
+            image = np.asarray(image)
+        #else:
+            # image = image
+            #image = np.squeeze(processing.deep_watershed_mibi(image))
+            #self.logger.warning('Output was not in the form of a list')
 
         self.logger.debug('Shape after deep_watershed_mibi is: %s', image.shape)
 
