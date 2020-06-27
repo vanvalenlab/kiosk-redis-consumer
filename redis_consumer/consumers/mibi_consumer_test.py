@@ -222,26 +222,20 @@ class TestMibiConsumer(object):
 
         dummyhash = '{}:new.tiff:{}'.format(prefix, status)
 
-        model_shapes = [
-            (-1, 512, 512, 2),  # image too small, pad
-            (-1, 256, 256, 2),  # image is exactly the right size
-            (-1, 128, 128, 2),  # image too big, tile
-        ]
+        model_shape = (-1, 256, 256, 2)
 
         consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image
 
-        for model_shape in model_shapes:
+        consumer.get_model_metadata = \
+            make_model_metadata_of_size(model_shape)
 
-            consumer.get_model_metadata = \
-                make_model_metadata_of_size(model_shape)
-
-            result = consumer._consume(dummyhash)
-            assert result == consumer.final_status
-            # test with a finished hash
-            result = consumer._consume('{}:test.tiff:{}'.format(
-                prefix, consumer.final_status))
-            assert result == consumer.final_status
+        result = consumer._consume(dummyhash)
+        assert result == consumer.final_status
+        # test with a finished hash
+        result = consumer._consume('{}:test.tiff:{}'.format(
+            prefix, consumer.final_status))
+        assert result == consumer.final_status
 
         # test with model_name and model_version
         redis_client.hgetall = lambda x: {
