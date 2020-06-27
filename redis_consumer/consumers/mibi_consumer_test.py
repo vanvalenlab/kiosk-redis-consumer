@@ -186,10 +186,10 @@ class TestMibiConsumer(object):
 
     def test__consume(self):
         # pylint: disable=W0613
-        prefix = 'predict'
+        prefix = 'mibi'
         status = 'new'
-        redis_client = DummyRedis(prefix, status)
         storage = DummyStorage()
+        redis_client = DummyRedis(prefix, status)
 
         consumer = consumers.MibiConsumer(redis_client, storage, prefix)
 
@@ -216,30 +216,28 @@ class TestMibiConsumer(object):
 
             return get_model_metadata
 
-        dummyhash = '{}:test.tiff:{}'.format(prefix, status)
+        dummyhash = '{}:new.tiff:{}'.format(prefix, status)
 
         model_shapes = [
-            # (-1, 512, 512, 2),  # image too small, pad
+            (-1, 512, 512, 2),  # image too small, pad
             (-1, 256, 256, 2),  # image is exactly the right size
-            # (-1, 128, 128, 2),  # image too big, tile
+            (-1, 128, 128, 2),  # image too big, tile
         ]
 
         consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image
 
         for model_shape in model_shapes:
-            for grpc_func in (grpc_image, grpc_image_list):
 
-                consumer.grpc_image = grpc_func
-                consumer.get_model_metadata = \
-                    make_model_metadata_of_size(model_shape)
+            consumer.get_model_metadata = \
+                make_model_metadata_of_size(model_shape)
 
-                result = consumer._consume(dummyhash)
-                assert result == consumer.final_status
-                # test with a finished hash
-                result = consumer._consume('{}:test.tiff:{}'.format(
-                    prefix, consumer.final_status))
-                assert result == consumer.final_status
+            result = consumer._consume(dummyhash)
+            assert result == consumer.final_status
+            # test with a finished hash
+            result = consumer._consume('{}:test.tiff:{}'.format(
+                prefix, consumer.final_status))
+            assert result == consumer.final_status
 
         # test with model_name and model_version
         redis_client.hgetall = lambda x: {
