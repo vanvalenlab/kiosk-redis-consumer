@@ -552,7 +552,6 @@ class TensorFlowServingConsumer(Consumer):
 
         return image
 
-
     def save_output(self, image, redis_hash, fname, scale):
         hvals = self.redis.hgetall(redis_hash)
         with utils.get_tempdir() as tempdir:
