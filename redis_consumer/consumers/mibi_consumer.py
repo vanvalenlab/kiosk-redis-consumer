@@ -135,7 +135,8 @@ class MibiConsumer(TensorFlowServingConsumer):
                 self.logger.warning('Output length was %s, expected 4')
                 image = np.asarray(image)
         else:
-            image = image
+            # image = image
+            image = np.squeeze(processing.deep_watershed_mibi(image))
             self.logger.warning('Output was not in the form of a list')
 
         self.logger.debug('Shape after deep_watershed_mibi is: %s', image.shape)
