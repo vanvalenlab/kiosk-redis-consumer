@@ -197,7 +197,11 @@ class TestMibiConsumer(object):
             raise err
 
         def grpc_image(data, *args, **kwargs):
-            return data
+            inner = np.zeros(1, 256, 256, 1)
+            outer = np.zeros(1, 256, 256, 1)
+            fgbg = np.zeros(1, 256, 256, 2)
+            feature = np.zeros(1, 256, 256, 3)
+            return [inner, outer, fgbg, feature]
 
         def grpc_image_multi(data, *args, **kwargs):
             return np.array(tuple(list(data.shape) + [2]))
@@ -218,11 +222,7 @@ class TestMibiConsumer(object):
 
         dummyhash = '{}:new.tiff:{}'.format(prefix, status)
 
-        model_shapes = [
-            (-1, 512, 512, 2),  # image too small, pad
-            (-1, 256, 256, 2),  # image is exactly the right size
-            (-1, 128, 128, 2),  # image too big, tile
-        ]
+        model_shapes = (-1, 256, 256, 2)
 
         consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image
