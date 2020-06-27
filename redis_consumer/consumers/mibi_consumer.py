@@ -108,8 +108,9 @@ class MibiConsumer(TensorFlowServingConsumer):
         self.logger.debug('Image shape after scaling is: %s', image.shape)
 
         # Preprocess image
-        if image.ndim < 4:
-            image = np.expand_dims(image, 0)
+        # Image must be of shape (batch, x, y, channels), but scaling
+        # eliminates batch dim, so we recreate it here
+        image = np.expand_dims(image, 0)
         image = processing.phase_preprocess(image)
         image = np.squeeze(image)
         self.logger.debug('Shape after phase_preprocess is: %s', image.shape)
@@ -118,7 +119,12 @@ class MibiConsumer(TensorFlowServingConsumer):
         self.update_key(redis_hash, {'status': 'predicting'})
         image = self.predict(image, model_name, model_version)
 
-        print('image type is: ', type(image))
+        if isinstance(image, list):
+            print('Predictions are as list, length is: ', len(image))
+
+        else:
+            print('Predictions are instead type: ', type(image))
+            print('Size of ', type(image), ' is: ', image.shape)
 
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
@@ -126,7 +132,7 @@ class MibiConsumer(TensorFlowServingConsumer):
             if len(image) == 4:
                 image = np.squeeze(processing.deep_watershed_mibi(image))
             else:
-                self.logger.warning('Output length was %s, should have been 4')
+                self.logger.warning('Output length was %s, expected 4')
                 image = np.asarray(image)
         else:
             image = image
