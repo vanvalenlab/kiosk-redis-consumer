@@ -222,7 +222,11 @@ class TestMibiConsumer(object):
 
         dummyhash = '{}:new.tiff:{}'.format(prefix, status)
 
-        model_shapes = (-1, 256, 256, 2)
+        model_shapes = [
+#            (-1, 512, 512, 2),  # image too small, pad
+            (-1, 256, 256, 2),  # image is exactly the right size
+#            (-1, 128, 128, 2),  # image too big, tile
+        ]
 
         consumer._handle_error = _handle_error
         consumer.grpc_image = grpc_image
