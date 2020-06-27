@@ -115,6 +115,8 @@ class MibiConsumer(TensorFlowServingConsumer):
         image = np.squeeze(image)
         self.logger.debug('Shape after phase_preprocess is: %s', image.shape)
 
+        print('Image shape prior to predict is: ', image.shape)
+
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
         image = self.predict(image, model_name, model_version)
@@ -133,6 +135,7 @@ class MibiConsumer(TensorFlowServingConsumer):
             image = np.squeeze(processing.deep_watershed_mibi(image))
         else:
             self.logger.warning('Output length was %s, expected 4')
+            image = np.squeeze(processing.deep_watershed_mibi(image))
             image = np.asarray(image)
         #else:
             # image = image
