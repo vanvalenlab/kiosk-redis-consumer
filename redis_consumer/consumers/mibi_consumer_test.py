@@ -197,10 +197,10 @@ class TestMibiConsumer(object):
             raise err
 
         def grpc_image(data, *args, **kwargs):
-            inner = np.zeros(1, 256, 256, 1)
-            outer = np.zeros(1, 256, 256, 1)
-            fgbg = np.zeros(1, 256, 256, 2)
-            feature = np.zeros(1, 256, 256, 3)
+            inner = np.zeros((1, 256, 256, 1))
+            outer = np.zeros((1, 256, 256, 1))
+            fgbg = np.zeros((1, 256, 256, 2))
+            feature = np.zeros((1, 256, 256, 3))
             return [inner, outer, fgbg, feature]
 
         def grpc_image_multi(data, *args, **kwargs):
