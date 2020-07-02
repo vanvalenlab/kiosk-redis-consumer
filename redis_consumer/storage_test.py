@@ -39,55 +39,65 @@ from redis_consumer import storage
 from redis_consumer import utils
 
 
-# global var forcing storage clients to throw an error
-global storage_error
-storage_error = True
-
-global critical_error
-critical_error = False
+def throw_critical_error(*_, **__):
+    raise OSError('Thrown on purpose')
 
 
-class DummyGoogleClient(object):
+def fast(*_, **__):
+    return 0
+
+
+class _Singleton(type):
+    """A metaclass that creates a Singleton base class when called.
+
+    https://stackoverflow.com/questions/6760685/creating-a-singleton-in-python
+    """
+    _instances = {}
+
+    def __call__(cls, *_, **__):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(_Singleton, cls).__call__(*_, **__)
+        return cls._instances[cls]
+
+
+class Singleton(_Singleton('SingletonMeta', (object,), {})):
+    pass
+
+
+class DummyGoogleClient(Singleton):
     public_url = 'public-url'
 
-    def get_bucket(self, *_, **__):
+    def __call__(self, *args, **kwargs):
         return self
 
-    def blob(self, *_, **__):
+    def __init__(self, *_, **__):
+        self.storage_error = True
+
+    def __getattr__(self, a):
         return self
 
-    def make_public(self, *_, **__):
-        global storage_error
-        global critical_error
-
-        if critical_error:
-            raise Exception('critical-error-thrown-on-purpose')
-
-        if storage_error:
-            storage_error = False
+    def _throw_first_error(self):
+        if self.storage_error:
+            self.storage_error = False
             raise TooManyRequests('thrown-on-purpose')
-        storage_error = True
+        self.storage_error = True
+        return self
+
+    def make_public(self):
+        self._throw_first_error()
         return self
 
     def upload_from_filename(self, dest, **_):
-        global storage_error
-
-        if storage_error:
-            storage_error = False
-            raise TooManyRequests('thrown-on-purpose')
-        storage_error = True
+        self._throw_first_error()
         assert os.path.exists(dest)
 
     def download_to_filename(self, dest, **_):
-        global storage_error
-        if storage_error:
-            storage_error = False
-            raise TooManyRequests('thrown-on-purpose')
-        storage_error = True
+        self._throw_first_error()
         assert dest.endswith('/test/file.txt')
 
 
 class DummyS3Client(object):
+
     def __init__(self, *_, **__):
         pass
 
@@ -145,12 +155,8 @@ class TestGoogleStorage(object):
 
     def test_get_storage_client(self, tmpdir, mocker):
 
-        def bad_google_client():
-            raise OSError('thrown on purpose')
-
-        mocker.patch('google.cloud.storage.Client', bad_google_client)
-        mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff',
-                     lambda *x: 0)
+        mocker.patch('google.cloud.storage.Client', throw_critical_error)
+        mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff', fast)
 
         bucket = 'test-bucket'
         tmpdir = str(tmpdir)
@@ -162,8 +168,7 @@ class TestGoogleStorage(object):
     def test_get_public_url(self, tmpdir, mocker):
         tmpdir = str(tmpdir)
         mocker.patch('google.cloud.storage.Client', DummyGoogleClient)
-        mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff',
-                     lambda *x: 0)
+        mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff', fast)
         with tempfile.NamedTemporaryFile(dir=tmpdir) as temp:
             bucket = 'test-bucket'
             stg = storage.GoogleStorage(bucket, tmpdir)
@@ -171,18 +176,15 @@ class TestGoogleStorage(object):
             assert url == 'public-url'
 
             # test bad filename
-            global critical_error
-            with pytest.raises(Exception):
-                critical_error = True
-                # client.make_public() raises error.
+            mocker.patch.object(DummyGoogleClient, 'make_public',
+                                throw_critical_error)
+            with pytest.raises(OSError):
                 stg.get_public_url('file-does-not-exist')
-            critical_error = False
 
     def test_upload(self, tmpdir, mocker):
         tmpdir = str(tmpdir)
         mocker.patch('google.cloud.storage.Client', DummyGoogleClient)
-        mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff',
-                     lambda *x: 0)
+        mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff', fast)
         with tempfile.NamedTemporaryFile(dir=tmpdir) as temp:
             bucket = 'test-bucket'
             stg = storage.GoogleStorage(bucket, tmpdir)
@@ -208,8 +210,7 @@ class TestGoogleStorage(object):
 
         bucket = 'test-bucket'
         mocker.patch('google.cloud.storage.Client', DummyGoogleClient)
-        mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff',
-                     lambda *x: 0)
+        mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff', fast)
 
         stg = storage.GoogleStorage(bucket, tmpdir)
 
