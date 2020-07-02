@@ -88,6 +88,9 @@ class DummyGoogleClient(object):
 
 
 class DummyS3Client(object):
+    def __init__(self, *_, **__):
+        pass
+
     def download_file(self, bucket, path, dest, **_):
         assert path.startswith('test')
 
@@ -124,13 +127,12 @@ class TestStorage(object):
         backoff = client.get_backoff(attempts=5)
         assert backoff == max_backoff
 
-    def test_get_download_path(self):
+    def test_get_download_path(self, mocker):
+        mocker.patch('redis_consumer.storage.Storage.get_storage_client',
+                     lambda *x: True)
         with utils.get_tempdir() as tempdir:
             bucket = 'test-bucket'
-            stg_cls = storage.Storage
-            # monkey-patch the storage client function
-            stg_cls.get_storage_client = lambda *x: True
-            stg = stg_cls(bucket, tempdir)
+            stg = storage.Storage(bucket, tempdir)
             filekey = 'upload_dir/key/to.zip'
             path = stg.get_download_path(filekey, tempdir)
             path2 = stg.get_download_path(filekey)
@@ -141,115 +143,138 @@ class TestStorage(object):
 
 class TestGoogleStorage(object):
 
-    def test_get_public_url(self):
-        with utils.get_tempdir() as tempdir:
-            with tempfile.NamedTemporaryFile(dir=tempdir) as temp:
-                bucket = 'test-bucket'
-                stg_cls = storage.GoogleStorage
-                stg_cls.get_storage_client = DummyGoogleClient
-                stg = stg_cls(bucket, tempdir)
-                stg.get_backoff = lambda x: 0
-                url = stg.get_public_url(temp.name)
-                assert url == 'public-url'
+    def test_get_storage_client(self, tmpdir, mocker):
 
-                # test bad filename
-                global critical_error
-                with pytest.raises(Exception):
-                    critical_error = True
-                    # client.make_public() raises error.
-                    stg.get_public_url('file-does-not-exist')
-                critical_error = False
+        def bad_google_client():
+            raise OSError('thrown on purpose')
 
-    def test_upload(self):
-        with utils.get_tempdir() as tempdir:
-            with tempfile.NamedTemporaryFile(dir=tempdir) as temp:
-                bucket = 'test-bucket'
-                stg_cls = storage.GoogleStorage
-                stg_cls.get_storage_client = DummyGoogleClient
-                stg = stg_cls(bucket, tempdir)
-                stg.get_backoff = lambda x: 0
+        mocker.patch('redis_consumer.storage.google_storage.Client',
+                     bad_google_client)
+        mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff',
+                     lambda *x: 0)
 
-                # test succesful upload
-                dest, url = stg.upload(temp.name)
-                assert dest == 'output/{}'.format(os.path.basename(temp.name))
+        bucket = 'test-bucket'
+        tmpdir = str(tmpdir)
 
-                # test succesful upload with subdir
-                subdir = '/abc'
-                dest, url = stg.upload(temp.name, subdir=subdir)
-                assert dest == 'output{}/{}'.format(
-                    subdir, os.path.basename(temp.name))
+        with pytest.raises(OSError):
+            stg = storage.GoogleStorage(bucket, tmpdir)
+            stg.get_storage_client()
 
-                # test failed upload
-                with pytest.raises(Exception):
-                    # self._client raises, but so does storage.upload
-                    dest, url = stg.upload('file-does-not-exist')
-
-    def test_download(self):
-        remote_file = '/test/file.txt'
-        with utils.get_tempdir() as tempdir:
+    def test_get_public_url(self, tmpdir, mocker):
+        tmpdir = str(tmpdir)
+        mocker.patch('redis_consumer.storage.google_storage.Client',
+                     DummyGoogleClient)
+        mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff',
+                     lambda *x: 0)
+        with tempfile.NamedTemporaryFile(dir=tmpdir) as temp:
             bucket = 'test-bucket'
-            stg_cls = storage.GoogleStorage
-            stg_cls.get_storage_client = DummyGoogleClient
-            stg = stg_cls(bucket, tempdir)
-            stg.get_backoff = lambda x: 0
+            stg = storage.GoogleStorage(bucket, tmpdir)
+            url = stg.get_public_url(temp.name)
+            assert url == 'public-url'
 
-            # test succesful download
-            dest = stg.download(remote_file, tempdir)
-            assert dest == stg.get_download_path(remote_file, tempdir)
-
-            # test failed download
+            # test bad filename
+            global critical_error
             with pytest.raises(Exception):
-                # self._client raises, but so does storage.download
-                dest = stg.download('bad/file.txt', tempdir)
+                critical_error = True
+                # client.make_public() raises error.
+                stg.get_public_url('file-does-not-exist')
+            critical_error = False
+
+    def test_upload(self, tmpdir, mocker):
+        tmpdir = str(tmpdir)
+        mocker.patch('redis_consumer.storage.google_storage.Client',
+                     DummyGoogleClient)
+        mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff',
+                     lambda *x: 0)
+        with tempfile.NamedTemporaryFile(dir=tmpdir) as temp:
+            bucket = 'test-bucket'
+            stg = storage.GoogleStorage(bucket, tmpdir)
+
+            # test succesful upload
+            dest, url = stg.upload(temp.name)
+            assert dest == 'output/{}'.format(os.path.basename(temp.name))
+
+            # test succesful upload with subdir
+            subdir = '/abc'
+            dest, url = stg.upload(temp.name, subdir=subdir)
+            assert dest == 'output{}/{}'.format(
+                subdir, os.path.basename(temp.name))
+
+            # test failed upload
+            with pytest.raises(Exception):
+                # self._client raises, but so does storage.upload
+                dest, url = stg.upload('file-does-not-exist')
+
+    def test_download(self, tmpdir, mocker):
+        remote_file = '/test/file.txt'
+        tmpdir = str(tmpdir)
+
+        bucket = 'test-bucket'
+        mocker.patch('redis_consumer.storage.google_storage.Client',
+                     DummyGoogleClient)
+        mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff',
+                     lambda *x: 0)
+
+        stg = storage.GoogleStorage(bucket, tmpdir)
+
+        # test succesful download
+        dest = stg.download(remote_file, tmpdir)
+        assert dest == stg.get_download_path(remote_file, tmpdir)
+
+        # test failed download
+        with pytest.raises(Exception):
+            # self._client raises, but so does storage.download
+            dest = stg.download('bad/file.txt', tmpdir)
 
 
 class TestS3Storage(object):
 
-    def test_get_public_url(self):
-        with utils.get_tempdir() as tempdir:
+    def test_get_public_url(self, tmpdir):
+        bucket = 'test-bucket'
+        stg = storage.S3Storage(bucket, str(tmpdir))
+        url = stg.get_public_url('test')
+        assert url == 'https://{}/{}'.format(stg.bucket_url, 'test')
+
+    def test_upload(self, tmpdir, mocker):
+        tmpdir = str(tmpdir)
+        mocker.patch('redis_consumer.storage.boto3.client', DummyS3Client)
+        mocker.patch('redis_consumer.storage.S3Storage.get_backoff',
+                     lambda *x: 0)
+        with tempfile.NamedTemporaryFile(dir=tmpdir) as temp:
             bucket = 'test-bucket'
-            stg = storage.S3Storage(bucket, tempdir)
-            url = stg.get_public_url('test')
-            assert url == 'https://{}/{}'.format(stg.bucket_url, 'test')
+            stg = storage.S3Storage(bucket, tmpdir)
 
-    def test_upload(self):
-        with utils.get_tempdir() as tempdir:
-            with tempfile.NamedTemporaryFile(dir=tempdir) as temp:
-                bucket = 'test-bucket'
-                stg = storage.S3Storage(bucket, tempdir)
+            # test succesful upload
+            dest, url = stg.upload(temp.name)
+            assert dest == 'output/{}'.format(os.path.basename(temp.name))
 
-                # monkey path client functions
-                stg.get_storage_client = DummyS3Client
+            # test succesful upload with subdir
+            subdir = '/abc'
+            dest, url = stg.upload(temp.name, subdir=subdir)
+            assert dest == 'output{}/{}'.format(
+                subdir, os.path.basename(temp.name))
 
-                # test succesful upload
-                dest, url = stg.upload(temp.name)
-                assert dest == 'output/{}'.format(os.path.basename(temp.name))
-
-                # test succesful upload with subdir
-                subdir = '/abc'
-                dest, url = stg.upload(temp.name, subdir=subdir)
-                assert dest == 'output{}/{}'.format(
-                    subdir, os.path.basename(temp.name))
-
-                # test failed upload
-                with pytest.raises(Exception):
-                    # self._client raises, but so does storage.upload
-                    dest, url = stg.upload('file-does-not-exist')
-
-    def test_download(self):
-        remote_file = '/test/file.txt'
-        with utils.get_tempdir() as tempdir:
-            bucket = 'test-bucket'
-            stg = storage.S3Storage(bucket, tempdir)
-
-            # monkey path client functions
-            stg.get_storage_client = DummyS3Client
-
-            # test succesful download
-            dest = stg.download(remote_file, tempdir)
-            assert dest == stg.get_download_path(remote_file[1:], tempdir)
-
-            # test failed download
+            # test failed upload
             with pytest.raises(Exception):
-                # self._client raises, but so does storage.download
-                dest = stg.download('bad/file.txt', tempdir)
+                # self._client raises, but so does storage.upload
+                dest, url = stg.upload('file-does-not-exist')
+
+    def test_download(self, tmpdir, mocker):
+        tmpdir = str(tmpdir)
+        mocker.patch('redis_consumer.storage.boto3.client', DummyS3Client)
+        mocker.patch('redis_consumer.storage.S3Storage.get_backoff',
+                     lambda *x: 0)
+
+        remote_file = '/test/file.txt'
+
+        bucket = 'test-bucket'
+        stg = storage.S3Storage(bucket, tmpdir)
+
+        # test succesful download
+        dest = stg.download(remote_file, tmpdir)
+        assert dest == stg.get_download_path(remote_file[1:], tmpdir)
+
+        # test failed download
+        with pytest.raises(Exception):
+            # self._client raises, but so does storage.download
+            dest = stg.download('bad/file.txt', tmpdir)
