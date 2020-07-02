@@ -148,8 +148,7 @@ class TestGoogleStorage(object):
         def bad_google_client():
             raise OSError('thrown on purpose')
 
-        mocker.patch('redis_consumer.storage.google_storage.Client',
-                     bad_google_client)
+        mocker.patch('google.cloud.storage.Client', bad_google_client)
         mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff',
                      lambda *x: 0)
 
@@ -162,8 +161,7 @@ class TestGoogleStorage(object):
 
     def test_get_public_url(self, tmpdir, mocker):
         tmpdir = str(tmpdir)
-        mocker.patch('redis_consumer.storage.google_storage.Client',
-                     DummyGoogleClient)
+        mocker.patch('google.cloud.storage.Client', DummyGoogleClient)
         mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff',
                      lambda *x: 0)
         with tempfile.NamedTemporaryFile(dir=tmpdir) as temp:
@@ -182,8 +180,7 @@ class TestGoogleStorage(object):
 
     def test_upload(self, tmpdir, mocker):
         tmpdir = str(tmpdir)
-        mocker.patch('redis_consumer.storage.google_storage.Client',
-                     DummyGoogleClient)
+        mocker.patch('google.cloud.storage.Client', DummyGoogleClient)
         mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff',
                      lambda *x: 0)
         with tempfile.NamedTemporaryFile(dir=tmpdir) as temp:
@@ -210,8 +207,7 @@ class TestGoogleStorage(object):
         tmpdir = str(tmpdir)
 
         bucket = 'test-bucket'
-        mocker.patch('redis_consumer.storage.google_storage.Client',
-                     DummyGoogleClient)
+        mocker.patch('google.cloud.storage.Client', DummyGoogleClient)
         mocker.patch('redis_consumer.storage.GoogleStorage.get_backoff',
                      lambda *x: 0)
 
