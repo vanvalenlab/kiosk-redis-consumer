@@ -1,0 +1,7 @@
+pytest
+pytest-cov
+pytest-mock
+pytest-pep8
+fakeredis
+six>=1.12
+coveralls
