@@ -237,7 +237,7 @@ class TestS3Storage(object):
 
     def test_upload(self, tmpdir, mocker):
         tmpdir = str(tmpdir)
-        mocker.patch('redis_consumer.storage.boto3.client', DummyS3Client)
+        mocker.patch('boto3.client', DummyS3Client)
         mocker.patch('redis_consumer.storage.S3Storage.get_backoff',
                      lambda *x: 0)
         with tempfile.NamedTemporaryFile(dir=tmpdir) as temp:
@@ -261,7 +261,7 @@ class TestS3Storage(object):
 
     def test_download(self, tmpdir, mocker):
         tmpdir = str(tmpdir)
-        mocker.patch('redis_consumer.storage.boto3.client', DummyS3Client)
+        mocker.patch('boto3.client', DummyS3Client)
         mocker.patch('redis_consumer.storage.S3Storage.get_backoff',
                      lambda *x: 0)
 
