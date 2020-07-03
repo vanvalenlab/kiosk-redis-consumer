@@ -121,7 +121,7 @@ class Consumer(object):
             # Update redis with failed status
             self.update_key(redis_hash, {
                 'status': self.failed_status,
-                'reason': 'Invalid filetype for "%s" job.'.format(self.queue),
+                'reason': 'Invalid filetype for "{}" job.'.format(self.queue),
             })
 
     def _handle_error(self, err, redis_hash):
