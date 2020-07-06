@@ -150,19 +150,19 @@ def test_get_image_files_from_dir():
         assert len(imfiles) == num_files
 
 
-def test_get_image():
-    with utils.get_tempdir() as temp_dir:
-        # test tiff files
-        test_img_path = os.path.join(temp_dir, 'phase.tif')
-        _write_image(test_img_path, 300, 300)
-        test_img = utils.get_image(test_img_path)
-        np.testing.assert_equal(test_img.shape, (300, 300, 1))
-        # test png files
-        test_img_path = os.path.join(temp_dir, 'feature_0.png')
-        _write_image(test_img_path, 400, 400)
-        test_img = utils.get_image(test_img_path)
-        # assert test_img.shape == 0
-        np.testing.assert_equal(test_img.shape, (400, 400, 1))
+def test_get_image(tmpdir):
+    tmpdir = str(tmpdir)
+    # test tiff files
+    test_img_path = os.path.join(tmpdir, 'phase.tif')
+    _write_image(test_img_path, 300, 300)
+    test_img = utils.get_image(test_img_path)
+    np.testing.assert_equal(test_img.shape, (300, 300, 1))
+    # test png files
+    test_img_path = os.path.join(tmpdir, 'feature_0.png')
+    _write_image(test_img_path, 400, 400)
+    test_img = utils.get_image(test_img_path)
+    # assert test_img.shape == 0
+    np.testing.assert_equal(test_img.shape, (400, 400, 1))
 
 
 def test_pad_image():
@@ -258,67 +258,70 @@ def test_save_numpy_array():
     assert not files
 
 
-def test_load_track_file():
-    with utils.get_tempdir() as temp_dir:
-        for i in range(10):
-            # random boolean
-            if np.random.choice([True, False]):
-                trk_file = '{}.trk'.format(i)
-            else:
-                trk_file = '{}.trks'.format(i)
+def test_load_track_file(tmpdir):
+    tmpdir = str(tmpdir)
+    for i in range(10):
+        # random boolean
+        if np.random.choice([True, False]):
+            trk_file = '{}.trk'.format(i)
+        else:
+            trk_file = '{}.trks'.format(i)
 
-            w = np.random.randint(low=30, high=100)
-            h = np.random.randint(low=30, high=100)
-            f = np.random.randint(low=2, high=30)
+        trk_file = os.path.join(tmpdir, trk_file)
 
-            X_mean = np.random.uniform(0, 10)
-            y_mean = np.random.uniform(0, 10)
+        w = np.random.randint(low=30, high=100)
+        h = np.random.randint(low=30, high=100)
+        f = np.random.randint(low=2, high=30)
 
-            _write_trks(trk_file, X_mean=X_mean, y_mean=y_mean,
-                        img_w=w, img_h=h, channels=1, frames=f)
+        X_mean = np.random.uniform(0, 10)
+        y_mean = np.random.uniform(0, 10)
 
-            trks = utils.load_track_file(trk_file)
+        _write_trks(trk_file, X_mean=X_mean, y_mean=y_mean,
+                    img_w=w, img_h=h, channels=1, frames=f)
 
-            assert "X" in trks
-            assert "y" in trks
-            assert len(trks) == 2
+        trks = utils.load_track_file(trk_file)
 
-            assert ((X_mean - 0.5 < trks["X"]).all() and
-                    (trks["X"] < X_mean + 0.5).all())
-            assert ((y_mean - 0.5 < trks["y"]).all() and
-                    (trks["y"] < y_mean + 0.5).all())
+        assert "X" in trks
+        assert "y" in trks
+        assert len(trks) == 2
 
-            assert trks["X"].shape == (f, w, h, 1)
-            assert trks["y"].shape == (f, w, h, 1)
+        assert ((X_mean - 0.5 < trks["X"]).all() and
+                (trks["X"] < X_mean + 0.5).all())
+        assert ((y_mean - 0.5 < trks["y"]).all() and
+                (trks["y"] < y_mean + 0.5).all())
 
-        # test bad extension
-        with pytest.raises(Exception):
-            path = os.path.join(temp_dir, "non.bad_extension")
-            _write_trks(path)
-            trks = utils.load_track_file(path)
+        assert trks["X"].shape == (f, w, h, 1)
+        assert trks["y"].shape == (f, w, h, 1)
 
-        # test non-existent file
-        with pytest.raises(Exception):
-            path = os.path.join(temp_dir, "poof.trk")
-            trks = utils.load_track_file(path)
+    # test bad extension
+    with pytest.raises(Exception):
+        path = os.path.join(tmpdir, "non.bad_extension")
+        _write_trks(path)
+        trks = utils.load_track_file(path)
+
+    # test non-existent file
+    with pytest.raises(Exception):
+        path = os.path.join(tmpdir, "poof.trk")
+        trks = utils.load_track_file(path)
 
 
-def test_zip_files():
+def test_zip_files(tmpdir):
     n = np.random.randint(low=3, high=10)
-    with utils.get_tempdir() as temp_dir:
-        paths = [os.path.join(temp_dir, '{}.tif'.format(i)) for i in range(n)]
-        for path in paths:
-            _write_image(path, 30, 30)
+    tmpdir = str(tmpdir)
 
-        prefix = 'test'
-        zip_path = utils.zip_files(paths, temp_dir, prefix)
-        assert zip_path.startswith(temp_dir)
-        assert os.path.basename(zip_path).startswith(prefix + '_')
-        assert zipfile.is_zipfile(zip_path)
+    paths = [os.path.join(tmpdir, '{}.tif'.format(i)) for i in range(n)]
+    for path in paths:
+        _write_image(path, 30, 30)
 
-        with pytest.raises(Exception):
-            bad_dest = os.path.join(temp_dir, 'does', 'not', 'exist')
-            zip_path = utils.zip_files(paths, bad_dest, prefix)
+    prefix = 'test'
+    zip_path = utils.zip_files(paths, tmpdir, prefix)
+    assert zip_path.startswith(tmpdir)
+    assert os.path.basename(zip_path).startswith(prefix + '_')
+    assert zipfile.is_zipfile(zip_path)
+
+    with pytest.raises(Exception):
+        bad_dest = os.path.join(tmpdir, 'does', 'not', 'exist')
+        zip_path = utils.zip_files(paths, bad_dest, prefix)
 
 
 def test_reshape_matrix():
@@ -397,8 +400,8 @@ def test_rescale():
             assert rescaled.shape == shape
 
 
-def test__pick_model():
-    settings.MODEL_CHOICES = {0: 'dummymodel:0'}
+def test__pick_model(mocker):
+    mocker.patch.object(settings, 'MODEL_CHOICES', {0: 'dummymodel:0'})
     res = utils._pick_model(0)
     assert len(res) == 2
     assert res[0] == 'dummymodel'
@@ -408,8 +411,8 @@ def test__pick_model():
         utils._pick_model(-1)
 
 
-def test__pick_postprocess():
-    settings.POSTPROCESS_CHOICES = {0: 'post'}
+def test__pick_postprocess(mocker):
+    mocker.patch.object(settings, 'POSTPROCESS_CHOICES', {0: 'post'})
     res = utils._pick_postprocess(0)
     assert res == 'post'
 

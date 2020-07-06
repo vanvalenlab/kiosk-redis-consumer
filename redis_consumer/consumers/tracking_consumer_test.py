@@ -45,6 +45,9 @@ from redis_consumer.testing_utils import DummyStorage, redis_client, _get_image
 
 class DummyTracker(object):
     # pylint: disable=R0201,W0613
+    def __init__(self, *_, **__):
+        pass
+
     def _track_cells(self):
         return None
 
@@ -62,16 +65,14 @@ class DummyTracker(object):
 
 
 class TestTrackingConsumer(object):
-    # pylint: disable=R0201
-    def test_is_valid_hash(self):
+    # pylint: disable=R0201,W0621
+    def test_is_valid_hash(self, mocker, redis_client):
         queue = 'track'
-        items = ['item%s' % x for x in range(1, 4)]
-
         storage = DummyStorage()
-        redis_client = DummyRedis(items)
-        redis_client.hget = lambda *x: x[0]
-
         consumer = consumers.TrackingConsumer(redis_client, storage, queue)
+
+        mocker.patch.object(redis_client, 'hget', lambda x, y: x.split(':')[-1])
+
         assert consumer.is_valid_hash(None) is False
         assert consumer.is_valid_hash('predict:123456789:file.png') is False
         assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
@@ -83,61 +84,128 @@ class TestTrackingConsumer(object):
         assert consumer.is_valid_hash('track:1234567890:file.trk') is True
         assert consumer.is_valid_hash('track:1234567890:file.trks') is True
 
-    def test__load_data(self, tmpdir):
+    def test__update_progress(self, redis_client):
         queue = 'track'
-        items = ['item%s' % x for x in range(1, 4)]
-        redis_hash = 'track:1234567890:file.trks'
         storage = DummyStorage()
-        redis_client = DummyRedis(items)
         consumer = consumers.TrackingConsumer(redis_client, storage, queue)
 
-        # test bad filetype
-        with pytest.raises(ValueError):
-            consumer._load_data(redis_hash, str(tmpdir), 'data.npz')
+        redis_hash = 'a job hash'
+        progress = random.randint(0, 99)
+        consumer._update_progress(redis_hash, progress)
+        assert int(redis_client.hget(redis_hash, 'progress')) == progress
 
-        # TODO: test successful workflow
-
-    def test__get_tracker(self):
+    def test__load_data(self, tmpdir, mocker, redis_client):
         queue = 'track'
-        items = ['item%s' % x for x in range(1, 4)]
-
         storage = DummyStorage()
-        redis_client = DummyRedis(items)
-        redis_client.hget = lambda *x: x[0]
+        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
+
+        exp = random.randint(0, 99)
+
+        # test load trk files
+        key = 'trk file test'
+        mocker.patch('redis_consumer.utils.load_track_file', lambda x: exp)
+        result = consumer._load_data(key, str(tmpdir), 'data.trk')
+        assert result == exp
+        result = consumer._load_data(key, str(tmpdir), 'data.trks')
+        assert result == exp
+
+        # test bad filetype
+        key = 'invalid filetype test'
+        with pytest.raises(ValueError):
+            consumer._load_data(key, str(tmpdir), 'data.npz')
+
+        # test bad ndim for tiffstack
+        fname = 'test.tiff'
+        filepath = os.path.join(tmpdir, fname)
+        tifffile.imsave(filepath, _get_image())
+        with pytest.raises(ValueError):
+            consumer._load_data(key, str(tmpdir), fname)
+
+        # test successful workflow
+        def hget_successful_status(*_):
+            return consumer.final_status
+
+        def hget_failed_status(*_):
+            return consumer.failed_status
+
+        def write_child_tiff(*_, **__):
+            letters = string.ascii_lowercase
+            name = ''.join(random.choice(letters) for i in range(12))
+            path = os.path.join(tmpdir, '{}.tiff'.format(name))
+            tifffile.imsave(path, _get_image(21, 21))
+            return [path]
+
+        mocker.patch.object(settings, 'INTERVAL', 0)
+        mocker.patch.object(redis_client, 'hget', hget_successful_status)
+        mocker.patch('redis_consumer.utils.iter_image_archive',
+                     write_child_tiff)
+
+        for label_detect in (True, False):
+            mocker.patch.object(settings, 'SCALE_DETECT_ENABLED', label_detect)
+            mocker.patch.object(settings, 'LABEL_DETECT_ENABLED', label_detect)
+
+            tifffile.imsave(filepath, np.random.random((3, 21, 21)))
+            results = consumer._load_data(key, str(tmpdir), fname)
+            X, y = results.get('X'), results.get('y')
+            assert isinstance(X, np.ndarray)
+            assert isinstance(y, np.ndarray)
+            assert X.shape == y.shape
+
+        # test failed child
+        with pytest.raises(RuntimeError):
+            mocker.patch.object(redis_client, 'hget', hget_failed_status)
+            consumer._load_data(key, str(tmpdir), fname)
+
+        # test wrong number of images in the test file
+        with pytest.raises(RuntimeError):
+            mocker.patch.object(redis_client, 'hget', hget_successful_status)
+            mocker.patch('redis_consumer.utils.iter_image_archive',
+                         lambda *x: range(1, 3))
+            consumer._load_data(key, str(tmpdir), fname)
+
+    def test__get_tracker(self, mocker, redis_client):
+        queue = 'track'
+        storage = DummyStorage()
 
         shape = (5, 21, 21, 1)
         raw = np.random.random(shape)
         segmented = np.random.randint(1, 10, size=shape)
 
-        settings.NORMALIZE_TRACKING = True
-
+        mocker.patch.object(settings, 'NORMALIZE_TRACKING', True)
         consumer = consumers.TrackingConsumer(redis_client, storage, queue)
-        consumer._get_tracker('item1', {}, raw, segmented)
+        tracker = consumer._get_tracker('item1', {}, raw, segmented)
+        assert isinstance(tracker, redis_consumer.tracking.CellTracker)
 
-    def test__consume(self):
+    def test__consume(self, mocker, redis_client):
         queue = 'track'
-        items = ['item%s' % x for x in range(1, 4)]
-
         storage = DummyStorage()
-        redis_client = DummyRedis(items)
-        redis_client.hget = lambda *x: x[0]
+        test_hash = 0
 
-        # test short-circuit _consume()
         consumer = consumers.TrackingConsumer(redis_client, storage, queue)
 
-        status = 'done'
-        dummyhash = '{queue}:{fname}.zip:{status}'.format(
-            queue=queue, status=status, fname=status)
+        mocker.patch.object(consumer, '_get_tracker', DummyTracker)
+        mocker.patch.object(settings, 'DRIFT_CORRECT_ENABLED', True)
 
-        result = consumer._consume(dummyhash)
-        assert result == status
+        frames = 3
+        dummy_data = {
+            'X': np.array([_get_image(21, 21) for _ in range(frames)]),
+            'y': np.random.randint(0, 9, size=(frames, 21, 21)),
+        }
 
-        # test valid _consume flow
-        status = 'new'
-        dummyhash = '{queue}:{fname}.zip:{status}'.format(
-            queue=queue, status=status, fname=status)
-        dummy_data = np.zeros((1, 1, 1))
-        consumer._load_data = lambda *x: {'X': dummy_data, 'y': dummy_data}
-        consumer._get_tracker = lambda *args: DummyTracker()
-        result = consumer._consume(dummyhash)
+        mocker.patch.object(consumer, '_load_data', lambda *x: dummy_data)
+
+        # test finished statuses are returned
+        for status in (consumer.failed_status, consumer.final_status):
+            test_hash += 1
+            data = {'input_file_name': 'file.tiff', 'status': status}
+            redis_client.hmset(test_hash, data)
+            result = consumer._consume(test_hash)
+            assert result == status
+
+        # test new key is processed
+        test_hash += 1
+        data = {'input_file_name': 'file.tiff', 'status': 'new'}
+        redis_client.hmset(test_hash, data)
+        result = consumer._consume(test_hash)
         assert result == consumer.final_status
+        assert redis_client.hget(test_hash, 'status') == consumer.final_status

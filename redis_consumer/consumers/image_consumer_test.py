@@ -40,15 +40,13 @@ from redis_consumer.testing_utils import DummyStorage, redis_client, _get_image
 
 
 class TestImageFileConsumer(object):
-    # pylint: disable=R0201
-    def test_is_valid_hash(self):
-        items = ['item%s' % x for x in range(1, 4)]
-
+    # pylint: disable=R0201,W0621
+    def test_is_valid_hash(self, mocker, redis_client):
         storage = DummyStorage()
-        redis_client = DummyRedis(items)
-        redis_client.hget = lambda *x: x[0]
+        mocker.patch.object(redis_client, 'hget', lambda x, y: x.split(':')[-1])
 
         consumer = consumers.ImageFileConsumer(redis_client, storage, 'predict')
+
         assert consumer.is_valid_hash(None) is False
         assert consumer.is_valid_hash('file.ZIp') is False
         assert consumer.is_valid_hash('predict:1234567890:file.ZIp') is False
@@ -57,15 +55,15 @@ class TestImageFileConsumer(object):
         assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
         assert consumer.is_valid_hash('predict:1234567890:file.png') is True
 
-    def test__get_processing_function(self):
-        _funcs = settings.PROCESSING_FUNCTIONS
-        settings.PROCESSING_FUNCTIONS = {
+    def test__get_processing_function(self, mocker, redis_client):
+        mocker.patch.object(settings, 'PROCESSING_FUNCTIONS', {
             'valid': {
                 'valid': lambda x: True
             }
-        }
+        })
 
-        consumer = consumers.ImageFileConsumer(None, None, 'q')
+        storage = DummyStorage()
+        consumer = consumers.ImageFileConsumer(redis_client, storage, 'q')
 
         x = consumer._get_processing_function('VaLiD', 'vAlId')
         y = consumer._get_processing_function('vAlId', 'VaLiD')
@@ -77,36 +75,52 @@ class TestImageFileConsumer(object):
         with pytest.raises(ValueError):
             consumer._get_processing_function('valid', 'invalid')
 
-        settings.PROCESSING_FUNCTIONS = _funcs
+    def test_process(self, mocker, redis_client):
+        # TODO: better test coverage
+        storage = DummyStorage()
+        queue = 'q'
+        img = np.random.random((1, 32, 32, 1))
 
-    def test_process(self):
-        _funcs = settings.PROCESSING_FUNCTIONS
-        settings.PROCESSING_FUNCTIONS = {
+        mocker.patch.object(settings, 'PROCESSING_FUNCTIONS', {
             'valid': {
-                'valid': lambda x: x
+                'valid': lambda x: x,
+                'retinanet': lambda *x: x[0],
+                'retinanet-semantic': lambda x: x,
             }
-        }
+        })
 
-        img = np.zeros((1, 32, 32, 1))
-        redis_client = DummyRedis([])
-        consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
+        consumer = consumers.ImageFileConsumer(redis_client, storage, queue)
+
+        mocker.patch.object(consumer, '_redis_hash', 'a hash')
+
+        output = consumer.process(img, '', '')
+        np.testing.assert_equal(img, output)
+
+        # image is returned but channel squeezed out
         output = consumer.process(img, 'valid', 'valid')
-        assert img.shape[1:] == output.shape
+        np.testing.assert_equal(img[0], output)
 
-        settings.PROCESSING_FUNCTIONS = _funcs
+        img = np.random.random((2, 32, 32, 1))
+        output = consumer.process(img, 'retinanet-semantic', 'valid')
+        np.testing.assert_equal(img[0], output)
 
-    def test_detect_label(self):
+        consumer._rawshape = (21, 21)
+        img = np.random.random((1, 32, 32, 1))
+        output = consumer.process(img, 'retinanet', 'valid')
+        np.testing.assert_equal(img[0], output)
+
+    def test_detect_label(self, mocker, redis_client):
         # pylint: disable=W0613
-        redis_client = DummyRedis([])
         model_shape = (1, 216, 216, 1)
         consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
-        consumer.get_model_metadata = lambda x, y: {
-            'in_tensor_dtype': 'DT_FLOAT',
-            'in_tensor_shape': ','.join(str(s) for s in model_shape),
-        }
-        image = _get_image(model_shape[1] * 2, model_shape[2] * 2)
 
-        settings.LABEL_DETECT_MODEL = 'dummymodel:1'
+        def dummy_metadata(*_, **__):
+            return {
+                'in_tensor_dtype': 'DT_FLOAT',
+                'in_tensor_shape': ','.join(str(s) for s in model_shape),
+            }
+
+        image = _get_image(model_shape[1] * 2, model_shape[2] * 2)
 
         def predict(*_, **__):
             data = np.zeros((3,))
@@ -114,69 +128,66 @@ class TestImageFileConsumer(object):
             data[i] = 1
             return data
 
-        consumer.predict = predict
+        mocker.patch.object(consumer, 'predict', predict)
+        mocker.patch.object(consumer, 'get_model_metadata', dummy_metadata)
+        mocker.patch.object(settings, 'LABEL_DETECT_MODEL', 'dummymodel:1')
 
-        settings.LABEL_DETECT_ENABLED = False
-
+        mocker.patch.object(settings, 'LABEL_DETECT_ENABLED', False)
         label = consumer.detect_label(image)
         assert label is None
 
-        settings.LABEL_DETECT_ENABLED = True
-
+        mocker.patch.object(settings, 'LABEL_DETECT_ENABLED', True)
         label = consumer.detect_label(image)
         assert label in set(list(range(4)))
 
-    def test_detect_scale(self):
+    def test_detect_scale(self, mocker, redis_client):
         # pylint: disable=W0613
-        redis_client = DummyRedis([])
-
+        # TODO: test rescale is < 1% of the original
         model_shape = (1, 216, 216, 1)
         consumer = consumers.ImageFileConsumer(redis_client, None, 'q')
-        consumer.get_model_metadata = lambda x, y: {
-            'in_tensor_dtype': 'DT_FLOAT',
-            'in_tensor_shape': ','.join(str(s) for s in model_shape),
-        }
+
+        def dummy_metadata(*_, **__):
+            return {
+                'in_tensor_dtype': 'DT_FLOAT',
+                'in_tensor_shape': ','.join(str(s) for s in model_shape),
+            }
+
         big_size = model_shape[1] * np.random.randint(2, 9)
         image = _get_image(big_size, big_size)
 
-        expected = (model_shape[1] / (big_size)) ** 2
+        expected = 1
 
-        settings.SCALE_DETECT_MODEL = 'dummymodel:1'
+        def predict(diff=1e-8):
+            def _predict(*_, **__):
+                sign = -1 if np.random.randint(1, 5) > 2 else 1
+                return expected + sign * diff
+            return _predict
 
-        def predict(*_, **__):
-            sign = -1 if np.random.randint(1, 5) > 2 else 1
-            return expected + sign * 1e-8  # small differences get averaged out
-
-        consumer.predict = predict
-
-        settings.SCALE_DETECT_ENABLED = False
-
+        mocker.patch.object(consumer, 'get_model_metadata', dummy_metadata)
+        mocker.patch.object(settings, 'SCALE_DETECT_ENABLED', False)
+        mocker.patch.object(settings, 'SCALE_DETECT_MODEL', 'dummymodel:1')
         scale = consumer.detect_scale(image)
         assert scale == 1
 
-        settings.SCALE_DETECT_ENABLED = True
-
-        consumer.predict = predict
-
+        mocker.patch.object(settings, 'SCALE_DETECT_ENABLED', True)
+        mocker.patch.object(consumer, 'predict', predict(1e-8))
         scale = consumer.detect_scale(image)
-        assert isinstance(scale, (float, int))
-        np.testing.assert_almost_equal(scale, expected)
+        # very small changes within error range:
+        assert scale == 1
 
-        # scale = consumer.detect_scale(np.expand_dims(image, axis=-1))
-        # assert isinstance(scale, (float, int))
-        # np.testing.assert_almost_equal(scale, expected)
+        mocker.patch.object(settings, 'SCALE_DETECT_ENABLED', True)
+        mocker.patch.object(consumer, 'predict', predict(1e-1))
+        scale = consumer.detect_scale(image)
+        assert isinstance(scale, float)
+        np.testing.assert_almost_equal(scale, expected, 1e-1)
 
-    def test__consume(self):
+    def test__consume(self, mocker, redis_client):
         # pylint: disable=W0613
         prefix = 'predict'
         status = 'new'
-        redis_client = DummyRedis(prefix, status)
         storage = DummyStorage()
 
         consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
-
-        def _handle_error(err, rhash):
-            raise err
 
         def grpc_image(data, *args, **kwargs):
             return data
@@ -186,12 +197,6 @@ class TestImageFileConsumer(object):
 
         def grpc_image_list(data, *args, **kwargs):  # pylint: disable=W0613
             return [data, data]
-
-        def detect_scale(_):
-            return 1
-
-        def detect_label(_):
-            return 0
 
         def make_model_metadata_of_size(model_shape=(-1, 256, 256, 1)):
 
@@ -204,63 +209,54 @@ class TestImageFileConsumer(object):
 
             return get_model_metadata
 
-        dummyhash = '{}:test.tiff:{}'.format(prefix, status)
+        mocker.patch.object(consumer, 'detect_label', lambda x: 1)
+        mocker.patch.object(consumer, 'detect_scale', lambda x: 1)
+        mocker.patch.object(settings, 'LABEL_DETECT_ENABLED', True)
 
+        grpc_funcs = (grpc_image, grpc_image_list)
         model_shapes = [
             (-1, 600, 600, 1),  # image too small, pad
             (-1, 300, 300, 1),  # image is exactly the right size
             (-1, 150, 150, 1),  # image too big, tile
         ]
 
-        consumer._handle_error = _handle_error
-        consumer.grpc_image = grpc_image
-        consumer.detect_scale = detect_scale
-        consumer.detect_label = detect_label
-
-        # consumer.grpc_image = grpc_image_multi
-        # consumer.get_model_metadata = make_model_metadata_of_size(model_shapes[0])
-        #
-        # result = consumer._consume(dummyhash)
-        # assert result == consumer.final_status
-        #
-        # # test with a finished hash
-        # result = consumer._consume('{}:test.tiff:{}'.format(prefix, 'done'))
-        # assert result == 'done'
-
-        for b in (False, True):
-            settings.SCALE_DETECT_ENABLED = settings.LABEL_DETECT_ENABLED = b
-            for model_shape in model_shapes:
-                for grpc_func in (grpc_image, grpc_image_list):
-
-                    consumer.grpc_image = grpc_func
-                    consumer.get_model_metadata = \
-                        make_model_metadata_of_size(model_shape)
-
-                    result = consumer._consume(dummyhash)
-                    assert result == consumer.final_status
-                    # test with a finished hash
-                    result = consumer._consume('{}:test.tiff:{}'.format(
-                        prefix, consumer.final_status))
-                    assert result == consumer.final_status
-
-        # test with model_name and model_version
-        redis_client.hgetall = lambda x: {
-            'model_name': 'model',
+        empty_data = {'input_file_name': 'file.tiff'}
+        full_data = {
+            'input_file_name': 'file.tiff',
             'model_version': '0',
-            'label': '0',
+            'model_name': 'model',
+            'label': '1',
             'scale': '1',
-            'postprocess_function': '',
-            'preprocess_function': '',
-            'file_name': 'test_image.tiff',
-            'input_file_name': 'test_image.tiff',
-            'output_file_name': 'test_image.tiff'
         }
-        redis_client.hmset = lambda x, y: True
-        consumer = consumers.ImageFileConsumer(redis_client, storage, prefix)
-        consumer._handle_error = _handle_error
-        consumer.detect_scale = detect_scale
-        consumer.detect_label = detect_label
-        consumer.get_model_metadata = make_model_metadata_of_size((1, 300, 300, 1))
-        consumer.grpc_image = grpc_image
-        result = consumer._consume(dummyhash)
-        assert result == consumer.final_status
+        label_no_model_data = full_data.copy()
+        label_no_model_data['model_name'] = ''
+
+        datasets = [empty_data, full_data, label_no_model_data]
+
+        test_hash = 0
+        # test finished statuses are returned
+        for status in (consumer.failed_status, consumer.final_status):
+            test_hash += 1
+            data = empty_data.copy()
+            data['status'] = status
+            redis_client.hmset(test_hash, data)
+            result = consumer._consume(test_hash)
+            assert result == status
+            result = redis_client.hget(test_hash, 'status')
+            assert result == status
+            test_hash += 1
+
+        prod = itertools.product(model_shapes, grpc_funcs, datasets)
+
+        for model_shape, grpc_func, data in prod:
+            metadata = make_model_metadata_of_size(model_shape)
+            mocker.patch.object(consumer, 'grpc_image', grpc_func)
+            mocker.patch.object(consumer, 'get_model_metadata', metadata)
+            mocker.patch.object(consumer, 'process', lambda *x: x[0])
+
+            redis_client.hmset(test_hash, data)
+            result = consumer._consume(test_hash)
+            assert result == consumer.final_status
+            result = redis_client.hget(test_hash, 'status')
+            assert result == consumer.final_status
+            test_hash += 1
