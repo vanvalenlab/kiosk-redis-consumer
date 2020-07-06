@@ -98,28 +98,28 @@ class TestTrackingConsumer(object):
         queue = 'track'
         storage = DummyStorage()
         consumer = consumers.TrackingConsumer(redis_client, storage, queue)
-
+        tmpdir = str(tmpdir)
         exp = random.randint(0, 99)
 
         # test load trk files
         key = 'trk file test'
         mocker.patch('redis_consumer.utils.load_track_file', lambda x: exp)
-        result = consumer._load_data(key, str(tmpdir), 'data.trk')
+        result = consumer._load_data(key, tmpdir, 'data.trk')
         assert result == exp
-        result = consumer._load_data(key, str(tmpdir), 'data.trks')
+        result = consumer._load_data(key, tmpdir, 'data.trks')
         assert result == exp
 
         # test bad filetype
         key = 'invalid filetype test'
         with pytest.raises(ValueError):
-            consumer._load_data(key, str(tmpdir), 'data.npz')
+            consumer._load_data(key, tmpdir, 'data.npz')
 
         # test bad ndim for tiffstack
         fname = 'test.tiff'
         filepath = os.path.join(tmpdir, fname)
         tifffile.imsave(filepath, _get_image())
         with pytest.raises(ValueError):
-            consumer._load_data(key, str(tmpdir), fname)
+            consumer._load_data(key, tmpdir, fname)
 
         # test successful workflow
         def hget_successful_status(*_):
@@ -145,7 +145,7 @@ class TestTrackingConsumer(object):
             mocker.patch.object(settings, 'LABEL_DETECT_ENABLED', label_detect)
 
             tifffile.imsave(filepath, np.random.random((3, 21, 21)))
-            results = consumer._load_data(key, str(tmpdir), fname)
+            results = consumer._load_data(key, tmpdir, fname)
             X, y = results.get('X'), results.get('y')
             assert isinstance(X, np.ndarray)
             assert isinstance(y, np.ndarray)
@@ -154,14 +154,14 @@ class TestTrackingConsumer(object):
         # test failed child
         with pytest.raises(RuntimeError):
             mocker.patch.object(redis_client, 'hget', hget_failed_status)
-            consumer._load_data(key, str(tmpdir), fname)
+            consumer._load_data(key, tmpdir, fname)
 
         # test wrong number of images in the test file
         with pytest.raises(RuntimeError):
             mocker.patch.object(redis_client, 'hget', hget_successful_status)
             mocker.patch('redis_consumer.utils.iter_image_archive',
                          lambda *x: range(1, 3))
-            consumer._load_data(key, str(tmpdir), fname)
+            consumer._load_data(key, tmpdir, fname)
 
     def test__get_tracker(self, mocker, redis_client):
         queue = 'track'
