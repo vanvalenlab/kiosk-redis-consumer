@@ -121,7 +121,7 @@ class Consumer(object):
             # Update redis with failed status
             self.update_key(redis_hash, {
                 'status': self.failed_status,
-                'reason': 'Invalid filetype for "%s" job.'.format(self.queue),
+                'reason': 'Invalid filetype for "{}" job.'.format(self.queue),
             })
 
     def _handle_error(self, err, redis_hash):
@@ -496,9 +496,10 @@ class TensorFlowServingConsumer(Consumer):
 
         # TODO: generalize for more than a single input.
         if len(model_metadata) > 1:
-            raise ValueError('Model %s:%s has %s required inputs but was only '
-                             'given %s inputs.', model_name, model_version,
-                             len(model_metadata), len(image))
+            raise ValueError('Model {}:{} has {} required inputs but was only '
+                             'given {} inputs.'.format(
+                                 model_name, model_version,
+                                 len(model_metadata), len(image)))
         model_metadata = model_metadata[0]
 
         model_input_name = model_metadata['in_tensor_name']
