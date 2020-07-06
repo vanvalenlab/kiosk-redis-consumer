@@ -209,15 +209,21 @@ class TestConsumer(object):
 class TestTensorFlowServingConsumer(object):
     # pylint: disable=R0201,W0613,W0621
     def test__get_predict_client(self, redis_client):
-        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+        stg = DummyStorage()
+        consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')
 
         with pytest.raises(ValueError):
             consumer._get_predict_client('model_name', 'model_version')
 
         consumer._get_predict_client('model_name', 1)
 
-    def test_grpc_image(self, redis_client):
-        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+    def test_grpc_image(self, mocker, redis_client):
+        storage = DummyStorage()
+        queue = 'q'
+
+        consumer = consumers.TensorFlowServingConsumer(
+            redis_client, storage, queue)
+
         model_shape = (-1, 128, 128, 1)
 
         def _get_predict_client(model_name, model_version):
@@ -225,42 +231,40 @@ class TestTensorFlowServingConsumer(object):
                 'prediction': x[0]['data']
             })
 
-        consumer._get_predict_client = _get_predict_client
+        mocker.patch.object(consumer, '_get_predict_client', _get_predict_client)
 
         img = np.zeros((1, 32, 32, 3))
         out = consumer.grpc_image(img, 'model', 1, model_shape, 'i', 'DT_HALF')
-
         assert img.shape == out.shape
         assert img.sum() == out.sum()
 
         img = np.zeros((32, 32, 3))
         consumer._redis_hash = 'not none'
         out = consumer.grpc_image(img, 'model', 1, model_shape, 'i', 'DT_HALF')
-
         assert (1,) + img.shape == out.shape
         assert img.sum() == out.sum()
 
-    def test_get_model_metadata(self, redis_client):
+    def test_get_model_metadata(self, mocker, redis_client):
         model_shape = (-1, 216, 216, 1)
         model_dtype = 'DT_FLOAT'
         model_input_name = 'input_1'
+        model_version = 3
+        model_name = 'good model'
+        model = '{}:{}'.format(model_name, model_version)
 
-        def hget_success(key, *others):
-            metadata = {
-                model_input_name: {
-                    'dtype': model_dtype,
-                    'tensorShape': {
-                        'dim': [
-                            {'size': str(x)}
-                            for x in model_shape
-                        ]
-                    }
+        # load model metadata into client
+        cached_metadata = {
+            model_input_name: {
+                'dtype': model_dtype,
+                'tensorShape': {
+                    'dim': [
+                        {'size': str(x)}
+                        for x in model_shape
+                    ]
                 }
             }
-            return json.dumps(metadata)
-
-        def hget_fail(key, *others):
-            return None
+        }
+        redis_client.hset(model, 'metadata', json.dumps(cached_metadata))
 
         def _get_predict_client(model_name, model_version):
             return Bunch(get_model_metadata=lambda: {
@@ -268,17 +272,7 @@ class TestTensorFlowServingConsumer(object):
                     'signature_def': {
                         'signatureDef': {
                             'serving_default': {
-                                'inputs': {
-                                    model_input_name: {
-                                        'dtype': model_dtype,
-                                        'tensorShape': {
-                                            'dim': [
-                                                {'size': str(x)}
-                                                for x in model_shape
-                                            ]
-                                        }
-                                    }
-                                }
+                                'inputs': cached_metadata
                             }
                         }
                     }
@@ -286,31 +280,14 @@ class TestTensorFlowServingConsumer(object):
             })
 
         def _get_predict_client_multi(model_name, model_version):
+            newdata = cached_metadata.copy()
+            newdata['input_2'] = newdata[model_input_name]
             return Bunch(get_model_metadata=lambda: {
                 'metadata': {
                     'signature_def': {
                         'signatureDef': {
                             'serving_default': {
-                                'inputs': {
-                                    model_input_name: {
-                                        'dtype': model_dtype,
-                                        'tensorShape': {
-                                            'dim': [
-                                                {'size': str(x)}
-                                                for x in model_shape
-                                            ]
-                                        }
-                                    },
-                                    '{}_2'.format(model_input_name): {
-                                        'dtype': model_dtype,
-                                        'tensorShape': {
-                                            'dim': [
-                                                {'size': str(x)}
-                                                for x in model_shape
-                                            ]
-                                        }
-                                    }
-                                }
+                                'inputs': newdata
                             }
                         }
                     }
@@ -318,40 +295,41 @@ class TestTensorFlowServingConsumer(object):
             })
 
         def _get_bad_predict_client(model_name, model_version):
-            return Bunch(get_model_metadata=lambda: dict())
+            return Bunch(get_model_metadata=dict)
 
-        # test cached input
-        redis_client.hget = hget_success
-        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
-        consumer._get_predict_client = _get_predict_client
-        metadata = consumer.get_model_metadata('model', 1)
+        stg = DummyStorage()
+        consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')
 
-        for m in metadata:
-            assert m['in_tensor_dtype'] == model_dtype
-            assert m['in_tensor_name'] == model_input_name
-            assert m['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
+        for client in (_get_predict_client, _get_predict_client_multi):
+            mocker.patch.object(consumer, '_get_predict_client', client)
 
-        # test stale cache
-        redis_client.hget = hget_fail
-        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
-        consumer._get_predict_client = _get_predict_client
-        metadata = consumer.get_model_metadata('model', 1)
+            # test cached input
+            metadata = consumer.get_model_metadata(model_name, model_version)
+            for m in metadata:
+                assert m['in_tensor_dtype'] == model_dtype
+                assert m['in_tensor_name'] == model_input_name
+                assert m['in_tensor_shape'] == ','.join(str(x) for x in
+                                                        model_shape)
 
-        for m in metadata:
-            assert m['in_tensor_dtype'] == model_dtype
-            assert m['in_tensor_name'] == model_input_name
-            assert m['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
+            # test stale cache
+            metadata = consumer.get_model_metadata('another model', 0)
+            for m in metadata:
+                assert m['in_tensor_dtype'] == model_dtype
+                assert m['in_tensor_name'] == model_input_name
+                assert m['in_tensor_shape'] == ','.join(str(x) for x in
+                                                        model_shape)
 
         with pytest.raises(KeyError):
-            redis_client.hget = hget_fail
-            consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
-            consumer._get_predict_client = _get_bad_predict_client
+            mocker.patch.object(consumer, '_get_predict_client',
+                                _get_bad_predict_client)
             consumer.get_model_metadata('model', 1)
 
     def test_predict(self, mocker, redis_client):
         model_shape = (-1, 128, 128, 1)
-        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+        stg = DummyStorage()
+        consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')
 
+        mocker.patch.object(settings, 'TF_MAX_BATCH_SIZE', 2)
         mocker.patch.object(consumer, 'get_model_metadata', lambda x, y: [{
             'in_tensor_name': 'image',
             'in_tensor_dtype': 'DT_HALF',
