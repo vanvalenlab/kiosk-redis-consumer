@@ -29,10 +29,8 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
-import os
 
 import numpy as np
-from skimage.external import tifffile as tiff
 
 import pytest
 
