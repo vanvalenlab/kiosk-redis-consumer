@@ -38,9 +38,9 @@ import socket
 import urllib3
 
 import boto3
-from google.cloud import storage as google_storage
-from google.cloud import exceptions as google_exceptions
-from google.auth import exceptions as auth_exceptions
+import google.auth.exceptions
+import google.cloud.exceptions
+import google.cloud.storage
 import requests
 
 from redis_consumer import settings
@@ -157,16 +157,16 @@ class GoogleStorage(Storage):
         self.bucket_url = 'www.googleapis.com/storage/v1/b/{}/o'.format(bucket)
         self._network_errors = (
             socket.gaierror,
-            google_exceptions.TooManyRequests,
-            google_exceptions.InternalServerError,
-            google_exceptions.ServiceUnavailable,
-            google_exceptions.GatewayTimeout,
+            google.cloud.exceptions.TooManyRequests,
+            google.cloud.exceptions.InternalServerError,
+            google.cloud.exceptions.ServiceUnavailable,
+            google.cloud.exceptions.GatewayTimeout,
             urllib3.exceptions.MaxRetryError,
             urllib3.exceptions.NewConnectionError,
             requests.exceptions.ConnectionError,
             requests.exceptions.ReadTimeout,
-            auth_exceptions.RefreshError,
-            auth_exceptions.TransportError,
+            google.auth.exceptions.RefreshError,
+            google.auth.exceptions.TransportError,
         )
 
     def get_storage_client(self):
@@ -174,7 +174,7 @@ class GoogleStorage(Storage):
         attempts = 0
         while True:
             try:
-                return google_storage.Client()
+                return google.cloud.storage.Client()
             except OSError as err:
                 if attempts < 3:
                     backoff = self.get_backoff(attempts)

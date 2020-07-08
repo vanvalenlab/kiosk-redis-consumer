@@ -28,306 +28,177 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
+import itertools
 import json
-import os
+import time
 
 import numpy as np
-from skimage.external import tifffile as tiff
 
 import pytest
 
 from redis_consumer import consumers
-from redis_consumer import utils
 from redis_consumer import settings
 
-
-def _get_image(img_h=300, img_w=300):
-    bias = np.random.rand(img_w, img_h) * 64
-    variance = np.random.rand(img_w, img_h) * (255 - 64)
-    img = np.random.rand(img_w, img_h) * variance + bias
-    return img
-
-
-class Bunch(object):
-    def __init__(self, **kwds):
-        self.__dict__.update(kwds)
-
-
-class DummyRedis(object):
-    # pylint: disable=W0613,R0201
-    def __init__(self, items=[], prefix='predict', status='new'):
-        self.work_queue = copy.copy(items)
-        self.processing_queue = []
-        self.prefix = '/'.join(x for x in prefix.split('/') if x)
-        self.status = status
-        self._redis_master = self
-        self.keys = [
-            '{}:{}:{}'.format(self.prefix, 'x.tiff', self.status),
-            '{}:{}:{}'.format(self.prefix, 'x.zip', 'other'),
-            '{}:{}:{}'.format('other', 'x.TIFF', self.status),
-            '{}:{}:{}'.format(self.prefix, 'x.ZIP', self.status),
-            '{}:{}:{}'.format(self.prefix, 'x.tiff', 'other'),
-            '{}:{}:{}'.format('other', 'x.zip', self.status),
-        ]
-
-    def rpoplpush(self, src, dst):
-        if src.startswith('processing'):
-            source = self.processing_queue
-            dest = self.work_queue
-        elif src.startswith(self.prefix):
-            source = self.work_queue
-            dest = self.processing_queue
-
-        try:
-            x = source.pop()
-            dest.insert(0, x)
-            return x
-        except IndexError:
-            return None
-
-    def lpush(self, name, *values):
-        self.work_queue = list(reversed(values)) + self.work_queue
-        return len(self.work_queue)
-
-    def lrem(self, name, count, value):
-        self.processing_queue.remove(value)
-        return count
-
-    def llen(self, queue):
-        if queue.startswith('processing'):
-            return len(self.processing_queue)
-        return len(self.work_queue)
-
-    def hmget(self, rhash, *args):
-        return [self.hget(rhash, a) for a in args]
-
-    def hmset(self, rhash, hvals):
-        return hvals
-
-    def expire(self, name, time):
-        return 1
-
-    def hget(self, rhash, field):
-        if field == 'status':
-            return rhash.split(':')[-1]
-        elif field == 'file_name':
-            return rhash.split(':')[1]
-        elif field == 'input_file_name':
-            return rhash.split(':')[1]
-        elif field == 'output_file_name':
-            return rhash.split(':')[1]
-        elif field == 'reason':
-            return 'reason'
-        return False
-
-    def hset(self, rhash, status, value):
-        return {status: value}
-
-    def hgetall(self, rhash):
-        return {
-            'model_name': 'model',
-            'model_version': '0',
-            'postprocess_function': '',
-            'preprocess_function': '',
-            'file_name': rhash.split(':')[1],
-            'input_file_name': rhash.split(':')[1],
-            'output_file_name': rhash.split(':')[1],
-            'status': rhash.split(':')[-1],
-            'children': 'predict:1.tiff:done,predict:2.tiff:failed,predict:3.tiff:new',
-            'children:done': 'predict:4.tiff:done,predict:5.tiff:done',
-            'children:failed': 'predict:6.tiff:failed,predict:7.tiff:failed',
-        }
-
-
-class DummyStorage(object):
-    # pylint: disable=W0613,R0201
-    def __init__(self, num=3):
-        self.num = num
-
-    def download(self, path, dest):
-        if path.lower().endswith('.zip'):
-            paths = []
-            for i in range(self.num):
-                img = _get_image()
-                base, ext = os.path.splitext(path)
-                _path = '{}{}{}'.format(base, i, ext)
-                tiff.imsave(os.path.join(dest, _path), img)
-                paths.append(_path)
-            return utils.zip_files(paths, dest)
-        img = _get_image()
-        tiff.imsave(os.path.join(dest, path), img)
-        return path
-
-    def upload(self, zip_path, subdir=None):
-        return True, True
-
-    def get_public_url(self, zip_path):
-        return True
+from redis_consumer.testing_utils import Bunch, DummyStorage, redis_client
 
 
 class TestConsumer(object):
-    # pylint: disable=R0201
-    def test_get_redis_hash(self):
-        settings.EMPTY_QUEUE_TIMEOUT = 0.01  # don't sleep too long
-
+    # pylint: disable=R0201,W0621
+    def test_get_redis_hash(self, mocker, redis_client):
+        mocker.patch.object(settings, 'EMPTY_QUEUE_TIMEOUT', 0.01)
         queue_name = 'q'
-        # test emtpy queue
-        items = []
-        redis_client = DummyRedis(items, prefix=queue_name)
         consumer = consumers.Consumer(redis_client, None, queue_name)
-        rhash = consumer.get_redis_hash()
-        assert rhash is None
 
-        # LLEN somehow gives stale data, should still be None
-        redis_client.llen = lambda x: 1
-        consumer = consumers.Consumer(redis_client, None, queue_name)
-        rhash = consumer.get_redis_hash()
-        assert rhash is None
+        # test emtpy queue
+        assert consumer.get_redis_hash() is None
 
         # test that invalid items are not processed and are removed.
-        items = ['item%s:file.tif:new' % x for x in range(1, 4)]
-        redis_client = DummyRedis(items, prefix=queue_name)
+        item = 'item to process'
+        redis_client.lpush(queue_name, item)
+        # is_valid_hash returns True by default
+        assert consumer.get_redis_hash() == item
+        assert redis_client.llen(consumer.processing_queue) == 1
+        assert redis_client.lpop(consumer.processing_queue) == item
+        # queue should be empty, get None again
+        assert consumer.get_redis_hash() is None
 
-        consumer = consumers.Consumer(redis_client, None, queue_name)
-        consumer.is_valid_hash = lambda x: x.startswith('item1')
+        # test invalid hash is failed and removed from queue
+        mocker.patch.object(consumer, 'is_valid_hash', return_value=False)
+        redis_client.lpush(queue_name, 'invalid')
+        assert consumer.get_redis_hash() is None  # invalid hash, returns None
+        # invalid has was removed from the processing queue
+        assert redis_client.llen(consumer.processing_queue) == 0
+        # invalid hash was not returend to the work queue
+        assert redis_client.llen(consumer.queue) == 0
 
-        rhash = consumer.get_redis_hash()
-        assert rhash == items[0]
-        assert not redis_client.work_queue
-        assert len(redis_client.processing_queue)
-        assert redis_client.processing_queue == [rhash]
+        # test llen returns 1 but item is gone by the time the pop happens
+        mocker.patch.object(redis_client, 'llen', lambda x: 1)
+        assert consumer.get_redis_hash() is None
 
-    def test_purge_processing_queue(self):
+    def test_purge_processing_queue(self, redis_client):
         queue_name = 'q'
-        items = []
-        redis_client = DummyRedis(items, prefix=queue_name)
+        keys = ['abc', 'def', 'xyz']
         consumer = consumers.Consumer(redis_client, None, queue_name)
+        # set keys in processing queue
+        for key in keys:
+            redis_client.lpush(consumer.processing_queue, key)
 
-        redis_client.processing_queue = list(range(5))
         consumer.purge_processing_queue()
-        assert not redis_client.processing_queue
 
-    def test_update_key(self):
-        global _redis_values
-        _redis_values = None
+        assert redis_client.llen(consumer.processing_queue) == 0
+        assert redis_client.llen(consumer.queue) == len(keys)
 
-        class _DummyRedis(object):
-            def hmset(self, _, hvals):
-                global _redis_values
-                _redis_values = hvals
-
-        consumer = consumers.Consumer(_DummyRedis(), None, 'q')
+    def test_update_key(self, redis_client):
+        consumer = consumers.Consumer(redis_client, None, 'q')
+        key = 'redis-hash'
         status = 'updated_status'
-        consumer.update_key('redis-hash', {
+        new_value = 'some value'
+        consumer.update_key(key, {
             'status': status,
-            'new_field': True
+            'new_field': new_value
         })
-        assert isinstance(_redis_values, dict)
-        assert 'status' in _redis_values and 'new_field' in _redis_values
-        assert _redis_values.get('status') == status
-        assert _redis_values.get('new_field') is True
+        redis_values = redis_client.hgetall(key)
+        assert redis_values.get('status') == status
+        assert redis_values.get('new_field') == new_value
 
         with pytest.raises(ValueError):
             consumer.update_key('redis-hash', 'data')
 
-    def test_handle_error(self):
-        global _redis_values
-        _redis_values = None
-
-        class _DummyRedis(object):
-            def hmset(self, _, hvals):
-                global _redis_values
-                _redis_values = hvals
-
-        consumer = consumers.Consumer(_DummyRedis(), None, 'q')
+    def test_handle_error(self, redis_client):
+        consumer = consumers.Consumer(redis_client, None, 'q')
         err = Exception('test exception')
-        consumer._handle_error(err, 'redis-hash')
-        assert isinstance(_redis_values, dict)
-        assert 'status' in _redis_values and 'reason' in _redis_values
-        assert _redis_values.get('status') == 'failed'
+        key = 'redis-hash'
+        consumer._handle_error(err, key)
 
-    def test__put_back_hash(self):
+        redis_values = redis_client.hgetall(key)
+        assert isinstance(redis_values, dict)
+        assert 'status' in redis_values and 'reason' in redis_values
+        assert redis_values.get('status') == 'failed'
+
+    def test__put_back_hash(self, redis_client):
         queue_name = 'q'
 
         # test emtpy queue
-        redis_client = DummyRedis([], prefix=queue_name)
         consumer = consumers.Consumer(redis_client, None, queue_name)
         consumer._put_back_hash('DNE')  # should be None, shows warning
 
         # put back the proper item
         item = 'redis_hash1'
-        redis_client.processing_queue = [item]
+        redis_client.lpush(consumer.processing_queue, item)
         consumer = consumers.Consumer(redis_client, None, queue_name)
         consumer._put_back_hash(item)
+        assert redis_client.llen(consumer.processing_queue) == 0
+        assert redis_client.llen(consumer.queue) == 1
+        assert redis_client.lpop(consumer.queue) == item
 
         # put back the wrong item
-        redis_client.processing_queue = [item, 'otherhash']
+        other = 'otherhash'
+        redis_client.lpush(consumer.processing_queue, other, item)
         consumer = consumers.Consumer(redis_client, None, queue_name)
         consumer._put_back_hash(item)
+        assert redis_client.llen(consumer.processing_queue) == 0
+        assert redis_client.llen(consumer.queue) == 2
+        assert redis_client.lpop(consumer.queue) == item
+        assert redis_client.lpop(consumer.queue) == other
 
-    def test_consume(self):
+    def test_consume(self, mocker, redis_client):
+        mocker.patch.object(settings, 'EMPTY_QUEUE_TIMEOUT', 0)
         queue_name = 'q'
-        items = ['{}:{}:{}.tiff'.format(queue_name, 'new', x) for x in range(1, 4)]
-        N = 1  # using a queue, only one key is processed per consume()
-        consumer = consumers.Consumer(
-            DummyRedis(items, prefix=queue_name), DummyStorage(), queue_name)
+        keys = [str(x) for x in range(1, 10)]
+        err = OSError('thrown on purpose')
+        i = 0
 
-        # test that _consume is called on each hash
-        global _processed
-        _processed = 0
+        consumer = consumers.Consumer(redis_client, DummyStorage(), queue_name)
 
-        def F(*_):
-            global _processed
-            _processed += 1
-            return 'done'
+        def throw_error(*_, **__):
+            raise err
 
-        consumer._consume = F
-        consumer.consume()
-        assert _processed == N
+        def finish(*_, **__):
+            return consumer.final_status
 
-        # error inside _consume calls _handle_error
-        consumer._consume = lambda x: 1 / 0
-        consumer._handle_error = F
-        consumer.consume()
-        assert _processed == N + 1
+        def fail(*_, **__):
+            return consumer.failed_status
+
+        def in_progress(*_, **__):
+            return 'another status'
 
         # empty redis queue
-        consumer.get_redis_hash = lambda: None
-        settings.EMPTY_QUEUE_TIMEOUT = 0.1  # don't sleep too long
+        spy = mocker.spy(time, 'sleep')
+        assert redis_client.llen(consumer.queue) == 0
         consumer.consume()
+        spy.assert_called_once_with(settings.EMPTY_QUEUE_TIMEOUT)
+
+        # OK now let's fill the queue
+        redis_client.lpush(consumer.queue, *keys)
+
+        # test that _consume is called on each hash
+        mocker.patch.object(consumer, '_consume', finish)
+        spy = mocker.spy(consumer, '_consume')
+        consumer.consume()
+        spy.assert_called_once_with(keys[i])
+        i += 1
+
+        # error inside _consume calls _handle_error
+        mocker.patch.object(consumer, '_consume', throw_error)
+        spy = mocker.spy(consumer, '_handle_error')
+        consumer.consume()
+        spy.assert_called_once_with(err, keys[i])
+        i += 1
+
+        # status is in progress calls sleep
+        mocker.patch.object(consumer, '_consume', in_progress)
+        spy = mocker.spy(consumer, '_put_back_hash')
+        consumer.consume()
+        spy.assert_called_with(keys[i])
+        i += 1
 
         # failed and done statuses call lrem
-        def lrem(key, count, value):
-            global _processed
-            _processed = True
-
-        _processed = False
-        redis_client = DummyRedis(items, prefix=queue_name)
-        redis_client.lrem = lrem
-        consumer = consumers.Consumer(redis_client, DummyStorage(), queue_name)
-        consumer.get_redis_hash = lambda: '%s:f.tiff:failed' % queue_name
-
-        consumer.consume()
-        assert _processed is True
-
-        _processed = False
-        consumer.get_redis_hash = lambda: '{q}:f.tiff:{status}'.format(
-            q=queue_name,
-            status=consumer.final_status)
-        consumer.consume()
-        assert _processed is True
-
-        _processed = 0
-
-        def G(*_):
-            global _processed
-            _processed += 1
-            return 'waiting'
-
-        consumer._consume = G
-        consumer.consume()
-        assert _processed == N
+        spy = mocker.spy(redis_client, 'lrem')
+        for status in (finish, fail):
+            mocker.patch.object(consumer, '_consume', status)
+            consumer.consume()
+            spy.assert_called_with(consumer.processing_queue, 1, keys[i])
+            i += 1
 
     def test__consume(self):
         with np.testing.assert_raises(NotImplementedError):
@@ -336,19 +207,23 @@ class TestConsumer(object):
 
 
 class TestTensorFlowServingConsumer(object):
-    # pylint: disable=R0201,W0613
-    def test__get_predict_client(self):
-        redis_client = DummyRedis([])
-        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+    # pylint: disable=R0201,W0613,W0621
+    def test__get_predict_client(self, redis_client):
+        stg = DummyStorage()
+        consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')
 
         with pytest.raises(ValueError):
             consumer._get_predict_client('model_name', 'model_version')
 
         consumer._get_predict_client('model_name', 1)
 
-    def test_grpc_image(self):
-        redis_client = DummyRedis([])
-        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+    def test_grpc_image(self, mocker, redis_client):
+        storage = DummyStorage()
+        queue = 'q'
+
+        consumer = consumers.TensorFlowServingConsumer(
+            redis_client, storage, queue)
+
         model_shape = (-1, 128, 128, 1)
 
         def _get_predict_client(model_name, model_version):
@@ -356,43 +231,40 @@ class TestTensorFlowServingConsumer(object):
                 'prediction': x[0]['data']
             })
 
-        consumer._get_predict_client = _get_predict_client
+        mocker.patch.object(consumer, '_get_predict_client', _get_predict_client)
 
         img = np.zeros((1, 32, 32, 3))
         out = consumer.grpc_image(img, 'model', 1, model_shape, 'i', 'DT_HALF')
-
         assert img.shape == out.shape
         assert img.sum() == out.sum()
 
         img = np.zeros((32, 32, 3))
         consumer._redis_hash = 'not none'
         out = consumer.grpc_image(img, 'model', 1, model_shape, 'i', 'DT_HALF')
-
         assert (1,) + img.shape == out.shape
         assert img.sum() == out.sum()
 
-    def test_get_model_metadata(self):
-        redis_client = DummyRedis([])
+    def test_get_model_metadata(self, mocker, redis_client):
         model_shape = (-1, 216, 216, 1)
         model_dtype = 'DT_FLOAT'
         model_input_name = 'input_1'
+        model_version = 3
+        model_name = 'good model'
+        model = '{}:{}'.format(model_name, model_version)
 
-        def hget_success(key, *others):
-            metadata = {
-                model_input_name: {
-                    'dtype': model_dtype,
-                    'tensorShape': {
-                        'dim': [
-                            {'size': str(x)}
-                            for x in model_shape
-                        ]
-                    }
+        # load model metadata into client
+        cached_metadata = {
+            model_input_name: {
+                'dtype': model_dtype,
+                'tensorShape': {
+                    'dim': [
+                        {'size': str(x)}
+                        for x in model_shape
+                    ]
                 }
             }
-            return json.dumps(metadata)
-
-        def hget_fail(key, *others):
-            return None
+        }
+        redis_client.hset(model, 'metadata', json.dumps(cached_metadata))
 
         def _get_predict_client(model_name, model_version):
             return Bunch(get_model_metadata=lambda: {
@@ -400,17 +272,7 @@ class TestTensorFlowServingConsumer(object):
                     'signature_def': {
                         'signatureDef': {
                             'serving_default': {
-                                'inputs': {
-                                    model_input_name: {
-                                        'dtype': model_dtype,
-                                        'tensorShape': {
-                                            'dim': [
-                                                {'size': str(x)}
-                                                for x in model_shape
-                                            ]
-                                        }
-                                    }
-                                }
+                                'inputs': cached_metadata
                             }
                         }
                     }
@@ -418,31 +280,14 @@ class TestTensorFlowServingConsumer(object):
             })
 
         def _get_predict_client_multi(model_name, model_version):
+            newdata = cached_metadata.copy()
+            newdata['input_2'] = newdata[model_input_name]
             return Bunch(get_model_metadata=lambda: {
                 'metadata': {
                     'signature_def': {
                         'signatureDef': {
                             'serving_default': {
-                                'inputs': {
-                                    model_input_name: {
-                                        'dtype': model_dtype,
-                                        'tensorShape': {
-                                            'dim': [
-                                                {'size': str(x)}
-                                                for x in model_shape
-                                            ]
-                                        }
-                                    },
-                                    '{}_2'.format(model_input_name): {
-                                        'dtype': model_dtype,
-                                        'tensorShape': {
-                                            'dim': [
-                                                {'size': str(x)}
-                                                for x in model_shape
-                                            ]
-                                        }
-                                    }
-                                }
+                                'inputs': newdata
                             }
                         }
                     }
@@ -450,39 +295,46 @@ class TestTensorFlowServingConsumer(object):
             })
 
         def _get_bad_predict_client(model_name, model_version):
-            return Bunch(get_model_metadata=lambda: dict())
+            return Bunch(get_model_metadata=dict)
 
-        # test cached input
-        redis_client.hget = hget_success
-        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
-        consumer._get_predict_client = _get_predict_client
-        metadata = consumer.get_model_metadata('model', 1)
+        stg = DummyStorage()
+        consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')
 
-        for m in metadata:
-            assert m['in_tensor_dtype'] == model_dtype
-            assert m['in_tensor_name'] == model_input_name
-            assert m['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
+        for client in (_get_predict_client, _get_predict_client_multi):
+            mocker.patch.object(consumer, '_get_predict_client', client)
 
-        # test stale cache
-        redis_client.hget = hget_fail
-        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
-        consumer._get_predict_client = _get_predict_client
-        metadata = consumer.get_model_metadata('model', 1)
+            # test cached input
+            metadata = consumer.get_model_metadata(model_name, model_version)
+            for m in metadata:
+                assert m['in_tensor_dtype'] == model_dtype
+                assert m['in_tensor_name'] == model_input_name
+                assert m['in_tensor_shape'] == ','.join(str(x) for x in
+                                                        model_shape)
 
-        for m in metadata:
-            assert m['in_tensor_dtype'] == model_dtype
-            assert m['in_tensor_name'] == model_input_name
-            assert m['in_tensor_shape'] == ','.join(str(x) for x in model_shape)
+            # test stale cache
+            metadata = consumer.get_model_metadata('another model', 0)
+            for m in metadata:
+                assert m['in_tensor_dtype'] == model_dtype
+                assert m['in_tensor_name'] == model_input_name
+                assert m['in_tensor_shape'] == ','.join(str(x) for x in
+                                                        model_shape)
 
         with pytest.raises(KeyError):
-            redis_client.hget = hget_fail
-            consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
-            consumer._get_predict_client = _get_bad_predict_client
+            mocker.patch.object(consumer, '_get_predict_client',
+                                _get_bad_predict_client)
             consumer.get_model_metadata('model', 1)
 
-    def test_predict(self):
-        redis_client = DummyRedis([])
-        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+    def test_predict(self, mocker, redis_client):
+        model_shape = (-1, 128, 128, 1)
+        stg = DummyStorage()
+        consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')
+
+        mocker.patch.object(settings, 'TF_MAX_BATCH_SIZE', 2)
+        mocker.patch.object(consumer, 'get_model_metadata', lambda x, y: [{
+            'in_tensor_name': 'image',
+            'in_tensor_dtype': 'DT_HALF',
+            'in_tensor_shape': ','.join(str(s) for s in model_shape),
+        }])
 
         def grpc_image(data, *args, **kwargs):
             return data
@@ -490,42 +342,49 @@ class TestTensorFlowServingConsumer(object):
         def grpc_image_list(data, *args, **kwargs):  # pylint: disable=W0613
             return [data, data]
 
-        model_shape = (-1, 128, 128, 1)
-
         image_shapes = [
             (256, 256, 1),
             (128, 128, 1),
             (64, 64, 1),
             (100, 100, 1),
             (300, 300, 1),
+            (257, 301, 1),
+            (65, 127, 1),
         ]
+        grpc_funcs = (grpc_image, grpc_image_list)
+        untiles = (False, True)
+        prod = itertools.product(image_shapes, grpc_funcs, untiles)
 
-        for image_shape in image_shapes:
-            for grpc_func in (grpc_image, grpc_image_list):
-                for untile in (False, True):
+        for image_shape, grpc_func, untile in prod:
+            x = np.random.random(image_shape)
+            mocker.patch.object(consumer, 'grpc_image', grpc_func)
 
-                    x = np.random.random(image_shape)
-                    consumer.grpc_image = grpc_func
-                    consumer.get_model_metadata = lambda x, y: [{
-                        'in_tensor_name': 'image',
-                        'in_tensor_dtype': 'DT_HALF',
-                        'in_tensor_shape': ','.join(str(s) for s in model_shape),
-                    }]
+            consumer.predict(x, model_name='modelname', model_version=0,
+                             untile=untile)
 
-                    consumer.predict(x, model_name='modelname', model_version=0,
-                                     untile=untile)
+        # test mismatch of input data and model shape
+        with pytest.raises(ValueError):
+            x = np.random.random((5,))
+            consumer.predict(x, model_name='modelname', model_version=0)
+
+        # test multiple model metadata inputs are not supported
+        with pytest.raises(ValueError):
+            mocker.patch.object(consumer, 'get_model_metadata', grpc_image_list)
+            x = np.random.random((300, 300, 1))
+            consumer.predict(x, model_name='modelname', model_version=0)
 
 
 class TestZipFileConsumer(object):
-    # pylint: disable=R0201,W0613
-    def test_is_valid_hash(self):
-        items = ['item%s' % x for x in range(1, 4)]
+    # pylint: disable=R0201,W0613,W0621
+    def test_is_valid_hash(self, mocker, redis_client):
+        consumer = consumers.ZipFileConsumer(
+            redis_client, DummyStorage(), 'predict')
 
-        storage = DummyStorage()
-        redis_client = DummyRedis(items)
-        redis_client.hget = lambda *x: x[0]
+        def get_file_from_hash(redis_hash, _):
+            return redis_hash.split(':')[-1]
 
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
+        mocker.patch.object(redis_client, 'hget', get_file_from_hash)
+
         assert consumer.is_valid_hash(None) is False
         assert consumer.is_valid_hash('file.ZIp') is True
         assert consumer.is_valid_hash('predict:1234567890:file.ZIp') is True
@@ -534,132 +393,158 @@ class TestZipFileConsumer(object):
         assert consumer.is_valid_hash('predict:1234567890:file.tiff') is False
         assert consumer.is_valid_hash('predict:1234567890:file.png') is False
 
-    def test__upload_archived_images(self):
+    def test__upload_archived_images(self, mocker, redis_client):
         N = 3
-        items = ['item%s' % x for x in range(1, 4)]
-        redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
-        hsh = consumer._upload_archived_images(
-            {'input_file_name': 'test.zip', 'children': ''},
-            'predict:redis_hash:f.zip')
+        # mocker.patch.object(consumer.storage, 'download')
+        hvalues = {'input_file_name': 'test.zip', 'children': 'none'}
+        redis_hash = 'predict:redis_hash:f.zip'
+        hsh = consumer._upload_archived_images(hvalues, redis_hash)
         assert len(hsh) == N
 
-    def test__upload_finished_children(self):
+    def test__upload_finished_children(self, mocker, redis_client):
         finished_children = ['predict:1.tiff', 'predict:2.zip', '']
         N = 3
-        items = ['item%s' % x for x in range(1, N + 1)]
-        redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
+        mocker.patch.object(consumer, '_get_output_file_name', lambda x: x)
+
         path, url = consumer._upload_finished_children(
             finished_children, 'predict:redis_hash:f.zip')
         assert path and url
 
-    def test__get_output_file_name(self):
-        settings.GRPC_BACKOFF = 0
-        redis_client = DummyRedis([])
-        redis_client.ttl = lambda x: -1  # key is missing
-        redis_client._update_masters_and_slaves = lambda: True
+    def test__get_output_file_name(self, mocker, redis_client):
+        # TODO: bad coverage
+        mocker.patch.object(settings, 'GRPC_BACKOFF', 0)
+        storage = DummyStorage()
+        queue = 'q'
 
-        redis_client._redis_master = Bunch(hget=lambda x, y: None)
-        consumer = consumers.ZipFileConsumer(redis_client, None, 'predict')
+        consumer = consumers.ZipFileConsumer(redis_client, storage, queue)
 
+        # happy path
+        key = 'some key'
+        expected = 'output.zip'
+        redis_client.hset(key, 'output_file_name', expected)
+        assert consumer._get_output_file_name(key) == expected
+
+        # handling missing output file
+        key = 'key without output file'
+        spy = mocker.spy(redis_client, 'ttl')
+
+        # add key without output file but before it is expired
+        redis_client.hset(key, 'some field', 'some value')
         with pytest.raises(ValueError):
-            redis_client.ttl = lambda x: -2  # key is missing
-            consumer = consumers.ZipFileConsumer(redis_client, None, 'predict')
-            consumer._get_output_file_name('randomkey')
+            consumer._get_output_file_name(key)
+        assert spy.spy_return == -1
 
+        # expire key
+        redis_client.expire(key, 10)  # TTL should be -1
         with pytest.raises(ValueError):
-            redis_client.ttl = lambda x: 1  # key is expired
-            consumer = consumers.ZipFileConsumer(redis_client, None, 'predict')
-            consumer._get_output_file_name('randomkey')
+            consumer._get_output_file_name(key)
+        assert spy.spy_return == 10
 
+        # key does not exist
         with pytest.raises(ValueError):
-            redis_client.ttl = lambda x: -1  # key not expired
-            consumer = consumers.ZipFileConsumer(redis_client, None, 'predict')
-            consumer._get_output_file_name('randomkey')
+            consumer._get_output_file_name('randomkey')  # TTL should be -2
+        assert spy.spy_return == -2
 
-    def test__parse_failures(self):
+    def test__parse_failures(self, mocker, redis_client):
         N = 3
-        items = ['item%s' % x for x in range(1, N + 1)]
-        redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
+
+        keys = [str(x) for x in range(4)]
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
+        for key in keys:
+            redis_client.lpush(consumer.queue, key)
+            redis_client.hset(key, 'reason', 'reason{}'.format(key))
+
+        spy = mocker.spy(redis_client, 'hget')
+        parsed = consumer._parse_failures(keys)
+        spy.assert_called_with(keys[-1], 'reason')
+        for key in keys:
+            assert '{0}=reason{0}'.format(key) in parsed
 
         # no failures
-        failed_children = ''
+        failed_children = ['']
         parsed = consumer._parse_failures(failed_children)
         assert parsed == ''
 
-        failed_children = ['item1', 'item2', '']
-        parsed = consumer._parse_failures(failed_children)
-        assert 'item1=reason' in parsed and 'item2=reason' in parsed
-
-    def test__cleanup(self):
+    def test__cleanup(self, mocker, redis_client):
         N = 3
         queue = 'predict'
-        items = ['item%s' % x for x in range(1, N + 1)]
-        redis_client = DummyRedis(items)
+        done = [str(i) for i in range(N)]
+        failed = [str(i) for i in range(N + 1, N * 2)]
         storage = DummyStorage(num=N)
         consumer = consumers.ZipFileConsumer(redis_client, storage, queue)
 
-        children = list('abcdef')
-        done = ['{}:done'.format(c) for c in children[:3]]
-        failed = ['{}:failed'.format(c) for c in children[3:]]
+        redis_hash = 'some job hash'
 
-        consumer._cleanup(items[0], children, done, failed)
+        mocker.patch.object(consumer, '_upload_finished_children',
+                            lambda *x: ('a', 'b'))
 
-        # test non-float values
-        redis_client = DummyRedis(items)
-        redis_client.hmget = lambda *args: ['x' for a in args]
-        consumer = consumers.ZipFileConsumer(redis_client, storage, queue)
-        consumer._cleanup(items[0], children, done, failed)
+        for item in done:
+            redis_client.hset(item, 'total_time', 1)  # summary field
+        for item in failed:
+            redis_client.hset(item, 'reason', 1)  # summary field
 
-    def test__consume(self):
+        children = done + failed
+
+        consumer._cleanup(redis_hash, children, done, failed)
+
+        assert redis_client.hget(redis_hash, 'total_jobs') == str(len(children))
+        for key in children:
+            assert redis_client.ttl(key) > 0  # all keys are expired
+
+    def test__consume(self, mocker, redis_client):
         N = 3
-        prefix = 'predict'
-        items = ['item%s' % x for x in range(1, 4)]
-        redis_client = DummyRedis(items)
         storage = DummyStorage(num=N)
+        children = list('abcdefg')
+        queue = 'q'
+        test_hash = 0
+        consumer = consumers.ZipFileConsumer(redis_client, storage, queue)
+
+        # test finished statuses are returned
+        for status in (consumer.failed_status, consumer.final_status, 'weird'):
+            test_hash += 1
+            redis_client.hset(test_hash, 'status', status)
+            result = consumer._consume(test_hash)
+            assert result == status
 
         # test `status` = "new"
-        status = 'new'
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
-        consumer._upload_archived_images = lambda x, y: items
-        dummyhash = '{queue}:{fname}.zip:{status}'.format(
-            queue=prefix, status=status, fname=status)
-        result = consumer._consume(dummyhash)
+        dummy = lambda *x: children
+        mocker.patch.object(consumer, '_cleanup', dummy)
+        mocker.patch.object(consumer, '_upload_archived_images', dummy)
+        mocker.patch.object(consumer, '_upload_finished_children', dummy)
+
+        test_hash += 1
+        redis_client.hset(test_hash, 'status', 'new')
+        result = consumer._consume(test_hash)
         assert result == 'waiting'
+        assert redis_client.hget(test_hash, 'children') == ','.join(children)
 
         # test `status` = "waiting"
         status = 'waiting'
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
-        dummyhash = '{queue}:{fname}.zip:{status}'.format(
-            queue=prefix, status=status, fname=status)
-        result = consumer._consume(dummyhash)
-        assert result == status
+        test_hash += 1
+        children = ['done', 'failed', 'waiting', 'move-to-done']
+        child_statuses = ['done', 'failed', 'waiting', 'done']
+        data = {'status': status, 'children': ','.join(children)}
+        redis_client.hmset(test_hash, data)
+        for child, child_status in zip(children, child_statuses):
+            redis_client.hset(child, 'status', child_status)
 
-        # test `status` = "done"
-        status = 'done'
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
-        dummyhash = '{queue}:{fname}.zip:{status}'.format(
-            queue=prefix, status=status, fname=status)
-        result = consumer._consume(dummyhash)
+        result = consumer._consume(test_hash)
         assert result == status
+        hvals = redis_client.hgetall(test_hash)
+        done_children = set(hvals.get('children:done', '').split(','))
+        assert done_children == {'done', 'move-to-done'}
+        assert hvals.get('children:failed') == 'failed'
 
-        # test `status` = "failed"
-        status = 'failed'
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
-        dummyhash = '{queue}:{fname}.zip:{status}'.format(
-            queue=prefix, status=status, fname=status)
-        result = consumer._consume(dummyhash)
-        assert result == status
-
-        # test `status` = "other-status"
-        status = 'other-status'
-        consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
-        dummyhash = '{queue}:{fname}.zip:{status}'.format(
-            queue=prefix, status=status, fname=status)
-        result = consumer._consume(dummyhash)
-        assert result == status
+        # set the "waiting" child to "done"
+        redis_client.hset('waiting', 'status', consumer.final_status)
+        result = consumer._consume(test_hash)
+        assert result == consumer.final_status
+        hvals = redis_client.hgetall(test_hash)
+        done_children = set(hvals.get('children:done', '').split(','))
+        assert done_children == {'done', 'move-to-done', 'waiting'}
+        assert hvals.get('children:failed') == 'failed'

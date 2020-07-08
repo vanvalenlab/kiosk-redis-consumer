@@ -232,10 +232,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
                 if status == self.final_status:
                     # Segmentation is finished, save and load the frame.
                     with utils.get_tempdir() as tempdir:
-                        frame_zip = self.storage.download(
-                            self.redis.hget(segment_hash, 'output_file_name'),
-                            tempdir)
-
+                        out = self.redis.hget(segment_hash, 'output_file_name')
+                        frame_zip = self.storage.download(out, tempdir)
                         frame_files = list(utils.iter_image_archive(
                             frame_zip, tempdir))
 
