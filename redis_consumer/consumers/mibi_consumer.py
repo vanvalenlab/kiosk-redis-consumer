@@ -132,7 +132,8 @@ class MibiConsumer(TensorFlowServingConsumer):
         _ = timeit.default_timer()
         self.update_key(redis_hash, {'status': 'saving-results'})
 
-        dest, output_url = self.save_output(image, redis_hash, fname, scale)
+        save_name = hvals.get('original_name', fname)
+        dest, output_url = self.save_output(image, redis_hash, save_name, scale)
 
         # Update redis with the final results
         t = timeit.default_timer() - start

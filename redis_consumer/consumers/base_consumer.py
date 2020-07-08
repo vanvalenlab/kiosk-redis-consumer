@@ -553,11 +553,9 @@ class TensorFlowServingConsumer(Consumer):
 
         return image
 
-    def save_output(self, image, redis_hash, fname, scale):
-        hvals = self.redis.hgetall(redis_hash)
+    def save_output(self, image, redis_hash, save_name, scale):
         with utils.get_tempdir() as tempdir:
             # Save each result channel as an image file
-            save_name = hvals.get('original_name', fname)
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
 
