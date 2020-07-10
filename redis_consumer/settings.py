@@ -128,7 +128,7 @@ PROCESSING_FUNCTIONS = {
         'retinanet': processing.retinanet_to_label_image,
         'retinanet-semantic': processing.retinanet_semantic_to_label_image,
         'deep_watershed': processing.deep_watershed,
-        'mibi': processing.deep_watershed_mibi,
+        'multiplexed': processing.deep_watershed_mibi,
     },
 }
 
@@ -158,8 +158,8 @@ SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
 LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', cast=str)
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 
-# MIBI model Settings
-MIBI_MODEL = config('MIBI_MODEL', default='NewMIBI:0', cast=str)
+# Multiplexed model Settings
+MULTIPLEXED_MODEL = config('MULTIPLEXED_MODEL', default='MIBI:1', cast=str)
 
 # Set default models based on label type
 MODEL_CHOICES = {
