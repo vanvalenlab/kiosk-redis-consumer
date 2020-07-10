@@ -121,7 +121,7 @@ class Consumer(object):
             # Update redis with failed status
             self.update_key(redis_hash, {
                 'status': self.failed_status,
-                'reason': 'Invalid filetype for "%s" job.'.format(self.queue),
+                'reason': 'Invalid filetype for "{}" job.'.format(self.queue),
             })
 
     def _handle_error(self, err, redis_hash):
@@ -496,9 +496,10 @@ class TensorFlowServingConsumer(Consumer):
 
         # TODO: generalize for more than a single input.
         if len(model_metadata) > 1:
-            raise ValueError('Model %s:%s has %s required inputs but was only '
-                             'given %s inputs.', model_name, model_version,
-                             len(model_metadata), len(image))
+            raise ValueError('Model {}:{} has {} required inputs but was only '
+                             'given {} inputs.'.format(
+                                 model_name, model_version,
+                                 len(model_metadata), len(image)))
         model_metadata = model_metadata[0]
 
         model_input_name = model_metadata['in_tensor_name']
@@ -552,11 +553,9 @@ class TensorFlowServingConsumer(Consumer):
 
         return image
 
-    def save_and_upload(self, image, redis_hash, fname, scale):
-        hvals = self.redis.hgetall(redis_hash)
+    def save_output(self, image, redis_hash, save_name, scale):
         with utils.get_tempdir() as tempdir:
             # Save each result channel as an image file
-            save_name = hvals.get('original_name', fname)
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
 

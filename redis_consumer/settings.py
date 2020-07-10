@@ -119,6 +119,7 @@ METADATA_EXPIRE_TIME = config('METADATA_EXPIRE_TIME', default=30, cast=int)
 PROCESSING_FUNCTIONS = {
     'pre': {
         'normalize': processing.normalize,
+        'histogram_normalization': processing.phase_preprocess,
     },
     'post': {
         'deepcell': processing.pixelwise,  # TODO: this is deprecated.
@@ -127,6 +128,7 @@ PROCESSING_FUNCTIONS = {
         'retinanet': processing.retinanet_to_label_image,
         'retinanet-semantic': processing.retinanet_semantic_to_label_image,
         'deep_watershed': processing.deep_watershed,
+        'mibi': processing.deep_watershed_mibi,
     },
 }
 

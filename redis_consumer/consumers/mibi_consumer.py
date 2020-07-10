@@ -33,29 +33,18 @@ import timeit
 
 import numpy as np
 
-from redis_consumer.consumers import TensorFlowServingConsumer
+from redis_consumer.consumers import ImageFileConsumer
 from redis_consumer import utils
 from redis_consumer import settings
 
-from redis_consumer import processing
 
-
-class MibiConsumer(TensorFlowServingConsumer):
+class MibiConsumer(ImageFileConsumer):
     """Consumes image files and uploads the results"""
-
-    def is_valid_hash(self, redis_hash):
-        if redis_hash is None:
-            return False
-
-        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-        return not fname.lower().endswith('.zip')
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
+        self._redis_hash = redis_hash  # workaround for logging.
         hvals = self.redis.hgetall(redis_hash)
-        # hold on to the redis hash/values for logging purposes
-        # self._redis_hash = redis_hash
-        # self._redis_values = hvals
 
         if hvals.get('status') in self.finished_statuses:
             self.logger.warning('Found completed hash `%s` with status %s.',
@@ -72,13 +61,13 @@ class MibiConsumer(TensorFlowServingConsumer):
 
         # Get model_name and version
         model_name, model_version = settings.MIBI_MODEL.split(':')
-        self.logger.debug('Model using is: %s', model_name)
 
         _ = timeit.default_timer()
 
         # Load input image
         with utils.get_tempdir() as tempdir:
             fname = self.storage.download(hvals.get('input_file_name'), tempdir)
+            # TODO: tiffs expand the last axis, is that a problem here?
             image = utils.get_image(fname)
 
         # Pre-process data before sending to the model
@@ -91,17 +80,15 @@ class MibiConsumer(TensorFlowServingConsumer):
         scale = hvals.get('scale', '')
         if not scale:
             # Detect scale of image (Default to 1)
-            # TODO implement SCALE_DETECT here for mibi model
-            # scale = self.detect_scale(image[..., 0])
+            # TODO: implement SCALE_DETECT here for mibi model
+            # scale = self.detect_scale(image)
             # self.logger.debug('Image scale detected: %s', scale)
             # self.update_key(redis_hash, {'scale': scale})
             self.logger.debug('Scale was not given. Defaults to 1')
             scale = 1
         else:
-            # Scale was set by user
-            self.logger.debug('Image scale was defined as: %s', scale)
-        scale = float(scale)
-        self.logger.debug('Image scale is: %s', scale)
+            scale = float(scale)
+            self.logger.debug('Image scale already calculated: %s', scale)
 
         # Rescale each channel of the image
         self.logger.debug('Image shape before scaling is: %s', image.shape)
@@ -126,14 +113,14 @@ class MibiConsumer(TensorFlowServingConsumer):
 
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
-        image = np.squeeze(processing.deep_watershed_mibi(image))
-        self.logger.debug('Shape after deep_watershed_mibi is: %s', image.shape)
+        image = self.postprocess(image, ['mibi'])
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
         self.update_key(redis_hash, {'status': 'saving-results'})
 
-        dest, output_url = self.save_and_upload(image, redis_hash, fname, scale)
+        save_name = hvals.get('original_name', fname)
+        dest, output_url = self.save_output(image, redis_hash, save_name, scale)
 
         # Update redis with the final results
         t = timeit.default_timer() - start
