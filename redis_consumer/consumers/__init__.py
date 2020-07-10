@@ -35,7 +35,7 @@ from redis_consumer.consumers.base_consumer import ZipFileConsumer
 # Custom Workflow consumers
 from redis_consumer.consumers.image_consumer import ImageFileConsumer
 from redis_consumer.consumers.tracking_consumer import TrackingConsumer
-from redis_consumer.consumers.mibi_consumer import MibiConsumer
+from redis_consumer.consumers.multiplexed_consumer import MultiplexedConsumer
 # TODO: Import future custom Consumer classes.
 
 
@@ -43,7 +43,7 @@ CONSUMERS = {
     'image': ImageFileConsumer,
     'zip': ZipFileConsumer,
     'tracking': TrackingConsumer,
-    'mibi': MibiConsumer,
+    'multiplexed': MultiplexedConsumer,
     # TODO: Add future custom Consumer classes here.
 }
 
