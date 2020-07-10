@@ -157,7 +157,7 @@ LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', ca
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 
 # MIBI model Settings
-MIBI_MODEL = config('MIBI_MODEL', default='NewMIBI:0', cast=str)
+MIBI_MODEL = config('MIBI_MODEL', default='MIBI:1', cast=str)
 
 # Set default models based on label type
 MODEL_CHOICES = {

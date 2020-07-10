@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""ImageFileConsumer class for consuming image segmentation jobs."""
+"""MibiConsumer class for consuming image segmentation jobs."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -54,8 +54,8 @@ class MibiConsumer(TensorFlowServingConsumer):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
         # hold on to the redis hash/values for logging purposes
-        self._redis_hash = redis_hash
-        self._redis_values = hvals
+        # self._redis_hash = redis_hash
+        # self._redis_values = hvals
 
         if hvals.get('status') in self.finished_statuses:
             self.logger.warning('Found completed hash `%s` with status %s.',
@@ -92,7 +92,7 @@ class MibiConsumer(TensorFlowServingConsumer):
         if not scale:
             # Detect scale of image (Default to 1)
             # TODO implement SCALE_DETECT here for mibi model
-            # scale = self.detect_scale(image)
+            # scale = self.detect_scale(image[..., 0])
             # self.logger.debug('Image scale detected: %s', scale)
             # self.update_key(redis_hash, {'scale': scale})
             self.logger.debug('Scale was not given. Defaults to 1')
@@ -106,8 +106,8 @@ class MibiConsumer(TensorFlowServingConsumer):
         # Rescale each channel of the image
         self.logger.debug('Image shape before scaling is: %s', image.shape)
         images = []
-        for channel in range(image.shape[0]):
-            images.append(utils.rescale(image[channel, ...], scale))
+        for channel in range(image.shape[2]):
+            images.append(utils.rescale(image[..., channel, :], scale))
         image = np.concatenate(images, -1)
         self.logger.debug('Image shape after scaling is: %s', image.shape)
 
@@ -116,8 +116,9 @@ class MibiConsumer(TensorFlowServingConsumer):
         # eliminates batch dim, so we recreate it here
         image = np.expand_dims(image, 0)
         image = processing.phase_preprocess(image)
-        image = np.squeeze(image)
         self.logger.debug('Shape after phase_preprocess is: %s', image.shape)
+        image = np.squeeze(image)
+        self.logger.debug('Shape after squeeze is: %s', image.shape)
 
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
@@ -132,7 +133,7 @@ class MibiConsumer(TensorFlowServingConsumer):
         _ = timeit.default_timer()
         self.update_key(redis_hash, {'status': 'saving-results'})
 
-        dest, output_url = self.save_output(image, redis_hash, fname, scale)
+        dest, output_url = self.save_and_upload(image, redis_hash, fname, scale)
 
         # Update redis with the final results
         t = timeit.default_timer() - start

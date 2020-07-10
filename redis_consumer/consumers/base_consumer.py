@@ -552,7 +552,7 @@ class TensorFlowServingConsumer(Consumer):
 
         return image
 
-    def save_output(self, image, redis_hash, fname, scale):
+    def save_and_upload(self, image, redis_hash, fname, scale):
         hvals = self.redis.hgetall(redis_hash)
         with utils.get_tempdir() as tempdir:
             # Save each result channel as an image file
