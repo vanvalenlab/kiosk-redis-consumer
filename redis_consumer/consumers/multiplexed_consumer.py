@@ -23,7 +23,7 @@ Multiplexed# Copyright 2016-2020 The Van Valen Lab at the California Institute o
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""ImageFileConsumer class for consuming image segmentation jobs."""
+"""MibiConsumer class for consuming image segmentation jobs."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -91,11 +91,21 @@ class MultiplexedConsumer(ImageFileConsumer):
             self.logger.debug('Image scale already calculated: %s', scale)
 
         # Rescale each channel of the image
-        image = utils.rescale(image, scale)
-        image = np.expand_dims(image, axis=0)  # add in the batch dim
+        self.logger.debug('Image shape before scaling is: %s', image.shape)
+        images = []
+        for channel in range(image.shape[2]):
+            images.append(utils.rescale(image[..., channel, :], scale))
+        image = np.concatenate(images, -1)
+        self.logger.debug('Image shape after scaling is: %s', image.shape)
 
         # Preprocess image
-        image = self.preprocess(image, ['histogram_normalization'])
+        # Image must be of shape (batch, x, y, channels), but scaling
+        # eliminates batch dim, so we recreate it here
+        image = np.expand_dims(image, 0)
+        image = processing.phase_preprocess(image)
+        self.logger.debug('Shape after phase_preprocess is: %s', image.shape)
+        image = np.squeeze(image)
+        self.logger.debug('Shape after squeeze is: %s', image.shape)
 
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
