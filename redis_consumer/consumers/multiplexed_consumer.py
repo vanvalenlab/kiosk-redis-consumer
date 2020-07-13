@@ -88,11 +88,14 @@ class MultiplexedConsumer(ImageFileConsumer):
             scale = 1
         else:
             scale = float(scale)
-            self.logger.debug('Image scale already calculated: %s', scale)
+            self.logger.debug('Image scale already calculated %s', scale)
 
+        image = np.squeeze(image)
+        self.logger.debug('Image shape before scaling is %s', image.shape)
         # Rescale each channel of the image
         image = utils.rescale(image, scale)
         image = np.expand_dims(image, axis=0)  # add in the batch dim
+        self.logger.debug('Image shape after     scaling is %s', image.shape)
 
         # Preprocess image
         image = self.preprocess(image, ['histogram_normalization'])
