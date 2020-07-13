@@ -24,45 +24,56 @@ Each Redis event should have the following fields:
 If the consumer will send data to a TensorFlow Serving model, it should inherit from `redis_consumer.consumers.TensorFlowServingConsumer` ([docs](https://deepcell-kiosk.readthedocs.io/projects/kiosk-redis-consumer/en/master/redis_consumer.consumers.html)), which has methods `_get_predict_client()` and `grpc_image()` which can send data to the specific model.  The new consumer must also implement the `_consume()` method which performs the bulk of the work. The `_consume()` method will fetch data from Redis, download data file from the bucket, process the data with a model, and upload the results to the bucket again. See below for a basic implementation of `_consume()`:
 
 ```python
-    def _consume(self, redis_hash):
-        # get all redis data for the given hash
-        hvals = self.redis.hgetall(redis_hash)
+def _consume(self, redis_hash):
+    # get all redis data for the given hash
+    hvals = self.redis.hgetall(redis_hash)
 
-        with utils.get_tempdir() as tempdir:
-            # download the image file
-            fname = self.storage.download(hvals.get('input_file_name'), tempdir)
+    # only work on unfinished jobs
+    if hvals.get('status') in self.finished_statuses:
+        self.logger.warning('Found completed hash `%s` with status %s.',
+                            redis_hash, hvals.get('status'))
+        return hvals.get('status')
 
-            # load image file as data
-            image = utils.get_image(fname)
+    # the data to process with the model, required.
+    input_file_name = hvals.get('input_file_name')
 
-            # preprocess data if necessary
+    # TODO: model information can be saved in redis or defined in the consumer.
+    model_name = hvals.get('model_name')
+    model_version = hvals.get('model_version')
 
-            # send the data to the model
-            results = self.grpc_image(image,
-                                    hvals.get('model_name'),
-                                    hvals.get('model_version'))
+    with utils.get_tempdir() as tempdir:
+        # download the image file
+        fname = self.storage.download(input_file_name, tempdir)
+        # load image file as data
+        image = utils.get_image(fname)
 
-            # postprocess results if necessary
+    # TODO: pre- and post-processing can be used with the BaseConsumer.process,
+    # which uses pre-defined functions in settings.PROCESSING_FUNCTIONS.
+    image = self.preprocess(image, 'normalize')
 
-            # save the results as an image
-            outpaths = utils.save_numpy_array(results, name=name,
-                                            subdir=subdir, output_dir=tempdir)
+    # send the data to the model
+    results = self.predict(image, model_name, model_version)
 
-            # zip up the file
-            zip_file = utils.zip_files(outpaths, tempdir)
+    # TODO: post-process the model results into a label image.
+    image = self.postprocess(image, 'deep_watershed')
 
-            # upload the zip file to the cloud bucket
-            dest, output_url = self.storage.upload(zip_file)
+    # save the results as an image file and upload it to the bucket
+    save_name = hvals.get('original_name', fname)
+    dest, output_url = self.save_output(image, redis_hash, save_name, scale)
 
-            # save the results to the redis hash
-            self.update_key(redis_hash, {
-                'status': self.final_status,
-                'output_url': output_url,
-                'output_file_name': dest
-                })
+    # save the results to the redis hash
+    self.update_key(redis_hash, {
+        'status': self.final_status,
+        'output_url': output_url,
+        'upload_time': timeit.default_timer() - _,
+        'output_file_name': dest,
+        'total_jobs': 1,
+        'total_time': timeit.default_timer() - start,
+        'finished_at': self.get_current_timestamp()
+    })
 
-        # return the final status
-        return self.final_status
+    # return the final status
+    return self.final_status
 ```
 
 Finally, the new consumer needs to be imported into the <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/redis_consumer/consumers/__init__.py">redis_consumer/consumers/\_\_init\_\_.py</a></tt> and added to the `CONSUMERS` dictionary with a correponding queue type (`queue_name`). The script <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/consume-redis-events.py">consume-redis-events.py</a></tt> will load the consumer class based on the `CONSUMER_TYPE`.
