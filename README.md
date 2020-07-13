@@ -56,7 +56,7 @@ def _consume(self, redis_hash):
 
     # save the results as an image file and upload it to the bucket
     save_name = hvals.get('original_name', fname)
-    dest, output_url = self.save_output(image, redis_hash, save_name, scale)
+    dest, output_url = self.save_output(image, redis_hash, save_name)
 
     # save the results to the redis hash
     self.update_key(redis_hash, {
