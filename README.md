@@ -34,9 +34,9 @@ def _consume(self, redis_hash):
     # the data to process with the model, required.
     input_file_name = hvals.get('input_file_name')
 
-    # TODO: model information can be saved in redis or defined in the consumer.
-    model_name = hvals.get('model_name')
-    model_version = hvals.get('model_version')
+    # TODO: the model can be passed in as an environment variable,
+    # and parsed in settings.py.
+    model_name, model_version = 'CustomModel:1'
 
     with utils.get_tempdir() as tempdir:
         # download the image file
