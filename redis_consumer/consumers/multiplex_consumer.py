@@ -90,12 +90,16 @@ class MultiplexConsumer(ImageFileConsumer):
             scale = float(scale)
             self.logger.debug('Image scale already calculated %s', scale)
 
+        # squeeze out extra channel dimension added by 'get_image'
         image = np.squeeze(image)
-        self.logger.debug('Image shape before scaling is %s', image.shape)
+
+        # if for some reason a one-channel image was passed, add the channel back if __name__ == '__main__':
+        if image.ndim == 2:
+            image = np.expand_dims(image, -1)
+
         # Rescale each channel of the image
         image = utils.rescale(image, scale)
         image = np.expand_dims(image, axis=0)  # add in the batch dim
-        self.logger.debug('Image shape after     scaling is %s', image.shape)
 
         # Preprocess image
         image = self.preprocess(image, ['histogram_normalization'])

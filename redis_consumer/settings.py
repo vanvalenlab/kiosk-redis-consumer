@@ -1,4 +1,4 @@
-ultiplex# Copyright 2016-2020 The Van Valen Lab at the California Institute of
+# Copyright 2016-2020 The Van Valen Lab at the California Institute of
 # Technology (Caltech), with support from the Paul Allen Family Foundation,
 # Google, & National Institutes of Health (NIH) under Grant U24CA224309-01.
 # All rights reserved.
@@ -165,7 +165,7 @@ MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MIBI:1', cast=str)
 MODEL_CHOICES = {
     0: config('NUCLEAR_MODEL', default='NuclearSegmentation:0', cast=str),
     1: config('PHASE_MODEL', default='PhaseCytoSegmentation:0', cast=str),
-    2: config('CYTOPLASM_MODEL', default='FluoCytoSegmentation:0', cast=str),
+    2: config('CYTOPLASM_MODEL', default='FluoCytoSegmentation:0', cast=str)
 }
 
 POSTPROCESS_CHOICES = {
