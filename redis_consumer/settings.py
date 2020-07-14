@@ -1,4 +1,4 @@
-# Copyright 2016-2020 The Van Valen Lab at the California Institute of
+ultiplex# Copyright 2016-2020 The Van Valen Lab at the California Institute of
 # Technology (Caltech), with support from the Paul Allen Family Foundation,
 # Google, & National Institutes of Health (NIH) under Grant U24CA224309-01.
 # All rights reserved.
@@ -128,7 +128,7 @@ PROCESSING_FUNCTIONS = {
         'retinanet': processing.retinanet_to_label_image,
         'retinanet-semantic': processing.retinanet_semantic_to_label_image,
         'deep_watershed': processing.deep_watershed,
-        'multiplexed': processing.deep_watershed_mibi,
+        'multiplex': processing.deep_watershed_mibi,
     },
 }
 
@@ -158,8 +158,8 @@ SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
 LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', cast=str)
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 
-# Multiplexed model Settings
-MULTIPLEXED_MODEL = config('MULTIPLEXED_MODEL', default='MIBI:1', cast=str)
+# Multiplex model Settings
+MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MIBI:1', cast=str)
 
 # Set default models based on label type
 MODEL_CHOICES = {

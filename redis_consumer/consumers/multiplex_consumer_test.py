@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Tests for MultiplexedConsumer"""
+"""Tests for MultiplexConsumer"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -38,21 +38,21 @@ from redis_consumer import consumers
 from redis_consumer.testing_utils import redis_client, DummyStorage
 
 
-class TestMultiplexedConsumer(object):
+class TestMultiplexConsumer(object):
     # pylint: disable=R0201
 
     def test_is_valid_hash(self, mocker, redis_client):
         storage = DummyStorage()
         mocker.patch.object(redis_client, 'hget', lambda *x: x[0])
 
-        consumer = consumers.MultiplexedConsumer(redis_client, storage, 'multiplexed')
+        consumer = consumers.MultiplexConsumer(redis_client, storage, 'multiplex')
         assert consumer.is_valid_hash(None) is False
         assert consumer.is_valid_hash('file.ZIp') is False
         assert consumer.is_valid_hash('predict:1234567890:file.ZIp') is False
         assert consumer.is_valid_hash('track:123456789:file.zip') is False
         assert consumer.is_valid_hash('predict:123456789:file.zip') is False
-        assert consumer.is_valid_hash('multiplexed:1234567890:file.tiff') is True
-        assert consumer.is_valid_hash('multiplexed:1234567890:file.png') is True
+        assert consumer.is_valid_hash('multiplex:1234567890:file.tiff') is True
+        assert consumer.is_valid_hash('multiplex:1234567890:file.png') is True
 
     def test__consume(self, mocker, redis_client):
         # pylint: disable=W0613
@@ -92,7 +92,7 @@ class TestMultiplexedConsumer(object):
             'input_file_name': 'file.tiff',
         }
 
-        consumer = consumers.MultiplexedConsumer(redis_client, DummyStorage(), 'multiplexed')
+        consumer = consumers.MultiplexConsumer(redis_client, DummyStorage(), 'multiplex')
 
         test_hash = 0
         # test finished statuses are returned

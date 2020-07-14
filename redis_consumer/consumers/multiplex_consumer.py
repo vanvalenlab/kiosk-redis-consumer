@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""MultiplexedConsumer class for consuming multiplexed segmentation jobs."""
+"""MultiplexConsumer class for consuming multiplex segmentation jobs."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -38,7 +38,7 @@ from redis_consumer import utils
 from redis_consumer import settings
 
 
-class MultiplexedConsumer(ImageFileConsumer):
+class MultiplexConsumer(ImageFileConsumer):
     """Consumes image files and uploads the results"""
 
     def _consume(self, redis_hash):
@@ -60,7 +60,7 @@ class MultiplexedConsumer(ImageFileConsumer):
         })
 
         # Get model_name and version
-        model_name, model_version = settings.MULTIPLEXED_MODEL.split(':')
+        model_name, model_version = settings.MULTIPLEX_MODEL.split(':')
 
         _ = timeit.default_timer()
 
@@ -80,7 +80,7 @@ class MultiplexedConsumer(ImageFileConsumer):
         scale = hvals.get('scale', '')
         if not scale:
             # Detect scale of image (Default to 1)
-            # TODO: implement SCALE_DETECT here for multiplexed model
+            # TODO: implement SCALE_DETECT here for multiplex model
             # scale = self.detect_scale(image)
             # self.logger.debug('Image scale detected: %s', scale)
             # self.update_key(redis_hash, {'scale': scale})
@@ -106,7 +106,7 @@ class MultiplexedConsumer(ImageFileConsumer):
 
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
-        image = self.postprocess(image, ['multiplexed'])
+        image = self.postprocess(image, ['multiplex'])
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
