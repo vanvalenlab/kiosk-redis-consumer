@@ -553,7 +553,7 @@ class TensorFlowServingConsumer(Consumer):
 
         return image
 
-    def save_output(self, image, redis_hash, save_name, scale):
+    def save_output(self, image, redis_hash, save_name, scale=1):
         with utils.get_tempdir() as tempdir:
             # Save each result channel as an image file
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
