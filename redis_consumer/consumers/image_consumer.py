@@ -49,7 +49,16 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         return not fname.lower().endswith('.zip')
 
     def _get_processing_function(self, process_type, function_name):
-        """Based on the function category and name, return the function"""
+        """Based on the function category and name, return the function.
+
+        Args:
+            process_type (str): "pre" or "post" processing
+            function_name (str): Name processing function, must exist in
+                settings.PROCESSING_FUNCTIONS.
+
+        Returns:
+            function: the selected pre- or post-processing function.
+        """
         clean = lambda x: str(x).lower()
         # first, verify the route parameters
         name = clean(function_name)
@@ -64,6 +73,16 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         return settings.PROCESSING_FUNCTIONS[cat][name]
 
     def process(self, image, key, process_type):
+        """Apply the pre- or post-processing function to the image data.
+
+        Args:
+            image (numpy.array): The image data to process.
+            key (str): The name of the function to use.
+            process_type (str): "pre" or "post" processing.
+
+        Returns:
+            numpy.array: The processed image data.
+        """
         start = timeit.default_timer()
         if not key:
             return image
@@ -100,6 +119,15 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         return results
 
     def detect_scale(self, image):
+        """Send the image to the SCALE_DETECT_MODEL to detect the relative
+        scale difference from the image to the model's training data.
+
+        Args:
+            image (numpy.array): The image data.
+
+        Returns:
+            scale (float): The detected scale, used to rescale data.
+        """
         start = timeit.default_timer()
 
         if not settings.SCALE_DETECT_ENABLED:
@@ -122,6 +150,15 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         return detected_scale
 
     def detect_label(self, image):
+        """Send the image to the LABEL_DETECT_MODEL to detect the type of image
+        data. The model output is mapped with settings.MODEL_CHOICES.
+
+        Args:
+            image (numpy.array): The image data.
+
+        Returns:
+            label (int): The detected label.
+        """
         start = timeit.default_timer()
 
         if not settings.LABEL_DETECT_ENABLED:
@@ -147,12 +184,11 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         """Wrapper for _process_image but can only call with type="pre".
 
         Args:
-            image: numpy array of image data
-            keys: list of function names to apply to the image
-            streaming: boolean. if True, streams data in multiple requests
+            image (numpy.array): image data
+            keys (list): list of function names to apply to the image
 
         Returns:
-            pre-processed image data
+            numpy.array: pre-processed image data
         """
         pre = None
         for key in keys:
@@ -164,12 +200,11 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         """Wrapper for _process_image but can only call with type="post".
 
         Args:
-            image: numpy array of image data
-            keys: list of function names to apply to the image
-            streaming: boolean. if True, streams data in multiple requests
+            image (numpy.array): image data
+            keys (list): list of function names to apply to the image
 
         Returns:
-            post-processed image data
+            numpy.array: post-processed image data
         """
         post = None
         for key in keys:

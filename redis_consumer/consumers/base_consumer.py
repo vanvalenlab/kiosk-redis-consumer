@@ -95,6 +95,13 @@ class Consumer(object):
             pass  # success
 
     def get_redis_hash(self):
+        """Pop off an item from the Job queue.
+
+        If a Job hash is invalid it will be failed and removed from the queue.
+
+        Returns:
+            str: A valid Redish Job hash, or None if one cannot be found.
+        """
         while True:
 
             if self.redis.llen(self.queue) == 0:
@@ -162,9 +169,9 @@ class Consumer(object):
         """Update the hash with `data` and updated_by & updated_at stamps.
 
         Args:
-            redis_hash: string, the hash that will be updated
-            status: string, the new status value
-            data: dict, optional data to include in the hmset call
+            redis_hash (str): The hash that will be updated
+            status (str): The new status value
+            data (dict): Optional data to include in the hmset call
         """
         if data is not None and not isinstance(data, dict):
             raise ValueError('`data` must be a dictionary, got {}.'.format(
@@ -178,6 +185,7 @@ class Consumer(object):
         self.redis.hmset(redis_hash, data)
 
     def _consume(self, redis_hash):
+        """Consume the Redis Job. All Consumers must implement this function"""
         raise NotImplementedError
 
     def consume(self):
@@ -249,6 +257,15 @@ class TensorFlowServingConsumer(Consumer):
         raise NotImplementedError
 
     def _get_predict_client(self, model_name, model_version):
+        """Returns the TensorFlow Serving gRPC client.
+
+        Args:
+            model_name (str): The name of the model
+            model_version (int): The version of the model
+
+        Returns:
+            redis_consumer.grpc_clients.PredictClient: the gRPC client.
+        """
         t = timeit.default_timer()
         hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
         client = PredictClient(hostname, model_name, int(model_version))
@@ -258,7 +275,19 @@ class TensorFlowServingConsumer(Consumer):
 
     def grpc_image(self, img, model_name, model_version, model_shape,
                    in_tensor_name='image', in_tensor_dtype='DT_FLOAT'):
+        """Use the TensorFlow Serving gRPC API for model inference on an image.
 
+        Args:
+            img (numpy.array): The image to send to the model
+            model_name (str): The name of the model
+            model_version (int): The version of the model
+            model_shape (tuple): The shape of input data for the model
+            in_tensor_name (str): The name of the input tensor for the request
+            in_tensor_dtype (str): The dtype of the input data
+
+        Returns:
+            numpy.array: The results of model inference.
+        """
         in_tensor_dtype = str(in_tensor_dtype).upper()
 
         start = timeit.default_timer()
@@ -491,6 +520,16 @@ class TensorFlowServingConsumer(Consumer):
         return image
 
     def predict(self, image, model_name, model_version, untile=True):
+        """Performs model inference on the image data.
+
+        Args:
+            image (numpy.array): the image data
+            model_name (str): hosted model to send image data.
+            model_version (int): model version to query.
+            untile (bool): Whether to untile the tiled inference results. This
+                should be True when the model output is the same shape as the
+                input, and False otherwise.
+        """
         start = timeit.default_timer()
         model_metadata = self.get_model_metadata(model_name, model_version)
 
