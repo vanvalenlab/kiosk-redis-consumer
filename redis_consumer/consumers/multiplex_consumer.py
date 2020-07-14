@@ -93,7 +93,7 @@ class MultiplexConsumer(ImageFileConsumer):
         # squeeze out extra channel dimension added by 'get_image'
         image = np.squeeze(image)
 
-        # if for some reason a one-channel image was passed, add the channel back if __name__ == '__main__':
+        # if for some reason a one-channel image was passed, add the channel back
         if image.ndim == 2:
             image = np.expand_dims(image, -1)
 
