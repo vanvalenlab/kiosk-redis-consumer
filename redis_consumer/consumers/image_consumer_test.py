@@ -55,60 +55,6 @@ class TestImageFileConsumer(object):
         assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
         assert consumer.is_valid_hash('predict:1234567890:file.png') is True
 
-    def test__get_processing_function(self, mocker, redis_client):
-        mocker.patch.object(settings, 'PROCESSING_FUNCTIONS', {
-            'valid': {
-                'valid': lambda x: True
-            }
-        })
-
-        storage = DummyStorage()
-        consumer = consumers.ImageFileConsumer(redis_client, storage, 'q')
-
-        x = consumer._get_processing_function('VaLiD', 'vAlId')
-        y = consumer._get_processing_function('vAlId', 'VaLiD')
-        assert x == y
-
-        with pytest.raises(ValueError):
-            consumer._get_processing_function('invalid', 'valid')
-
-        with pytest.raises(ValueError):
-            consumer._get_processing_function('valid', 'invalid')
-
-    def test_process(self, mocker, redis_client):
-        # TODO: better test coverage
-        storage = DummyStorage()
-        queue = 'q'
-        img = np.random.random((1, 32, 32, 1))
-
-        mocker.patch.object(settings, 'PROCESSING_FUNCTIONS', {
-            'valid': {
-                'valid': lambda x: x,
-                'retinanet': lambda *x: x[0],
-                'retinanet-semantic': lambda x: x,
-            }
-        })
-
-        consumer = consumers.ImageFileConsumer(redis_client, storage, queue)
-
-        mocker.patch.object(consumer, '_redis_hash', 'a hash')
-
-        output = consumer.process(img, '', '')
-        np.testing.assert_equal(img, output)
-
-        # image is returned but channel squeezed out
-        output = consumer.process(img, 'valid', 'valid')
-        np.testing.assert_equal(img[0], output)
-
-        img = np.random.random((2, 32, 32, 1))
-        output = consumer.process(img, 'retinanet-semantic', 'valid')
-        np.testing.assert_equal(img[0], output)
-
-        consumer._rawshape = (21, 21)
-        img = np.random.random((1, 32, 32, 1))
-        output = consumer.process(img, 'retinanet', 'valid')
-        np.testing.assert_equal(img[0], output)
-
     def test_detect_label(self, mocker, redis_client):
         # pylint: disable=W0613
         model_shape = (1, 216, 216, 1)

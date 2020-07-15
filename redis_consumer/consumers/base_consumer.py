@@ -592,6 +592,108 @@ class TensorFlowServingConsumer(Consumer):
 
         return image
 
+    def _get_processing_function(self, process_type, function_name):
+        """Based on the function category and name, return the function.
+
+        Args:
+            process_type (str): "pre" or "post" processing
+            function_name (str): Name processing function, must exist in
+                settings.PROCESSING_FUNCTIONS.
+
+        Returns:
+            function: the selected pre- or post-processing function.
+        """
+        clean = lambda x: str(x).lower()
+        # first, verify the route parameters
+        name = clean(function_name)
+        cat = clean(process_type)
+        if cat not in settings.PROCESSING_FUNCTIONS:
+            raise ValueError('Processing functions are either "pre" or "post" '
+                             'processing.  Got %s.' % cat)
+
+        if name not in settings.PROCESSING_FUNCTIONS[cat]:
+            raise ValueError('"%s" is not a valid %s-processing function'
+                             % (name, cat))
+        return settings.PROCESSING_FUNCTIONS[cat][name]
+
+    def process(self, image, key, process_type):
+        """Apply the pre- or post-processing function to the image data.
+
+        Args:
+            image (numpy.array): The image data to process.
+            key (str): The name of the function to use.
+            process_type (str): "pre" or "post" processing.
+
+        Returns:
+            numpy.array: The processed image data.
+        """
+        start = timeit.default_timer()
+        if not key:
+            return image
+
+        f = self._get_processing_function(process_type, key)
+
+        if key == 'retinanet-semantic':
+            # image[:-1] is targeted at a two semantic head panoptic model
+            # TODO This may need to be modified and generalized in the future
+            results = f(image[:-1])
+        elif key == 'retinanet':
+            results = f(image, self._rawshape[0], self._rawshape[1])
+        else:
+            results = f(image)
+
+        if results.shape[0] == 1:
+            results = np.squeeze(results, axis=0)
+
+        finished = timeit.default_timer() - start
+
+        self.update_key(self._redis_hash, {
+            '{}process_time'.format(process_type): finished
+        })
+
+        self.logger.debug('%s-processed key %s (model %s:%s, preprocessing: %s,'
+                          ' postprocessing: %s) in %s seconds.',
+                          process_type.capitalize(), self._redis_hash,
+                          self._redis_values.get('model_name'),
+                          self._redis_values.get('model_version'),
+                          self._redis_values.get('preprocess_function'),
+                          self._redis_values.get('postprocess_function'),
+                          finished)
+
+        return results
+
+    def preprocess(self, image, keys):
+        """Wrapper for _process_image but can only call with type="pre".
+
+        Args:
+            image (numpy.array): image data
+            keys (list): list of function names to apply to the image
+
+        Returns:
+            numpy.array: pre-processed image data
+        """
+        pre = None
+        for key in keys:
+            x = pre if pre else image
+            pre = self.process(x, key, 'pre')
+        return pre
+
+    def postprocess(self, image, keys):
+        """Wrapper for _process_image but can only call with type="post".
+
+        Args:
+            image (numpy.array): image data
+            keys (list): list of function names to apply to the image
+
+        Returns:
+            numpy.array: post-processed image data
+        """
+        post = None
+        for key in keys:
+            x = post if post else image
+            post = self.process(x, key, 'post')
+        return post
+
 
 class ZipFileConsumer(Consumer):
     """Consumes zip files and uploads the results"""
