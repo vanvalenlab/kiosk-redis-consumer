@@ -36,7 +36,7 @@ def _consume(self, redis_hash):
 
     # TODO: the model can be passed in as an environment variable,
     # and parsed in settings.py.
-    model_name, model_version = 'CustomModel:1'
+    model_name, model_version = 'CustomModel:1'.split(':')
 
     with utils.get_tempdir() as tempdir:
         # download the image file
