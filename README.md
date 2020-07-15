@@ -44,14 +44,14 @@ def _consume(self, redis_hash):
         # load image file as data
         image = utils.get_image(fname)
 
-    # TODO: pre- and post-processing can be used with the BaseConsumer.process,
+    # pre- and post-processing can be used with the BaseConsumer.process,
     # which uses pre-defined functions in settings.PROCESSING_FUNCTIONS.
     image = self.preprocess(image, 'normalize')
 
     # send the data to the model
     results = self.predict(image, model_name, model_version)
 
-    # TODO: post-process the model results into a label image.
+    # post-process model results
     image = self.postprocess(image, 'deep_watershed')
 
     # save the results as an image file and upload it to the bucket
