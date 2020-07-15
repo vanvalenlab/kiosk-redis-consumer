@@ -13,7 +13,7 @@ This repository is part of the [DeepCell Kiosk](https://github.com/vanvalenlab/k
 
 Custom consumers can be used to implement custom model pipelines. This documentation is a continuation of a [tutorial](https://deepcell-kiosk.readthedocs.io/en/master/CUSTOM-JOB.html) on building a custom job pipeline.
 
-Consumers consume Redis events. Each type of Redis event is put into a separate queue (e.g. `predict`, `track`), and each consumer type will pop items to consume off that queue.
+Consumers consume Redis events. Each type of Redis event is put into a queue (e.g. `predict`, `track`), and each queue has a specific consumer type will pop items off the queue.
 Consumers call the `_consume` method to consume each item it finds in the queue.
 This method must be implemented for every consumer.
 
