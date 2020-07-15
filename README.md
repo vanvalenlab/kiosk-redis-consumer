@@ -17,7 +17,14 @@ Consumers consume Redis events. Each type of Redis event is put into a queue (e.
 Consumers call the `_consume` method to consume each item it finds in the queue.
 This method must be implemented for every consumer.
 
-The quickest way to get a custom consumer up and running is to inherit from `redis_consumer.consumers.ImageFileConsumer` ([docs](https://deepcell-kiosk.readthedocs.io/projects/kiosk-redis-consumer/en/master/redis_consumer.consumers.html)), which uses the `preprocess`, `predict`, and `postprocess` methods to easily process data with the model.
+
+The quickest way to get a custom consumer up and running is to:
+
+1. Add a new file for the consumer: `redis_consumer/consumers/my_new_consumer.py`
+2. Create a new class, inheriting from `TensorFlowServingConsumer` ([docs](https://deepcell-kiosk.readthedocs.io/projects/kiosk-redis-consumer/en/master/redis_consumer.consumers.html)), which uses the `preprocess`, `predict`, and `postprocess` methods to easily process data with the model.
+3. Implement the `_consume` method, which should download the data, run inference on the data, save and upload the results, and finish the job by updating the Redis fields.
+4. Import the new consumer in <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/redis_consumer/consumers/__init__.py">redis_consumer/consumers/\_\_init\_\_.py</a></tt> and add it to the `CONSUMERS` dictionary with a correponding queue type (`queue_name`). The script <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/consume-redis-events.py">consume-redis-events.py</a></tt> will load the consumer class based on the `CONSUMER_TYPE`.
+
 See below for a basic implementation of `_consume()` making use of the methods inherited from `ImageFileConsumer`:
 
 ```python
@@ -34,7 +41,7 @@ def _consume(self, redis_hash):
     # the data to process with the model, required.
     input_file_name = hvals.get('input_file_name')
 
-    # TODO: the model can be passed in as an environment variable,
+    # the model can be passed in as an environment variable,
     # and parsed in settings.py.
     model_name, model_version = 'CustomModel:1'.split(':')
 
@@ -71,23 +78,6 @@ def _consume(self, redis_hash):
 
     # return the final status
     return self.final_status
-```
-
-Finally, the new consumer needs to be imported into the <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/redis_consumer/consumers/__init__.py">redis_consumer/consumers/\_\_init\_\_.py</a></tt> and added to the `CONSUMERS` dictionary with a correponding queue type (`queue_name`). The script <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/consume-redis-events.py">consume-redis-events.py</a></tt> will load the consumer class based on the `CONSUMER_TYPE`.
-
-```python
-# Custom Workflow consumers
-from redis_consumer.consumers.image_consumer import ImageFileConsumer
-from redis_consumer.consumers.tracking_consumer import TrackingConsumer
-# TODO: Import future custom Consumer classes.
-
-
-CONSUMERS = {
-    'image': ImageFileConsumer,
-    'zip': ZipFileConsumer,
-    'tracking': TrackingConsumer,
-    # TODO: Add future custom Consumer classes here.
-}
 ```
 
 For guidance on how to complete the deployment of a custom consumer, please return to [Tutorial: Custom Job](https://deepcell-kiosk.readthedocs.io/en/master/CUSTOM-JOB.html).
