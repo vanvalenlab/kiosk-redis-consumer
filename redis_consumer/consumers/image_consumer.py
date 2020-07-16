@@ -204,32 +204,8 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         _ = timeit.default_timer()
         self.update_key(redis_hash, {'status': 'saving-results'})
 
-        with utils.get_tempdir() as tempdir:
-            # Save each result channel as an image file
-            save_name = hvals.get('original_name', fname)
-            subdir = os.path.dirname(save_name.replace(tempdir, ''))
-            name = os.path.splitext(os.path.basename(save_name))[0]
-
-            # Rescale image to original size before sending back to user
-            if isinstance(image, list):
-                outpaths = []
-                for i in image:
-                    outpaths.extend(utils.save_numpy_array(
-                        utils.rescale(i, 1 / scale), name=name,
-                        subdir=subdir, output_dir=tempdir))
-            else:
-                outpaths = utils.save_numpy_array(
-                    utils.rescale(image, 1 / scale), name=name,
-                    subdir=subdir, output_dir=tempdir)
-
-            # Save each prediction image as zip file
-            zip_file = utils.zip_files(outpaths, tempdir)
-
-            # Upload the zip file to cloud storage bucket
-            cleaned = zip_file.replace(tempdir, '')
-            subdir = os.path.dirname(settings._strip(cleaned))
-            subdir = subdir if subdir else None
-            dest, output_url = self.storage.upload(zip_file, subdir=subdir)
+        save_name = hvals.get('original_name', fname)
+        dest, output_url = self.save_output(image, redis_hash, save_name, scale)
 
         # Update redis with the final results
         t = timeit.default_timer() - start
