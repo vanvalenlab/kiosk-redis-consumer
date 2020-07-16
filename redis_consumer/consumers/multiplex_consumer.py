@@ -36,6 +36,7 @@ import numpy as np
 from redis_consumer.consumers import ImageFileConsumer
 from redis_consumer import utils
 from redis_consumer import settings
+from deepcell_toolbox.deep_watershed import format_output_multiplex
 
 
 class MultiplexConsumer(ImageFileConsumer):
@@ -110,7 +111,8 @@ class MultiplexConsumer(ImageFileConsumer):
 
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
-        image = self.postprocess(image, ['multiplex'])
+        image = format_output_multiplex(image)
+        image = self.postprocess(image, ['deep_watershed_subcellular'])
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()

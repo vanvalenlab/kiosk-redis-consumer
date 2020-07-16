@@ -129,6 +129,7 @@ PROCESSING_FUNCTIONS = {
         'retinanet-semantic': processing.retinanet_semantic_to_label_image,
         'deep_watershed': processing.deep_watershed,
         'multiplex': processing.deep_watershed_mibi,
+        'deep_watershed_subcellular': processing.deep_watershed_subcellular,
     },
 }
 
@@ -159,7 +160,7 @@ LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', ca
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 
 # Multiplex model Settings
-MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MIBI:1', cast=str)
+MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MIBI:2', cast=str)
 
 # Set default models based on label type
 MODEL_CHOICES = {
