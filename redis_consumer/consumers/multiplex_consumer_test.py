@@ -76,7 +76,12 @@ class TestMultiplexConsumer(object):
                 outer = np.random.random((1,) + shape + (1,))
                 fgbg = np.random.random((1,) + shape + (2,))
                 feature = np.random.random((1,) + shape + (3,))
-                return [inner, outer, fgbg, feature]
+
+                inner2 = np.random.random((1,) + shape + (1,))
+                outer2 = np.random.random((1,) + shape + (1,))
+                fgbg2 = np.random.random((1,) + shape + (2,))
+                feature2 = np.random.random((1,) + shape + (3,))
+                return [inner, outer, fgbg, feature, inner2, outer2, fgbg2, feature2]
             return grpc
 
         image_shape = (300, 300, 2)
