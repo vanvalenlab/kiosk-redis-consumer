@@ -38,6 +38,7 @@ from redis_consumer import utils
 from redis_consumer import settings
 from redis_consumer import processing
 
+
 class MultiplexConsumer(ImageFileConsumer):
     """Consumes image files and uploads the results"""
 
