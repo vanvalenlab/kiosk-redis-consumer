@@ -13,73 +13,71 @@ This repository is part of the [DeepCell Kiosk](https://github.com/vanvalenlab/k
 
 Custom consumers can be used to implement custom model pipelines. This documentation is a continuation of a [tutorial](https://deepcell-kiosk.readthedocs.io/en/master/CUSTOM-JOB.html) on building a custom job pipeline.
 
-Consumers consume Redis events. Each type of Redis event is put into a separate queue (e.g. `predict`, `track`), and each consumer type will pop items to consume off that queue.
+Consumers consume Redis events. Each type of Redis event is put into a queue (e.g. `predict`, `track`), and each queue has a specific consumer type will pop items off the queue.
+Consumers call the `_consume` method to consume each item it finds in the queue.
+This method must be implemented for every consumer.
 
-Each Redis event should have the following fields:
 
-- `model_name` - The name of the model that will be retrieved by TensorFlow Serving from `gs://<bucket-name>/models`
-- `model_version` - The version number of the model in TensorFlow Serving
-- `input_file_name` - The path to the data file in a cloud bucket.
+The quickest way to get a custom consumer up and running is to:
 
-If the consumer will send data to a TensorFlow Serving model, it should inherit from `redis_consumer.consumers.TensorFlowServingConsumer` ([docs](https://deepcell-kiosk.readthedocs.io/projects/kiosk-redis-consumer/en/master/redis_consumer.consumers.html)), which has methods `_get_predict_client()` and `grpc_image()` which can send data to the specific model.  The new consumer must also implement the `_consume()` method which performs the bulk of the work. The `_consume()` method will fetch data from Redis, download data file from the bucket, process the data with a model, and upload the results to the bucket again. See below for a basic implementation of `_consume()`:
+1. Add a new file for the consumer: `redis_consumer/consumers/my_new_consumer.py`
+2. Create a new class, inheriting from `TensorFlowServingConsumer` ([docs](https://deepcell-kiosk.readthedocs.io/projects/kiosk-redis-consumer/en/master/redis_consumer.consumers.html)), which uses the `preprocess`, `predict`, and `postprocess` methods to easily process data with the model.
+3. Implement the `_consume` method, which should download the data, run inference on the data, save and upload the results, and finish the job by updating the Redis fields.
+4. Import the new consumer in <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/redis_consumer/consumers/__init__.py">redis_consumer/consumers/\_\_init\_\_.py</a></tt> and add it to the `CONSUMERS` dictionary with a correponding queue type (`queue_name`). The script <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/consume-redis-events.py">consume-redis-events.py</a></tt> will load the consumer class based on the `CONSUMER_TYPE`.
 
-```python
-    def _consume(self, redis_hash):
-        # get all redis data for the given hash
-        hvals = self.redis.hgetall(redis_hash)
-
-        with utils.get_tempdir() as tempdir:
-            # download the image file
-            fname = self.storage.download(hvals.get('input_file_name'), tempdir)
-
-            # load image file as data
-            image = utils.get_image(fname)
-
-            # preprocess data if necessary
-
-            # send the data to the model
-            results = self.grpc_image(image,
-                                    hvals.get('model_name'),
-                                    hvals.get('model_version'))
-
-            # postprocess results if necessary
-
-            # save the results as an image
-            outpaths = utils.save_numpy_array(results, name=name,
-                                            subdir=subdir, output_dir=tempdir)
-
-            # zip up the file
-            zip_file = utils.zip_files(outpaths, tempdir)
-
-            # upload the zip file to the cloud bucket
-            dest, output_url = self.storage.upload(zip_file)
-
-            # save the results to the redis hash
-            self.update_key(redis_hash, {
-                'status': self.final_status,
-                'output_url': output_url,
-                'output_file_name': dest
-                })
-
-        # return the final status
-        return self.final_status
-```
-
-Finally, the new consumer needs to be imported into the <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/redis_consumer/consumers/__init__.py">redis_consumer/consumers/\_\_init\_\_.py</a></tt> and added to the `CONSUMERS` dictionary with a correponding queue type (`queue_name`). The script <tt><a href="https://github.com/vanvalenlab/kiosk-redis-consumer/blob/master/consume-redis-events.py">consume-redis-events.py</a></tt> will load the consumer class based on the `CONSUMER_TYPE`.
+See below for a basic implementation of `_consume()` making use of the methods inherited from `ImageFileConsumer`:
 
 ```python
-# Custom Workflow consumers
-from redis_consumer.consumers.image_consumer import ImageFileConsumer
-from redis_consumer.consumers.tracking_consumer import TrackingConsumer
-# TODO: Import future custom Consumer classes.
+def _consume(self, redis_hash):
+    # get all redis data for the given hash
+    hvals = self.redis.hgetall(redis_hash)
 
+    # only work on unfinished jobs
+    if hvals.get('status') in self.finished_statuses:
+        self.logger.warning('Found completed hash `%s` with status %s.',
+                            redis_hash, hvals.get('status'))
+        return hvals.get('status')
 
-CONSUMERS = {
-    'image': ImageFileConsumer,
-    'zip': ZipFileConsumer,
-    'tracking': TrackingConsumer,
-    # TODO: Add future custom Consumer classes here.
-}
+    # the data to process with the model, required.
+    input_file_name = hvals.get('input_file_name')
+
+    # the model can be passed in as an environment variable,
+    # and parsed in settings.py.
+    model_name, model_version = 'CustomModel:1'.split(':')
+
+    with utils.get_tempdir() as tempdir:
+        # download the image file
+        fname = self.storage.download(input_file_name, tempdir)
+        # load image file as data
+        image = utils.get_image(fname)
+
+    # pre- and post-processing can be used with the BaseConsumer.process,
+    # which uses pre-defined functions in settings.PROCESSING_FUNCTIONS.
+    image = self.preprocess(image, 'normalize')
+
+    # send the data to the model
+    results = self.predict(image, model_name, model_version)
+
+    # post-process model results
+    image = self.postprocess(image, 'deep_watershed')
+
+    # save the results as an image file and upload it to the bucket
+    save_name = hvals.get('original_name', fname)
+    dest, output_url = self.save_output(image, redis_hash, save_name)
+
+    # save the results to the redis hash
+    self.update_key(redis_hash, {
+        'status': self.final_status,
+        'output_url': output_url,
+        'upload_time': timeit.default_timer() - _,
+        'output_file_name': dest,
+        'total_jobs': 1,
+        'total_time': timeit.default_timer() - start,
+        'finished_at': self.get_current_timestamp()
+    })
+
+    # return the final status
+    return self.final_status
 ```
 
 For guidance on how to complete the deployment of a custom consumer, please return to [Tutorial: Custom Job](https://deepcell-kiosk.readthedocs.io/en/master/CUSTOM-JOB.html).

@@ -48,58 +48,16 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
         return not fname.lower().endswith('.zip')
 
-    def _get_processing_function(self, process_type, function_name):
-        """Based on the function category and name, return the function"""
-        clean = lambda x: str(x).lower()
-        # first, verify the route parameters
-        name = clean(function_name)
-        cat = clean(process_type)
-        if cat not in settings.PROCESSING_FUNCTIONS:
-            raise ValueError('Processing functions are either "pre" or "post" '
-                             'processing.  Got %s.' % cat)
-
-        if name not in settings.PROCESSING_FUNCTIONS[cat]:
-            raise ValueError('"%s" is not a valid %s-processing function'
-                             % (name, cat))
-        return settings.PROCESSING_FUNCTIONS[cat][name]
-
-    def process(self, image, key, process_type):
-        start = timeit.default_timer()
-        if not key:
-            return image
-
-        f = self._get_processing_function(process_type, key)
-
-        if key == 'retinanet-semantic':
-            # image[:-1] is targeted at a two semantic head panoptic model
-            # TODO This may need to be modified and generalized in the future
-            results = f(image[:-1])
-        elif key == 'retinanet':
-            results = f(image, self._rawshape[0], self._rawshape[1])
-        else:
-            results = f(image)
-
-        if results.shape[0] == 1:
-            results = np.squeeze(results, axis=0)
-
-        finished = timeit.default_timer() - start
-
-        self.update_key(self._redis_hash, {
-            '{}process_time'.format(process_type): finished
-        })
-
-        self.logger.debug('%s-processed key %s (model %s:%s, preprocessing: %s,'
-                          ' postprocessing: %s) in %s seconds.',
-                          process_type.capitalize(), self._redis_hash,
-                          self._redis_values.get('model_name'),
-                          self._redis_values.get('model_version'),
-                          self._redis_values.get('preprocess_function'),
-                          self._redis_values.get('postprocess_function'),
-                          finished)
-
-        return results
-
     def detect_scale(self, image):
+        """Send the image to the SCALE_DETECT_MODEL to detect the relative
+        scale difference from the image to the model's training data.
+
+        Args:
+            image (numpy.array): The image data.
+
+        Returns:
+            scale (float): The detected scale, used to rescale data.
+        """
         start = timeit.default_timer()
 
         if not settings.SCALE_DETECT_ENABLED:
@@ -122,6 +80,15 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         return detected_scale
 
     def detect_label(self, image):
+        """Send the image to the LABEL_DETECT_MODEL to detect the type of image
+        data. The model output is mapped with settings.MODEL_CHOICES.
+
+        Args:
+            image (numpy.array): The image data.
+
+        Returns:
+            label (int): The detected label.
+        """
         start = timeit.default_timer()
 
         if not settings.LABEL_DETECT_ENABLED:
@@ -142,40 +109,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         self.logger.debug('Label %s detected in %s seconds.',
                           detected, timeit.default_timer() - start)
         return detected
-
-    def preprocess(self, image, keys):
-        """Wrapper for _process_image but can only call with type="pre".
-
-        Args:
-            image: numpy array of image data
-            keys: list of function names to apply to the image
-            streaming: boolean. if True, streams data in multiple requests
-
-        Returns:
-            pre-processed image data
-        """
-        pre = None
-        for key in keys:
-            x = pre if pre else image
-            pre = self.process(x, key, 'pre')
-        return pre
-
-    def postprocess(self, image, keys):
-        """Wrapper for _process_image but can only call with type="post".
-
-        Args:
-            image: numpy array of image data
-            keys: list of function names to apply to the image
-            streaming: boolean. if True, streams data in multiple requests
-
-        Returns:
-            post-processed image data
-        """
-        post = None
-        for key in keys:
-            x = post if post else image
-            post = self.process(x, key, 'post')
-        return post
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
