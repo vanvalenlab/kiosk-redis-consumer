@@ -118,16 +118,18 @@ METADATA_EXPIRE_TIME = config('METADATA_EXPIRE_TIME', default=30, cast=int)
 # Pre- and Post-processing settings
 PROCESSING_FUNCTIONS = {
     'pre': {
-        'normalize': processing.normalize
+        'normalize': processing.normalize,
+        'histogram_normalization': processing.phase_preprocess,
     },
     'post': {
         'deepcell': processing.pixelwise,  # TODO: this is deprecated.
         'pixelwise': processing.pixelwise,
-        'mibi': processing.mibi,
         'watershed': processing.watershed,
         'retinanet': processing.retinanet_to_label_image,
         'retinanet-semantic': processing.retinanet_semantic_to_label_image,
         'deep_watershed': processing.deep_watershed,
+        'multiplex': processing.deep_watershed_mibi,
+        'deep_watershed_subcellular': processing.deep_watershed_subcellular,
     },
 }
 
@@ -156,6 +158,9 @@ SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
 # Type detection settings
 LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', cast=str)
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
+
+# Multiplex model Settings
+MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MIBI:2', cast=str)
 
 # Set default models based on label type
 MODEL_CHOICES = {
