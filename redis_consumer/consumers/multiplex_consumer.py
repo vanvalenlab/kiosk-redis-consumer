@@ -33,13 +33,13 @@ import timeit
 
 import numpy as np
 
-from redis_consumer.consumers import ImageFileConsumer
+from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import utils
 from redis_consumer import settings
 from redis_consumer import processing
 
 
-class MultiplexConsumer(ImageFileConsumer):
+class MultiplexConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
     def _consume(self, redis_hash):
