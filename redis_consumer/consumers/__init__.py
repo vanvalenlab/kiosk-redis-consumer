@@ -36,6 +36,7 @@ from redis_consumer.consumers.base_consumer import ZipFileConsumer
 from redis_consumer.consumers.image_consumer import ImageFileConsumer
 from redis_consumer.consumers.tracking_consumer import TrackingConsumer
 from redis_consumer.consumers.multiplex_consumer import MultiplexConsumer
+from redis_consumer.consumers.deepcell3D_consumer import Deepcell3DConsumer
 # TODO: Import future custom Consumer classes.
 
 
@@ -44,6 +45,7 @@ CONSUMERS = {
     'zip': ZipFileConsumer,
     'tracking': TrackingConsumer,
     'multiplex': MultiplexConsumer,
+    'deepcell3d': Deepcell3DConsumer,
     # TODO: Add future custom Consumer classes here.
 }
 

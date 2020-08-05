@@ -45,7 +45,9 @@ from deepcell_toolbox.deep_watershed import deep_watershed
 from deepcell_toolbox.deep_watershed import deep_watershed_mibi
 from deepcell_toolbox.deep_watershed import format_output_multiplex
 from deepcell_toolbox.deep_watershed import deep_watershed_subcellular
+from deepcell_toolbox.deep_watershed import deep_watershed_3D
 from deepcell_toolbox.processing import phase_preprocess
+from deepcell_toolbox.utils import tile_image_3D, untile_image_3D
 
 from deepcell_toolbox import retinanet_semantic_to_label_image
 from deepcell_toolbox import retinanet_to_label_image
