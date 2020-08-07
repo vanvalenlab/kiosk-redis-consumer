@@ -86,7 +86,7 @@ class TestDeepcell3DConsumer(object):
             (-1, 10, 150, 150, 1),  # image too big, tile
         ]
 
-        scales = ['.9', '']
+        scales = ['1', '']
 
         job_data = {
             'input_file_name': 'file.tiff',
