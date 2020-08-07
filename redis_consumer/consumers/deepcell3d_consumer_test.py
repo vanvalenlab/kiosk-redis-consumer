@@ -72,10 +72,10 @@ class TestDeepcell3DConsumer(object):
             shape = model_shape[1:-1]
 
             def grpc(data, *args, **kwargs):
-                inner = np.random.random((1,) + shape + (1,))
-                outer = np.random.random((1,) + shape + (1,))
-                fgbg = np.random.random((1,) + shape + (2,))
-                feature = np.random.random((1,) + shape + (3,))
+                inner = np.random.random((1,) + shape + (1,)).astype('uint16')
+                outer = np.random.random((1,) + shape + (1,)).astype('uint16')
+                fgbg = np.random.random((1,) + shape + (2,)).astype('uint16')
+                feature = np.random.random((1,) + shape + (3,)).astype('uint16')
                 return [inner, outer, fgbg, feature]
             return grpc
 
