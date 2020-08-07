@@ -79,7 +79,7 @@ class TestDeepcell3DConsumer(object):
                 return [inner, outer, fgbg, feature]
             return grpc
 
-        image_shape = (60, 300, 300, 1)
+        image_shape = (20, 256, 256, 1)
         model_shapes = [
             (-1, 40, 600, 600, 1),  # image too small, pad
             (-1, 20, 256, 256, 1),  # image is exactly the right size
