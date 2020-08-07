@@ -163,7 +163,7 @@ LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MIBI:2', cast=str)
 
 # 3D model Settings
-DEEPCELL3D_MODEL = config('DEEPCELL3D_MODEL', default='3D:0', cast=str)
+DEEPCELL3D_MODEL = config('DEEPCELL3D_MODEL', default='3D:1', cast=str)
 
 # Set default models based on label type
 MODEL_CHOICES = {

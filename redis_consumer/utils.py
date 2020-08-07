@@ -274,7 +274,7 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
     if len(arr.shape) == 2:
         arr = np.expand_dims(arr, -1)
         logger.debug('Expanding dimension of array to include channel '
-                     'dimension. New shape is %s', arr.shape)
+                     'dimension. New shape is %s', arr.shape)     
 
     start = timeit.default_timer()
     output_dir = output_dir if output_dir is None else output_dir

@@ -95,22 +95,42 @@ class Deepcell3DConsumer(ImageFileConsumer):
         image = np.squeeze(image)
 
         # if for some reason a one-channel image was passed, add the channel back
-        if image.ndim == 2:
+        if image.ndim == 3:
             image = np.expand_dims(image, -1)
 
         # Rescale each channel of the image
         image = utils.rescale(image, scale)
         image = np.expand_dims(image, axis=0)  # add in the batch dim
 
+        self.logger.debug('Preprocessing image - shape of image is %s', image.shape)
         # Preprocess image - tile into shape required by model
+        # TODO - If x/y are < 512, I think we can set stride_ratio to 0.5 for higher accuracy
+        # Need to test exact limits
+
         input_shape = (20, 64, 64)
         image, tiles_info = processing.tile_image_3D(image,
                                                      model_input_shape=input_shape,
-                                                     stride_ratio=0.5)
+                                                     stride_ratio=0.8)
+
+        self.logger.debug('Shape of tiles is %s', image.shape)
+
 
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
-        image = self.predict(image, model_name, model_version)
+
+        inner_d = []
+        outer_d = []
+        for tilenum in range(image.shape[0]):
+            pred = self.predict(image[tilenum, ...], model_name, model_version)
+            inner_d.append(pred[0][0, ...])
+            outer_d.append(pred[1][0, ...])
+
+        inner_d = np.asarray(inner_d)
+        outer_d = np.asarray(outer_d)
+
+        image = [inner_d, outer_d]
+
+        self.logger.debug('Shape of image[0] is %s', image[0].shape)
 
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
@@ -118,7 +138,15 @@ class Deepcell3DConsumer(ImageFileConsumer):
                                             tiles_info,
                                             model_input_shape=input_shape,
                                             power=2) for o in image]
+
+        self.logger.debug('Shape of image[0] after untiling is %s', image[0].shape)
         image = processing.deep_watershed_3D(image, small_objects_threshold=50)
+
+        # Add channel dim if needed - save_output only adds channel dim for 2D images by default
+        if image.ndim == 4:
+            image = np.expand_dims(image, -1)
+
+        self.logger.debug('Unique cells in predicted image are: %s', np.unique(image))
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
