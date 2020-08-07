@@ -81,9 +81,9 @@ class TestDeepcell3DConsumer(object):
 
         image_shape = (20, 256, 256, 1)
         model_shapes = [
-            (-1, 40, 600, 600, 1),  # image too small, pad
+            (-1, 20, 600, 600, 1),  # image too small, pad
             (-1, 20, 256, 256, 1),  # image is exactly the right size
-            (-1, 10, 150, 150, 1),  # image too big, tile
+            (-1, 20, 150, 150, 1),  # image too big, tile
         ]
 
         scales = ['1', '']
