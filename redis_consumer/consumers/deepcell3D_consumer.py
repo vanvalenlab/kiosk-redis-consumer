@@ -122,15 +122,17 @@ class Deepcell3DConsumer(ImageFileConsumer):
 
         inner_d = np.asarray(inner_d)
         outer_d = np.asarray(outer_d)
+
+        print(inner_d.shape)
+
         image = [inner_d, outer_d]
 
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
-        if image[0].shape[0] > 1:
-            image = [processing.untile_image_3D(o,
-                                                tiles_info,
-                                                model_input_shape=input_shape,
-                                                power=2) for o in image]
+        image = [processing.untile_image_3D(o,
+                                            tiles_info,
+                                            model_input_shape=input_shape,
+                                            power=2) for o in image]
 
         image = processing.deep_watershed_3D(image, small_objects_threshold=50)
 
