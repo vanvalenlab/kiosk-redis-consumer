@@ -103,8 +103,11 @@ class Deepcell3DConsumer(ImageFileConsumer):
         image = np.expand_dims(image, axis=0)  # add in the batch dim
 
         # Preprocess image - tile into shape required by model
-        # TODO - If x/y are < 512, I think we can set stride_ratio to 0.5 for higher accuracy
-        # Need to test exact limits - we do hit a memory error at some point
+        # TODO - optimal stride ratio in terms of accuracy is 0.5. However, a stride_ratio
+        # of 0.5 causes a memory error (due to too many tiles) with large enough image sizes
+        # It would be good to figure out where the limits are, and to flexibly change the
+        # stride ratio based on that. Or even better, coming up with a way around the
+        # memory error so that a stride of 0.5 can be used in all cases.
         input_shape = (20, 64, 64)
         image, tiles_info = processing.tile_image_3D(image,
                                                      model_input_shape=input_shape,
@@ -113,6 +116,9 @@ class Deepcell3DConsumer(ImageFileConsumer):
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
 
+        # TODO - it would be good to implement 3D tile and untile in ImageFileConsumer
+        # predict, so that we don't have to do it here. The issue is identifying whether
+        # or not data is 3D, especially if it is missing a batch/channel dimension. 
         inner_d = []
         outer_d = []
         for tilenum in range(image.shape[0]):
