@@ -126,10 +126,12 @@ class Deepcell3DConsumer(ImageFileConsumer):
 
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
-        image = [processing.untile_image_3D(o,
-                                            tiles_info,
-                                            model_input_shape=input_shape,
-                                            power=2) for o in image]
+        if image[0].shape[0] > 1:
+            image = [processing.untile_image_3D(o,
+                                                tiles_info,
+                                                model_input_shape=input_shape,
+                                                power=2) for o in image]
+
         image = processing.deep_watershed_3D(image, small_objects_threshold=50)
 
         # Add channel dim if needed - save_output only adds channel dim for 2D images by default
