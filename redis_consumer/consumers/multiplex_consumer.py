@@ -88,7 +88,7 @@ class MultiplexConsumer(ImageFileConsumer):
                                  'multiplex model expects of images of shape'
                                  '[height, widths, 2]'.format(image.shape))
             elif image.shape[0] == 2:
-                # TODO: once we can pass warning messages tell user we're switching to channels last
+                # TODO: once we can pass warning messages tell user we switched to channels last
                 image = np.rollaxis(image, 0, 3)
 
             elif image.shape[2] == 2:
