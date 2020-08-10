@@ -130,3 +130,21 @@ class TestMultiplexConsumer(object):
             result = redis_client.hget(test_hash, 'status')
             assert result == consumer.final_status
             test_hash += 1
+
+        model_shape = (-1, 150, 150, 2)
+        invalid_image_shapes = [(150, 150), (150, 150, 1), (1, 150, 150), (1, 1, 150, 150)]
+
+        for image_shape in invalid_image_shapes:
+            mocker.patch('redis_consumer.utils.get_image',
+                         lambda x: np.random.random(image_shape))
+            metadata = make_model_metadata_of_size(model_shape)
+            grpc_image = make_grpc_image(model_shape)
+            mocker.patch.object(consumer, 'get_model_metadata', metadata)
+            mocker.patch.object(consumer, 'grpc_image', grpc_image)
+
+            data = job_data.copy()
+            data['scale'] = scale
+
+            redis_client.hmset(test_hash, data)
+            with pytest.raises(ValueError):
+                _ = consumer._consume(test_hash)

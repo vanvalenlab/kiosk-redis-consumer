@@ -71,6 +71,33 @@ class MultiplexConsumer(ImageFileConsumer):
             # TODO: tiffs expand the last axis, is that a problem here?
             image = utils.get_image(fname)
 
+        # validate correct shape of image
+        if len(image.shape) > 3:
+            raise ValueError('An image of shape {} was supplied, but the '
+                             'multiplex model expects of images of shape'
+                             '[height, widths, 2]'.format(image.shape))
+        elif len(image.shape) < 3:
+            # TODO: Once we can pass warning messages to user, we can treat this as nuclear image
+            raise ValueError('A 2D image of shape {} was supplied, but the '
+                             'multiplex model expects images of shape'
+                             '[height, width, 2]')
+        else:
+            if 1 in [image.shape[0], image.shape[2]]:
+                # TODO: Once we can pass warning messages, we can treat this as nuclear image
+                raise ValueError('An image of shape {} was supplied, but the '
+                                 'multiplex model expects of images of shape'
+                                 '[height, widths, 2]'.format(image.shape))
+            elif image.shape[0] == 2:
+                # TODO: once we can pass warning messages tell user we're switching to channels last
+                image = np.rollaxis(image, 0, 3)
+
+            elif image.shape[2] == 2:
+                pass
+            else:
+                raise ValueError('An image of shape {} was supplied, but the '
+                                 'multiplex model expects of images of shape'
+                                 '[height, widths, 2]'.format(image.shape))
+
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
             'status': 'pre-processing',
