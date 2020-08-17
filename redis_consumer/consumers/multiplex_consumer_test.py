@@ -89,6 +89,9 @@ class TestMultiplexConsumer(object):
             (-1, 600, 600, 2),  # image too small, pad
             (-1, 300, 300, 2),  # image is exactly the right size
             (-1, 150, 150, 2),  # image too big, tile
+
+            (-1, 2, 300, 300),  # image is exactly the right size, channels first
+
         ]
 
         scales = ['.9', '']
@@ -132,7 +135,8 @@ class TestMultiplexConsumer(object):
             test_hash += 1
 
         model_shape = (-1, 150, 150, 2)
-        invalid_image_shapes = [(150, 150), (150, 150, 1), (1, 150, 150), (1, 1, 150, 150)]
+        invalid_image_shapes = [(150, 150), (150, 150, 1), (1, 150, 150), (3, 150, 150),
+                                (1, 1, 150, 150)]
 
         for image_shape in invalid_image_shapes:
             mocker.patch('redis_consumer.utils.get_image',

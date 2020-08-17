@@ -84,11 +84,10 @@ class MultiplexConsumer(ImageFileConsumer):
         else:
             if 1 in [image.shape[0], image.shape[2]]:
                 # TODO: Once we can pass warning messages, we can treat this as nuclear image
-                raise ValueError('An image of shape {} was supplied, but the '
-                                 'multiplex model expects of images of shape'
-                                 '[height, widths, 2]'.format(image.shape))
+                raise ValueError('An image of shape {} with only a single channel '
+                                 'was supplied, but the multiplex model expects '
+                                 'images with 2 channels.'.format(image.shape))
             elif image.shape[0] == 2:
-                # TODO: once we can pass warning messages tell user we switched to channels last
                 image = np.rollaxis(image, 0, 3)
 
             elif image.shape[2] == 2:
@@ -117,13 +116,6 @@ class MultiplexConsumer(ImageFileConsumer):
         else:
             scale = float(scale)
             self.logger.debug('Image scale already calculated %s', scale)
-
-        # squeeze out extra channel dimension added by 'get_image'
-        image = np.squeeze(image)
-
-        # if for some reason a one-channel image was passed, add the channel back
-        if image.ndim == 2:
-            image = np.expand_dims(image, -1)
 
         # Rescale each channel of the image
         image = utils.rescale(image, scale)
