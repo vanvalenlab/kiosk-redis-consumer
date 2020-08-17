@@ -84,14 +84,15 @@ class TestMultiplexConsumer(object):
                 return [inner, outer, fgbg, feature, inner2, outer2, fgbg2, feature2]
             return grpc
 
-        image_shape = (300, 300, 2)
+        image_shapes = [
+            (2, 300, 300), # channels first
+            (300, 300, 2), # channels last
+            ]
+
         model_shapes = [
             (-1, 600, 600, 2),  # image too small, pad
             (-1, 300, 300, 2),  # image is exactly the right size
             (-1, 150, 150, 2),  # image too big, tile
-
-            (-1, 2, 300, 300),  # image is exactly the right size, channels first
-
         ]
 
         scales = ['.9', '']
@@ -115,10 +116,12 @@ class TestMultiplexConsumer(object):
             assert result == status
             test_hash += 1
 
-        mocker.patch('redis_consumer.utils.get_image',
-                     lambda x: np.random.random(image_shape))
+        for model_shape, scale, image_shape in itertools.product(model_shapes,
+                                                                 scales,
+                                                                 image_shapes):
+            mocker.patch('redis_consumer.utils.get_image',
+                         lambda x: np.random.random(image_shape))
 
-        for model_shape, scale in itertools.product(model_shapes, scales):
             metadata = make_model_metadata_of_size(model_shape)
             grpc_image = make_grpc_image(model_shape)
             mocker.patch.object(consumer, 'get_model_metadata', metadata)
