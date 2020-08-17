@@ -85,9 +85,9 @@ class TestMultiplexConsumer(object):
             return grpc
 
         image_shapes = [
-            (2, 300, 300), # channels first
-            (300, 300, 2), # channels last
-            ]
+            (2, 300, 300),  # channels first
+            (300, 300, 2),  # channels last
+        ]
 
         model_shapes = [
             (-1, 600, 600, 2),  # image too small, pad
