@@ -71,6 +71,29 @@ class MultiplexConsumer(ImageFileConsumer):
             # TODO: tiffs expand the last axis, is that a problem here?
             image = utils.get_image(fname)
 
+        # squeeze extra dimension that is added by get_image
+        image = np.squeeze(image)
+
+        # validate correct shape of image
+        if len(image.shape) > 3:
+            raise ValueError('Invalid image shape. An image of shape {} was supplied, but the '
+                             'multiplex model expects of images of shape'
+                             '[height, widths, 2]'.format(image.shape))
+        elif len(image.shape) < 3:
+            # TODO: Once we can pass warning messages to user, we can treat this as nuclear image
+            raise ValueError('Invalid image shape. An image of shape {} was supplied, but the '
+                             'multiplex model expects images of shape'
+                             '[height, width, 2]')
+        else:
+            if image.shape[0] == 2:
+                image = np.rollaxis(image, 0, 3)
+            elif image.shape[2] == 2:
+                pass
+            else:
+                raise ValueError('Invalid image shape. An image of shape {} was supplied, '
+                                 'but the multiplex model expects images of shape'
+                                 '[height, widths, 2]'.format(image.shape))
+
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
             'status': 'pre-processing',
@@ -90,13 +113,6 @@ class MultiplexConsumer(ImageFileConsumer):
         else:
             scale = float(scale)
             self.logger.debug('Image scale already calculated %s', scale)
-
-        # squeeze out extra channel dimension added by 'get_image'
-        image = np.squeeze(image)
-
-        # if for some reason a one-channel image was passed, add the channel back
-        if image.ndim == 2:
-            image = np.expand_dims(image, -1)
 
         # Rescale each channel of the image
         image = utils.rescale(image, scale)
