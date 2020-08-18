@@ -160,7 +160,7 @@ LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', ca
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 
 # Multiplex model Settings
-MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MIBI:2', cast=str)
+MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MultiplexSegmentation:3', cast=str)
 
 # Set default models based on label type
 MODEL_CHOICES = {

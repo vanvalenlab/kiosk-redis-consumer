@@ -71,30 +71,27 @@ class MultiplexConsumer(ImageFileConsumer):
             # TODO: tiffs expand the last axis, is that a problem here?
             image = utils.get_image(fname)
 
+        # squeeze extra dimension that is added by get_image
+        image = np.squeeze(image)
+
         # validate correct shape of image
         if len(image.shape) > 3:
-            raise ValueError('An image of shape {} was supplied, but the '
+            raise ValueError('Invalid image shape. An image of shape {} was supplied, but the '
                              'multiplex model expects of images of shape'
                              '[height, widths, 2]'.format(image.shape))
         elif len(image.shape) < 3:
             # TODO: Once we can pass warning messages to user, we can treat this as nuclear image
-            raise ValueError('A 2D image of shape {} was supplied, but the '
+            raise ValueError('Invalid image shape. An image of shape {} was supplied, but the '
                              'multiplex model expects images of shape'
                              '[height, width, 2]')
         else:
-            if 1 in [image.shape[0], image.shape[2]]:
-                # TODO: Once we can pass warning messages, we can treat this as nuclear image
-                raise ValueError('An image of shape {} with only a single channel '
-                                 'was supplied, but the multiplex model expects '
-                                 'images with 2 channels.'.format(image.shape))
-            elif image.shape[0] == 2:
+            if image.shape[0] == 2:
                 image = np.rollaxis(image, 0, 3)
-
             elif image.shape[2] == 2:
                 pass
             else:
-                raise ValueError('An image of shape {} was supplied, but the '
-                                 'multiplex model expects of images of shape'
+                raise ValueError('Invalid image shape. An image of shape {} was supplied, '
+                                 'but the multiplex model expects images of shape'
                                  '[height, widths, 2]'.format(image.shape))
 
         # Pre-process data before sending to the model
