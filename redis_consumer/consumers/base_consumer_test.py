@@ -362,6 +362,13 @@ class TestTensorFlowServingConsumer(object):
             consumer.predict(x, model_name='modelname', model_version=0,
                              untile=untile)
 
+        # test image larger than max dimensions
+        with pytest.raises(ValueError):
+            mocker.patch.object(settings, 'MAX_IMAGE_WIDTH', 300)
+            mocker.patch.object(settings, 'MAX_IMAGE_HEIGHT', 300)
+            x = np.random.random((301, 301, 1))
+            consumer.predict(x, model_name='modelname', model_version=0)
+
         # test mismatch of input data and model shape
         with pytest.raises(ValueError):
             x = np.random.random((5,))
