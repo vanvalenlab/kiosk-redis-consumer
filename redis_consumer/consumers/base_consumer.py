@@ -553,6 +553,15 @@ class TensorFlowServingConsumer(Consumer):
                                  image.shape, model_name, model_version,
                                  tuple(model_shape)))
 
+        if (image.shape[-2] > settings.MAX_IMAGE_WIDTH or
+                image.shape[-3] > settings.MAX_IMAGE_HEIGHT):
+            raise ValueError(
+                'The image is too large! Rescaled images have a maximum size '
+                'of ({}, {}) but found size {}.'.format(
+                    settings.MAX_IMAGE_WIDTH,
+                    settings.MAX_IMAGE_HEIGHT,
+                    image.shape))
+
         size_x = model_shape[model_ndim - 3]
         size_y = model_shape[model_ndim - 2]
 
