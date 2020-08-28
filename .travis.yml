@@ -16,7 +16,7 @@ cache: pip
 
 install:
   - travis_retry pip install -r requirements.txt
-  - travis_retry pip install -r requirements-test.txt
+  - travis_retry pip install --upgrade -r requirements-test.txt
   # install documentation requirements
   - if [[ "$TRAVIS_PYTHON_VERSION" == "3.7" ]]; then
       travis_retry pip install -r docs/rtd-requirements.txt;
