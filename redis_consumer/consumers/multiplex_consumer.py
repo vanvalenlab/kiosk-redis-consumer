@@ -119,7 +119,7 @@ class MultiplexConsumer(ImageFileConsumer):
         image = np.expand_dims(image, axis=0)  # add in the batch dim
 
         # Preprocess image
-        image = self.preprocess(image, ['histogram_normalization'])
+        image = self.preprocess(image, ['multiplex_preprocess'])
 
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
@@ -128,7 +128,7 @@ class MultiplexConsumer(ImageFileConsumer):
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
         image = processing.format_output_multiplex(image)
-        image = self.postprocess(image, ['deep_watershed_subcellular'])
+        image = self.postprocess(image, ['multiplex_postprocess'])
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
