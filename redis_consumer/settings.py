@@ -122,6 +122,7 @@ PROCESSING_FUNCTIONS = {
     'pre': {
         'normalize': processing.normalize,
         'histogram_normalization': processing.phase_preprocess,
+        'multiplex_preprocess': processing.multiplex_preprocess
     },
     'post': {
         'deepcell': processing.pixelwise,  # TODO: this is deprecated.
@@ -130,8 +131,7 @@ PROCESSING_FUNCTIONS = {
         'retinanet': processing.retinanet_to_label_image,
         'retinanet-semantic': processing.retinanet_semantic_to_label_image,
         'deep_watershed': processing.deep_watershed,
-        'multiplex': processing.deep_watershed_mibi,
-        'deep_watershed_subcellular': processing.deep_watershed_subcellular,
+        'multiplex': processing.multiplex_postprocess,
     },
 }
 

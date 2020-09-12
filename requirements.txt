@@ -9,5 +9,4 @@ grpcio==1.27.2
 dict-to-protobuf==0.0.3.9
 pytz==2019.1
 deepcell-tracking==0.2.6
-deepcell-toolbox=>0.7
-git+https://github.com/vanvalenlab/deepcell-tf.git@43179b50c224e073c3a30e7da94c61445b19ae6f
+deepcell-toolbox=>0.7.1
