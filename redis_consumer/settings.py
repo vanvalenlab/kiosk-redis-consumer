@@ -121,6 +121,7 @@ METADATA_EXPIRE_TIME = config('METADATA_EXPIRE_TIME', default=30, cast=int)
 PROCESSING_FUNCTIONS = {
     'pre': {
         'normalize': processing.normalize,
+        'histogram_normalization': processing.phase_preprocess,
         'multiplex_preprocess': processing.multiplex_preprocess
     },
     'post': {
