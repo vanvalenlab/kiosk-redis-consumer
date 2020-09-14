@@ -42,6 +42,7 @@ from deepcell_toolbox import correct_drift
 from deepcell_toolbox.deep_watershed import deep_watershed
 
 # import mibi pre- and post-processing functions
+from deepcell_toolbox.processing import phase_preprocess
 from deepcell_toolbox.multiplex_utils import \
     multiplex_preprocess, multiplex_postprocess, format_output_multiplex
 
