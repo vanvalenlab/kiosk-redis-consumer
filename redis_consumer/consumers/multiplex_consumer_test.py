@@ -73,15 +73,11 @@ class TestMultiplexConsumer(object):
 
             def grpc(data, *args, **kwargs):
                 inner = np.random.random((1,) + shape + (1,))
-                outer = np.random.random((1,) + shape + (1,))
-                fgbg = np.random.random((1,) + shape + (2,))
                 feature = np.random.random((1,) + shape + (3,))
 
                 inner2 = np.random.random((1,) + shape + (1,))
-                outer2 = np.random.random((1,) + shape + (1,))
-                fgbg2 = np.random.random((1,) + shape + (2,))
                 feature2 = np.random.random((1,) + shape + (3,))
-                return [inner, outer, fgbg, feature, inner2, outer2, fgbg2, feature2]
+                return [inner, feature, inner2, feature2]
             return grpc
 
         image_shapes = [

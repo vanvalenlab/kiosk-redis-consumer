@@ -42,10 +42,10 @@ from deepcell_toolbox import correct_drift
 from deepcell_toolbox.deep_watershed import deep_watershed
 
 # import mibi pre- and post-processing functions
-from deepcell_toolbox.deep_watershed import deep_watershed_mibi
-from deepcell_toolbox.deep_watershed import format_output_multiplex
-from deepcell_toolbox.deep_watershed import deep_watershed_subcellular
 from deepcell_toolbox.processing import phase_preprocess
+from deepcell_toolbox.multiplex_utils import format_output_multiplex
+from deepcell_toolbox.multiplex_utils import multiplex_preprocess
+from deepcell_toolbox.multiplex_utils import multiplex_postprocess
 
 from deepcell_toolbox import retinanet_semantic_to_label_image
 from deepcell_toolbox import retinanet_to_label_image

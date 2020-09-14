@@ -122,6 +122,7 @@ PROCESSING_FUNCTIONS = {
     'pre': {
         'normalize': processing.normalize,
         'histogram_normalization': processing.phase_preprocess,
+        'multiplex_preprocess': processing.multiplex_preprocess
     },
     'post': {
         'deepcell': processing.pixelwise,  # TODO: this is deprecated.
@@ -130,8 +131,7 @@ PROCESSING_FUNCTIONS = {
         'retinanet': processing.retinanet_to_label_image,
         'retinanet-semantic': processing.retinanet_semantic_to_label_image,
         'deep_watershed': processing.deep_watershed,
-        'multiplex': processing.deep_watershed_mibi,
-        'deep_watershed_subcellular': processing.deep_watershed_subcellular,
+        'multiplex_postprocess': processing.multiplex_postprocess,
     },
 }
 
@@ -162,7 +162,7 @@ LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', ca
 LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 
 # Multiplex model Settings
-MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MultiplexSegmentation:3', cast=str)
+MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MultiplexSegmentation:4', cast=str)
 
 # Set default models based on label type
 MODEL_CHOICES = {
