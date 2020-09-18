@@ -131,7 +131,7 @@ PROCESSING_FUNCTIONS = {
         'retinanet': processing.retinanet_to_label_image,
         'retinanet-semantic': processing.retinanet_semantic_to_label_image,
         'deep_watershed': processing.deep_watershed,
-        'multiplex_postprocess': processing.multiplex_postprocess,
+        'multiplex_postprocess_consumer': processing.multiplex_postprocess_consumer,
     },
 }
 

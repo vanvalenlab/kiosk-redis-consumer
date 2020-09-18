@@ -53,3 +53,34 @@ from deepcell_toolbox import retinanet_to_label_image
 del absolute_import
 del division
 del print_function
+
+
+def multiplex_postprocess_consumer(model_output, compartment='whole-cell',
+                                   whole_cell_kwargs=None,
+                                   nuclear_kwargs=None):
+    """Wrapper function to control post-processing params
+
+    Args:
+        model_output: output to be post-processed
+        compartment: which cellular compartments to generate predictions for.
+            must be one of 'whole_cell', 'nuclear', 'both'
+        whole_cell_kwargs (dict): Optional list of post-processing kwargs for whole-cell prediction
+        nuclear_kwargs (dict): Optional list of post-processing kwargs for nuclear prediction
+
+    Returns:
+        np.ndarray: labeled image
+    """
+
+    if whole_cell_kwargs is None:
+        whole_cell_kwargs = {}
+        whole_cell_kwargs['radius'] = 5
+
+    if nuclear_kwargs is None:
+        nuclear_kwargs = {}
+        nuclear_kwargs['radius'] = 5
+
+    label_images = multiplex_postprocess(model_output=model_output, compartment=compartment,
+                                         whole_cell_kwargs=whole_cell_kwargs,
+                                         nuclear_kwargs=nuclear_kwargs)
+
+    return label_images
