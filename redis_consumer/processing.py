@@ -61,23 +61,28 @@ def multiplex_postprocess_consumer(model_output, compartment='whole-cell',
     """Wrapper function to control post-processing params
 
     Args:
-        model_output: output to be post-processed
-        compartment: which cellular compartments to generate predictions for.
+        model_output (dict): output to be post-processed
+        compartment (str): which cellular compartments to generate predictions for.
             must be one of 'whole_cell', 'nuclear', 'both'
         whole_cell_kwargs (dict): Optional list of post-processing kwargs for whole-cell prediction
         nuclear_kwargs (dict): Optional list of post-processing kwargs for nuclear prediction
 
     Returns:
-        np.ndarray: labeled image
+        numpy.ndarray: labeled image
     """
 
     if whole_cell_kwargs is None:
-        whole_cell_kwargs = {}
-        whole_cell_kwargs['radius'] = 5
-
+        whole_cell_kwargs = {'maxima_threshold': 0.1, 'maxima_model_smooth': 0,
+                             'interior_threshold': 0.3, 'interior_model_smooth': 2,
+                             'small_objects_threshold': 15,
+                             'fill_holes_threshold': 15,
+                             'radius': 2}
     if nuclear_kwargs is None:
-        nuclear_kwargs = {}
-        nuclear_kwargs['radius'] = 5
+        nuclear_kwargs = {'maxima_threshold': 0.1, 'maxima_model_smooth': 0,
+                          'interior_threshold': 0.6, 'interior_model_smooth': 0,
+                          'small_objects_threshold': 15,
+                          'fill_holes_threshold': 15,
+                          'radius': 2}
 
     label_images = multiplex_postprocess(model_output=model_output, compartment=compartment,
                                          whole_cell_kwargs=whole_cell_kwargs,
