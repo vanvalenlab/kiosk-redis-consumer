@@ -128,7 +128,7 @@ class MultiplexConsumer(ImageFileConsumer):
         # Post-process model results
         self.update_key(redis_hash, {'status': 'post-processing'})
         image = processing.format_output_multiplex(image)
-        image = self.postprocess(image, ['multiplex_postprocess'])
+        image = self.postprocess(image, ['multiplex_postprocess_consumer'])
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
