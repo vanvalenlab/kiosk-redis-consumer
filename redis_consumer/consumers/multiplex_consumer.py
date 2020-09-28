@@ -83,7 +83,7 @@ class MultiplexConsumer(ImageFileConsumer):
             # TODO: Once we can pass warning messages to user, we can treat this as nuclear image
             raise ValueError('Invalid image shape. An image of shape {} was supplied, but the '
                              'multiplex model expects images of shape'
-                             '[height, width, 2]')
+                             '[height, width, 2]'.format(image.shape))
         else:
             if image.shape[0] == 2:
                 image = np.rollaxis(image, 0, 3)
