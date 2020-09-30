@@ -651,7 +651,7 @@ class TensorFlowServingConsumer(Consumer):
         else:
             results = f(image)
 
-        if results.shape[0] == 1:
+        if not isinstance(results, list) and results.shape[0] == 1:
             results = np.squeeze(results, axis=0)
 
         finished = timeit.default_timer() - start
@@ -712,9 +712,10 @@ class TensorFlowServingConsumer(Consumer):
             # Rescale image to original size before sending back to user
             if isinstance(image, list):
                 outpaths = []
-                for i in image:
+                for i, im in enumerate(image):
                     outpaths.extend(utils.save_numpy_array(
-                        utils.rescale(i, 1 / scale), name=name,
+                        utils.rescale(im, 1 / scale),
+                        name='{}_{}'.format(name, i),
                         subdir=subdir, output_dir=tempdir))
             else:
                 outpaths = utils.save_numpy_array(
