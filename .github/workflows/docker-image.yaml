@@ -10,9 +10,6 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    env:
-      TF_VERSION: 1.14.0
-
     steps:
     - uses: actions/checkout@v2
 
