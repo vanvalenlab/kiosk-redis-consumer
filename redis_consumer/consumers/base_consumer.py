@@ -309,8 +309,7 @@ class TensorFlowServingConsumer(Consumer):
         client = self._get_predict_client(model_name, model_version)
 
         prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
-        results = [prediction[k] for k in sorted(prediction.keys())
-                   if k.startswith('prediction')]
+        results = [prediction[k] for k in sorted(prediction.keys())]
 
         if len(results) == 1:
             results = results[0]
