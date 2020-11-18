@@ -158,6 +158,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             self.logger.debug('Image scale already calculated: %s', scale)
 
         image = utils.rescale(image, scale)
+        image = np.expand_dims(image, axis=0)  # add in the batch dim
 
         # Save shape value for postprocessing purposes
         # TODO this is a big janky
