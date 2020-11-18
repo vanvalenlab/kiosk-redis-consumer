@@ -158,7 +158,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             self.logger.debug('Image scale already calculated: %s', scale)
 
         image = utils.rescale(image, scale)
-        image = np.expand_dims(image, axis=0)  # add in the batch dim
 
         # Save shape value for postprocessing purposes
         # TODO this is a big janky
@@ -188,6 +187,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         else:
             pre_funcs = hvals.get('preprocess_function', '').split(',')
 
+        image = np.expand_dims(image, axis=0)  # add in the batch dim
         image = self.preprocess(image, pre_funcs)
 
         # Send data to the model
