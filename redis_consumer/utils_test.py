@@ -411,6 +411,15 @@ def test__pick_model(mocker):
         utils._pick_model(-1)
 
 
+def test__pick_preprocess(mocker):
+    mocker.patch.object(settings, 'PREPROCESS_CHOICES', {0: 'pre'})
+    res = utils._pick_preprocess(0)
+    assert res == 'pre'
+
+    with pytest.raises(ValueError):
+        utils._pick_preprocess(-1)
+
+
 def test__pick_postprocess(mocker):
     mocker.patch.object(settings, 'POSTPROCESS_CHOICES', {0: 'post'})
     res = utils._pick_postprocess(0)

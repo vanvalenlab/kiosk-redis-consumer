@@ -173,6 +173,12 @@ MODEL_CHOICES = {
     2: config('CYTOPLASM_MODEL', default='FluoCytoSegmentation:0', cast=str)
 }
 
+PREPROCESS_CHOICES = {
+    0: config('NUCLEAR_PREPROCESS', default='normalize', cast=str),
+    1: config('PHASE_PREPROCESS', default='normalize', cast=str),
+    2: config('CYTOPLASM_PREPROCESS', default='normalize', cast=str)
+}
+
 POSTPROCESS_CHOICES = {
     0: config('NUCLEAR_POSTPROCESS', default='deep_watershed', cast=str),
     1: config('PHASE_POSTPROCESS', default='deep_watershed', cast=str),

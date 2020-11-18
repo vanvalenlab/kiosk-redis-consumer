@@ -476,6 +476,15 @@ def _pick_model(label):
     return model.split(':')
 
 
+def _pick_preprocess(label):
+    func = settings.PREPROCESS_CHOICES.get(label)
+    if func is None:
+        logger.error('Label type %s is not supported', label)
+        raise ValueError('Label type {} is not supported'.format(label))
+
+    return func
+
+
 def _pick_postprocess(label):
     func = settings.POSTPROCESS_CHOICES.get(label)
     if func is None:
