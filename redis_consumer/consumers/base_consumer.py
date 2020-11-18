@@ -547,6 +547,7 @@ class TensorFlowServingConsumer(Consumer):
         model_ndim = len(model_shape)
 
         image = image[0] if image.shape[0] == 1 else image
+
         if model_ndim != image.ndim + 1:
             raise ValueError('Image of shape {} is incompatible with model '
                              '{}:{} with input shape {}'.format(
