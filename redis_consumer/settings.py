@@ -174,7 +174,7 @@ MODEL_CHOICES = {
 }
 
 PREPROCESS_CHOICES = {
-    0: config('NUCLEAR_PREPROCESS', default='histogram_normalization', cast=str),
+    0: config('NUCLEAR_PREPROCESS', default='normalize', cast=str),
     1: config('PHASE_PREPROCESS', default='histogram_normalization', cast=str),
     2: config('CYTOPLASM_PREPROCESS', default='histogram_normalization', cast=str)
 }
