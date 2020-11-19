@@ -182,7 +182,12 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             # Grap appropriate model
             model_name, model_version = utils._pick_model(label)
 
-        pre_funcs = hvals.get('preprocess_function', '').split(',')
+        if settings.LABEL_DETECT_ENABLED and label is not None:
+            pre_funcs = utils._pick_preprocess(label).split(',')
+        else:
+            pre_funcs = hvals.get('preprocess_function', '').split(',')
+
+        image = np.expand_dims(image, axis=0)  # add in the batch dim
         image = self.preprocess(image, pre_funcs)
 
         # Send data to the model
