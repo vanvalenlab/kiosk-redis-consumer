@@ -148,15 +148,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
 
         # Calculate scale of image and rescale
         scale = hvals.get('scale', '')
-        if not scale:
-            # Detect scale of image
-            scale = self.detect_scale(image)
-            self.logger.debug('Image scale detected: %s', scale)
-            self.update_key(redis_hash, {'scale': scale})
-        else:
-            scale = float(scale)
-            self.logger.debug('Image scale already calculated: %s', scale)
-
+        scale = self.get_image_scale(scale, image, redis_hash)
         image = utils.rescale(image, scale)
 
         # Save shape value for postprocessing purposes

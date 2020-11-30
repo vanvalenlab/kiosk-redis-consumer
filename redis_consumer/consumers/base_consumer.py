@@ -389,6 +389,29 @@ class TensorFlowServingConsumer(Consumer):
             self.logger.error('Malformed metadata: %s', model_metadata)
             raise err
 
+    def detect_scale(self, image):  # pylint: disable=unused-argument
+        """Stub for scale detection"""
+        self.logger.debug('Scale was not given. Defaults to 1')
+        scale = 1
+        return scale
+
+    def get_image_scale(self, scale, image, redis_hash):
+        """Calculate scale of image and rescale"""
+        if not scale:
+            # Detect scale of image (Default to 1)
+            scale = self.detect_scale(image)
+            self.logger.debug('Image scale detected: %s', scale)
+            self.update_key(redis_hash, {'scale': scale})
+        else:
+            scale = float(scale)
+            self.logger.debug('Image scale already calculated %s', scale)
+            if not settings.MIN_SCALE <= scale <= settings.MAX_SCALE:
+                raise ValueError('Provided scale {} is outside of the valid '
+                                 'scale range: [{}, {}].'.format(
+                                     scale, settings.MIN_SCALE,
+                                     settings.MAX_SCALE))
+        return scale
+
     def _predict_big_image(self,
                            image,
                            model_name,

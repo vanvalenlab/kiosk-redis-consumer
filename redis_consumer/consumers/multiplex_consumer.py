@@ -100,19 +100,9 @@ class MultiplexConsumer(ImageFileConsumer):
             'download_time': timeit.default_timer() - _,
         })
 
-        # Calculate scale of image and rescale
+        # TODO: implement detect_scale here for multiplex model
         scale = hvals.get('scale', '')
-        if not scale:
-            # Detect scale of image (Default to 1)
-            # TODO: implement SCALE_DETECT here for multiplex model
-            # scale = self.detect_scale(image)
-            # self.logger.debug('Image scale detected: %s', scale)
-            # self.update_key(redis_hash, {'scale': scale})
-            self.logger.debug('Scale was not given. Defaults to 1')
-            scale = 1
-        else:
-            scale = float(scale)
-            self.logger.debug('Image scale already calculated %s', scale)
+        scale = self.get_image_scale(scale, image, redis_hash)
 
         # Rescale each channel of the image
         image = utils.rescale(image, scale)
