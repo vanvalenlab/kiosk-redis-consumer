@@ -28,19 +28,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import timeit
 
 import numpy as np
 
-from redis_consumer.consumers import ImageFileConsumer
+from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import utils
 from redis_consumer import settings
 from redis_consumer import processing
 
 
-class MultiplexConsumer(ImageFileConsumer):
+class MultiplexConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
+
+    def is_valid_hash(self, redis_hash):
+        if redis_hash is None:
+            return False
+
+        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
+        return not fname.lower().endswith('.zip')
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
