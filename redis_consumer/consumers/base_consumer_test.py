@@ -434,6 +434,32 @@ class TestTensorFlowServingConsumer(object):
         output = consumer.process(img, 'retinanet', 'valid')
         np.testing.assert_equal(img[0], output)
 
+    def test_get_image_scale(self, mocker, redis_client):
+        stg = DummyStorage()
+        consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')
+        image = np.random.random((256, 256, 1))
+
+        # test no scale provided
+        expected = 2
+        mocker.patch.object(consumer, 'detect_scale', lambda *x: expected)
+        scale = consumer.get_image_scale(None, image, 'some hash')
+        assert scale == expected
+
+        # test scale provided
+        expected = 1.2
+        scale = consumer.get_image_scale(expected, image, 'some hash')
+        assert scale == expected
+
+        # test scale provided is too large
+        with pytest.raises(ValueError):
+            scale = settings.MAX_SCALE + 0.1
+            consumer.get_image_scale(scale, image, 'some hash')
+
+        # test scale provided is too small
+        with pytest.raises(ValueError):
+            scale = settings.MIN_SCALE - 0.1
+            consumer.get_image_scale(scale, image, 'some hash')
+
 
 class TestZipFileConsumer(object):
     # pylint: disable=R0201,W0613,W0621
