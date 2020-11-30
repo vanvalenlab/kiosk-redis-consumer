@@ -155,8 +155,8 @@ BIRTH = config('BIRTH', default=0.95, cast=float)
 DEATH = config('DEATH', default=0.95, cast=float)
 NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30, cast=int)
 
-MAX_SCALE = config('MAX_SCALE', default=3, cast=int)
-MIN_SCALE = 1 / MAX_SCALE
+MAX_SCALE = config('MAX_SCALE', default=3, cast=float)
+MIN_SCALE = config('MIN_SCALE', default=1 / MAX_SCALE, cast=float)
 
 # Scale detection settings
 SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:1')
