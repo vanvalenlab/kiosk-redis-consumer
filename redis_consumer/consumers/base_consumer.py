@@ -516,6 +516,8 @@ class TensorFlowServingConsumer(Consumer):
                         pad_width.append((diff // 2, diff // 2 + 1))
                     else:
                         pad_width.append((diff // 2, diff // 2))
+                else:
+                    pad_width.append((0, 0))
             else:
                 pad_width.append((0, 0))
 
