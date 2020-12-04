@@ -511,10 +511,11 @@ class TensorFlowServingConsumer(Consumer):
                 else:
                     diff = model_shape[model_ndim - 2] - image.shape[i]
 
-                if diff % 2:
-                    pad_width.append((diff // 2, diff // 2 + 1))
-                else:
-                    pad_width.append((diff // 2, diff // 2))
+                if diff > 0:
+                    if diff % 2:
+                        pad_width.append((diff // 2, diff // 2 + 1))
+                    else:
+                        pad_width.append((diff // 2, diff // 2))
             else:
                 pad_width.append((0, 0))
 
