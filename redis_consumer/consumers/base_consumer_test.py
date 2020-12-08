@@ -350,6 +350,7 @@ class TestTensorFlowServingConsumer(object):
             (300, 300, 1),
             (257, 301, 1),
             (65, 127, 1),
+            (127, 129, 1),
         ]
         grpc_funcs = (grpc_image, grpc_image_list)
         untiles = (False, True)
