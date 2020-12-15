@@ -736,21 +736,21 @@ class TensorFlowServingConsumer(Consumer):
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
 
-            # Rescale image to original size before sending back to user
-            if isinstance(image, list):
-                outpaths = []
-                for i, im in enumerate(image):
-                    if output_shape:
-                        im = resize(im, output_shape)
+            if not isinstance(image, list):
+                image = [image]
 
-                    outpaths.extend(utils.save_numpy_array(
-                        resize(im, output_shape) if output_shape else im,
-                        name='{}_{}'.format(name, i),
-                        subdir=subdir, output_dir=tempdir))
-            else:
-                outpaths = utils.save_numpy_array(
-                    resize(image, output_shape) if output_shape else image,
-                    name=name, subdir=subdir, output_dir=tempdir)
+            # Rescale image to original size before sending back to user
+            outpaths = []
+            for i, im in enumerate(image):
+                if output_shape:
+                    im = np.expand_dims(im, axis=0)  # add batch for resize
+                    self.logger.info('Resizing image of shape %s to %s', im.shape, output_shape)
+                    im = resize(im, output_shape)[0]
+
+                outpaths.extend(utils.save_numpy_array(
+                    im,
+                    name='{}_{}'.format(name, i),
+                    subdir=subdir, output_dir=tempdir))
 
             # Save each prediction image as zip file
             zip_file = utils.zip_files(outpaths, tempdir)
