@@ -205,7 +205,13 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         self.update_key(redis_hash, {'status': 'saving-results'})
 
         save_name = hvals.get('original_name', fname)
-        image = np.expand_dims(image, axis=-1)
+
+        if isinstance(image, list):
+            for i, img in enumerate(image):
+                if img.shape[-1] != 1:
+                    image[i] = np.expand_dims(img, axis=-1)
+        elif image.shape[-1] != 1:
+            image = np.expand_dims(image, axis=-1)
         dest, output_url = self.save_output(
             image, redis_hash, save_name, original_shape[:-1])
 
