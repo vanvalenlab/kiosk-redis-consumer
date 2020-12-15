@@ -42,7 +42,7 @@ import zipfile
 import numpy as np
 import pytz
 
-from deepcell_toolbox.utils import tile_image, untile_image
+from deepcell_toolbox.utils import tile_image, untile_image, resize
 
 from redis_consumer.grpc_clients import PredictClient
 from redis_consumer import utils
@@ -730,7 +730,7 @@ class TensorFlowServingConsumer(Consumer):
             post = self.process(x, key, 'post')
         return post
 
-    def save_output(self, image, redis_hash, save_name, scale=1):
+    def save_output(self, image, redis_hash, save_name, output_shape=None):
         with utils.get_tempdir() as tempdir:
             # Save each result channel as an image file
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
@@ -740,14 +740,17 @@ class TensorFlowServingConsumer(Consumer):
             if isinstance(image, list):
                 outpaths = []
                 for i, im in enumerate(image):
+                    if output_shape:
+                        im = resize(im, output_shape)
+
                     outpaths.extend(utils.save_numpy_array(
-                        utils.rescale(im, 1 / scale),
+                        resize(im, output_shape) if output_shape else im,
                         name='{}_{}'.format(name, i),
                         subdir=subdir, output_dir=tempdir))
             else:
                 outpaths = utils.save_numpy_array(
-                    utils.rescale(image, 1 / scale), name=name,
-                    subdir=subdir, output_dir=tempdir)
+                    resize(image, output_shape) if output_shape else image,
+                    name=name, subdir=subdir, output_dir=tempdir)
 
             # Save each prediction image as zip file
             zip_file = utils.zip_files(outpaths, tempdir)
