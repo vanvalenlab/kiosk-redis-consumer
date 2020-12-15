@@ -741,11 +741,16 @@ class TensorFlowServingConsumer(Consumer):
 
             # Rescale image to original size before sending back to user
             outpaths = []
+            added_batch = False
             for i, im in enumerate(image):
                 if output_shape:
-                    im = np.expand_dims(im, axis=0)  # add batch for resize
+                    if im.shape[0] != 1:
+                        added_batch = True
+                        im = np.expand_dims(im, axis=0)  # add batch for resize
                     self.logger.info('Resizing image of shape %s to %s', im.shape, output_shape)
-                    im = resize(im, output_shape)[0]
+                    im = resize(im, output_shape, labeled_image=True)
+                    if added_batch:
+                        im = im[0]
 
                 outpaths.extend(utils.save_numpy_array(
                     im,
