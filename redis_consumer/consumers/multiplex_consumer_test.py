@@ -84,6 +84,8 @@ class TestMultiplexConsumer(object):
             (-1, 600, 600, 2),  # image too small, pad
             (-1, 300, 300, 2),  # image is exactly the right size
             (-1, 150, 150, 2),  # image too big, tile
+            (-1, 150, 600, 2),  # image has one size too small, one size too big
+            (-1, 600, 150, 2),  # image has one size too small, one size too big
         ]
 
         scales = ['.9', '1.1', '']

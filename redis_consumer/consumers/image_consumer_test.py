@@ -154,6 +154,8 @@ class TestImageFileConsumer(object):
             (-1, 600, 600, 1),  # image too small, pad
             (-1, 300, 300, 1),  # image is exactly the right size
             (-1, 150, 150, 1),  # image too big, tile
+            (-1, 150, 600, 1),  # image has one size too small, one size too big
+            (-1, 600, 150, 1),  # image has one size too small, one size too big
         ]
 
         empty_data = {'input_file_name': 'file.tiff'}
