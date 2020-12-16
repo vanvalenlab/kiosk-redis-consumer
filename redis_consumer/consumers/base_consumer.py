@@ -42,7 +42,7 @@ import zipfile
 import numpy as np
 import pytz
 
-from deepcell_toolbox.utils import tile_image, untile_image
+from deepcell_toolbox.utils import tile_image, untile_image, resize
 
 from redis_consumer.grpc_clients import PredictClient
 from redis_consumer import utils
@@ -730,24 +730,32 @@ class TensorFlowServingConsumer(Consumer):
             post = self.process(x, key, 'post')
         return post
 
-    def save_output(self, image, redis_hash, save_name, scale=1):
+    def save_output(self, image, redis_hash, save_name, output_shape=None):
         with utils.get_tempdir() as tempdir:
             # Save each result channel as an image file
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
 
+            if not isinstance(image, list):
+                image = [image]
+
             # Rescale image to original size before sending back to user
-            if isinstance(image, list):
-                outpaths = []
-                for i, im in enumerate(image):
-                    outpaths.extend(utils.save_numpy_array(
-                        utils.rescale(im, 1 / scale),
-                        name='{}_{}'.format(name, i),
-                        subdir=subdir, output_dir=tempdir))
-            else:
-                outpaths = utils.save_numpy_array(
-                    utils.rescale(image, 1 / scale), name=name,
-                    subdir=subdir, output_dir=tempdir)
+            outpaths = []
+            added_batch = False
+            for i, im in enumerate(image):
+                if output_shape:
+                    if im.shape[0] != 1:
+                        added_batch = True
+                        im = np.expand_dims(im, axis=0)  # add batch for resize
+                    self.logger.info('Resizing image of shape %s to %s', im.shape, output_shape)
+                    im = resize(im, output_shape, labeled_image=True)
+                    if added_batch:
+                        im = im[0]
+
+                outpaths.extend(utils.save_numpy_array(
+                    im,
+                    name='{}_{}'.format(name, i),
+                    subdir=subdir, output_dir=tempdir))
 
             # Save each prediction image as zip file
             zip_file = utils.zip_files(outpaths, tempdir)

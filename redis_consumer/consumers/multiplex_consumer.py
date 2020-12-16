@@ -110,6 +110,8 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         scale = hvals.get('scale', '')
         scale = self.get_image_scale(scale, image, redis_hash)
 
+        original_shape = image.shape
+
         # Rescale each channel of the image
         image = utils.rescale(image, scale)
         image = np.expand_dims(image, axis=0)  # add in the batch dim
@@ -131,7 +133,8 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         self.update_key(redis_hash, {'status': 'saving-results'})
 
         save_name = hvals.get('original_name', fname)
-        dest, output_url = self.save_output(image, redis_hash, save_name, scale)
+        dest, output_url = self.save_output(
+            image, redis_hash, save_name, original_shape[:-1])
 
         # Update redis with the final results
         t = timeit.default_timer() - start

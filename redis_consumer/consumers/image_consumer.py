@@ -149,6 +149,9 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         # Calculate scale of image and rescale
         scale = hvals.get('scale', '')
         scale = self.get_image_scale(scale, image, redis_hash)
+
+        original_shape = image.shape
+
         image = utils.rescale(image, scale)
 
         # Save shape value for postprocessing purposes
@@ -202,7 +205,15 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         self.update_key(redis_hash, {'status': 'saving-results'})
 
         save_name = hvals.get('original_name', fname)
-        dest, output_url = self.save_output(image, redis_hash, save_name, scale)
+
+        if isinstance(image, list):
+            for i, img in enumerate(image):
+                if img.shape[-1] != 1:
+                    image[i] = np.expand_dims(img, axis=-1)
+        elif image.shape[-1] != 1:
+            image = np.expand_dims(image, axis=-1)
+        dest, output_url = self.save_output(
+            image, redis_hash, save_name, original_shape[:-1])
 
         # Update redis with the final results
         t = timeit.default_timer() - start
