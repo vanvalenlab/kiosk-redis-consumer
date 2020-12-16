@@ -36,6 +36,7 @@ import pytest
 
 from redis_consumer import consumers
 from redis_consumer.testing_utils import redis_client, DummyStorage
+from redis_consumer.testing_utils import make_model_metadata_of_size
 
 
 class TestMultiplexConsumer(object):
@@ -57,27 +58,21 @@ class TestMultiplexConsumer(object):
     def test__consume(self, mocker, redis_client):
         # pylint: disable=W0613
 
-        def make_model_metadata_of_size(model_shape=(-1, 256, 256, 2)):
-
-            def get_model_metadata(model_name, model_version):
-                return [{
-                    'in_tensor_name': 'image',
-                    'in_tensor_dtype': 'DT_FLOAT',
-                    'in_tensor_shape': ','.join(str(s) for s in model_shape),
-                }]
-            return get_model_metadata
-
         def make_grpc_image(model_shape=(-1, 256, 256, 2)):
             # pylint: disable=E1101
             shape = model_shape[1:-1]
 
             def grpc(data, *args, **kwargs):
-                inner = np.random.random((1,) + shape + (1,))
-                feature = np.random.random((1,) + shape + (3,))
+                inner_shape = tuple([1] + list(shape) + [1])
+                feature_shape = tuple([1] + list(shape) + [3])
 
-                inner2 = np.random.random((1,) + shape + (1,))
-                feature2 = np.random.random((1,) + shape + (3,))
+                inner = np.random.random(inner_shape)
+                feature = np.random.random(feature_shape)
+
+                inner2 = np.random.random(inner_shape)
+                feature2 = np.random.random(feature_shape)
                 return [inner, feature, inner2, feature2]
+
             return grpc
 
         image_shapes = [
@@ -89,9 +84,11 @@ class TestMultiplexConsumer(object):
             (-1, 600, 600, 2),  # image too small, pad
             (-1, 300, 300, 2),  # image is exactly the right size
             (-1, 150, 150, 2),  # image too big, tile
+            (-1, 150, 600, 2),  # image has one size too small, one size too big
+            (-1, 600, 150, 2),  # image has one size too small, one size too big
         ]
 
-        scales = ['.9', '']
+        scales = ['.9', '1.1', '']
 
         job_data = {
             'input_file_name': 'file.tiff',
@@ -112,9 +109,9 @@ class TestMultiplexConsumer(object):
             assert result == status
             test_hash += 1
 
-        for model_shape, scale, image_shape in itertools.product(model_shapes,
-                                                                 scales,
-                                                                 image_shapes):
+        prod = itertools.product(model_shapes, scales, image_shapes)
+
+        for model_shape, scale, image_shape in prod:
             mocker.patch('redis_consumer.utils.get_image',
                          lambda x: np.random.random(list(image_shape) + [1]))
 
@@ -122,6 +119,8 @@ class TestMultiplexConsumer(object):
             grpc_image = make_grpc_image(model_shape)
             mocker.patch.object(consumer, 'get_model_metadata', metadata)
             mocker.patch.object(consumer, 'grpc_image', grpc_image)
+            mocker.patch.object(consumer, 'postprocess',
+                                lambda *x: np.random.randint(0, 5, size=(300, 300, 1)))
 
             data = job_data.copy()
             data['scale'] = scale
@@ -134,8 +133,14 @@ class TestMultiplexConsumer(object):
             test_hash += 1
 
         model_shape = (-1, 150, 150, 2)
-        invalid_image_shapes = [(150, 150), (150, ), (150, 150, 1), (1, 150, 150), (3, 150, 150),
-                                (1, 1, 150, 150)]
+        invalid_image_shapes = [
+            (150, 150),
+            (150,),
+            (150, 150, 1),
+            (1, 150, 150),
+            (3, 150, 150),
+            (1, 1, 150, 150)
+        ]
 
         for image_shape in invalid_image_shapes:
             mocker.patch('redis_consumer.utils.get_image',
@@ -146,7 +151,7 @@ class TestMultiplexConsumer(object):
             mocker.patch.object(consumer, 'grpc_image', grpc_image)
 
             data = job_data.copy()
-            data['scale'] = scale
+            data['scale'] = '1'
 
             redis_client.hmset(test_hash, data)
             with pytest.raises(ValueError, match='Invalid image shape'):
