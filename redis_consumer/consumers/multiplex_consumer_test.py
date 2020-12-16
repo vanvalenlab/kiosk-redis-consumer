@@ -147,7 +147,7 @@ class TestMultiplexConsumer(object):
             mocker.patch.object(consumer, 'grpc_image', grpc_image)
 
             data = job_data.copy()
-            data['scale'] = scale
+            data['scale'] = '1'
 
             redis_client.hmset(test_hash, data)
             with pytest.raises(ValueError, match='Invalid image shape'):
