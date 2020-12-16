@@ -117,6 +117,8 @@ class TestMultiplexConsumer(object):
             grpc_image = make_grpc_image(model_shape)
             mocker.patch.object(consumer, 'get_model_metadata', metadata)
             mocker.patch.object(consumer, 'grpc_image', grpc_image)
+            mocker.patch.object(consumer, 'postprocess',
+                                lambda *x: np.random.randint(0, 5, size=(300, 300, 1)))
 
             data = job_data.copy()
             data['scale'] = scale
