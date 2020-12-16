@@ -63,12 +63,16 @@ class TestMultiplexConsumer(object):
             shape = model_shape[1:-1]
 
             def grpc(data, *args, **kwargs):
-                inner = np.random.random((1,) + shape + (1,))
-                feature = np.random.random((1,) + shape + (3,))
+                inner_shape = tuple([1] + list(shape) + [1])
+                feature_shape = tuple([1] + list(shape) + [3])
 
-                inner2 = np.random.random((1,) + shape + (1,))
-                feature2 = np.random.random((1,) + shape + (3,))
+                inner = np.random.random(inner_shape)
+                feature = np.random.random(feature_shape)
+
+                inner2 = np.random.random(inner_shape)
+                feature2 = np.random.random(feature_shape)
                 return [inner, feature, inner2, feature2]
+
             return grpc
 
         image_shapes = [
@@ -103,9 +107,9 @@ class TestMultiplexConsumer(object):
             assert result == status
             test_hash += 1
 
-        for model_shape, scale, image_shape in itertools.product(model_shapes,
-                                                                 scales,
-                                                                 image_shapes):
+        prod = itertools.product(model_shapes, scales, image_shapes)
+
+        for model_shape, scale, image_shape in prod:
             mocker.patch('redis_consumer.utils.get_image',
                          lambda x: np.random.random(list(image_shape) + [1]))
 
@@ -125,8 +129,14 @@ class TestMultiplexConsumer(object):
             test_hash += 1
 
         model_shape = (-1, 150, 150, 2)
-        invalid_image_shapes = [(150, 150), (150, ), (150, 150, 1), (1, 150, 150), (3, 150, 150),
-                                (1, 1, 150, 150)]
+        invalid_image_shapes = [
+            (150, 150),
+            (150,),
+            (150, 150, 1),
+            (1, 150, 150),
+            (3, 150, 150),
+            (1, 1, 150, 150)
+        ]
 
         for image_shape in invalid_image_shapes:
             mocker.patch('redis_consumer.utils.get_image',
