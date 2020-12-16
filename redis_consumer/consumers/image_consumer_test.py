@@ -36,7 +36,8 @@ import pytest
 
 from redis_consumer import consumers
 from redis_consumer import settings
-from redis_consumer.testing_utils import DummyStorage, redis_client, _get_image
+from redis_consumer.testing_utils import DummyStorage, redis_client
+from redis_consumer.testing_utils import _get_image, make_model_metadata_of_size
 
 
 class TestImageFileConsumer(object):
@@ -143,17 +144,6 @@ class TestImageFileConsumer(object):
 
         def grpc_image_list(data, *args, **kwargs):  # pylint: disable=W0613
             return [data, data]
-
-        def make_model_metadata_of_size(model_shape=(-1, 256, 256, 1)):
-
-            def get_model_metadata(model_name, model_version):
-                return [{
-                    'in_tensor_name': 'image',
-                    'in_tensor_dtype': 'DT_FLOAT',
-                    'in_tensor_shape': ','.join(str(s) for s in model_shape),
-                }]
-
-            return get_model_metadata
 
         mocker.patch.object(consumer, 'detect_label', lambda x: 1)
         mocker.patch.object(consumer, 'detect_scale', lambda x: 1)

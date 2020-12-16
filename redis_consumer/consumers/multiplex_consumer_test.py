@@ -36,6 +36,7 @@ import pytest
 
 from redis_consumer import consumers
 from redis_consumer.testing_utils import redis_client, DummyStorage
+from redis_consumer.testing_utils import make_model_metadata_of_size
 
 
 class TestMultiplexConsumer(object):
@@ -56,16 +57,6 @@ class TestMultiplexConsumer(object):
 
     def test__consume(self, mocker, redis_client):
         # pylint: disable=W0613
-
-        def make_model_metadata_of_size(model_shape=(-1, 256, 256, 2)):
-
-            def get_model_metadata(model_name, model_version):
-                return [{
-                    'in_tensor_name': 'image',
-                    'in_tensor_dtype': 'DT_FLOAT',
-                    'in_tensor_shape': ','.join(str(s) for s in model_shape),
-                }]
-            return get_model_metadata
 
         def make_grpc_image(model_shape=(-1, 256, 256, 2)):
             # pylint: disable=E1101

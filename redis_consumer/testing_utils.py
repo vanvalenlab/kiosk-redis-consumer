@@ -84,3 +84,14 @@ class DummyStorage(object):
 
     def get_public_url(self, zip_path):
         return 'blob.public_url'
+
+
+def make_model_metadata_of_size(model_shape=(-1, 256, 256, 2)):
+
+    def get_model_metadata(model_name, model_version):  # pylint: disable=unused-argument
+        return [{
+            'in_tensor_name': 'image',
+            'in_tensor_dtype': 'DT_FLOAT',
+            'in_tensor_shape': ','.join(str(s) for s in model_shape),
+        }]
+    return get_model_metadata
