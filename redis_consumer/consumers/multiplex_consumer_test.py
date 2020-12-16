@@ -82,7 +82,7 @@ class TestMultiplexConsumer(object):
             (-1, 150, 150, 2),  # image too big, tile
         ]
 
-        scales = ['.9', '']
+        scales = ['.9', '1.1', '']
 
         job_data = {
             'input_file_name': 'file.tiff',
