@@ -41,13 +41,6 @@ from redis_consumer import settings
 class ImageFileConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
-    def is_valid_hash(self, redis_hash):
-        if redis_hash is None:
-            return False
-
-        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-        return not fname.lower().endswith('.zip')
-
     def detect_scale(self, image):
         """Send the image to the SCALE_DETECT_MODEL to detect the relative
         scale difference from the image to the model's training data.

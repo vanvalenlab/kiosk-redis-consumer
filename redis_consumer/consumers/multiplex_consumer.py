@@ -41,13 +41,6 @@ from redis_consumer import processing
 class MultiplexConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
-    def is_valid_hash(self, redis_hash):
-        if redis_hash is None:
-            return False
-
-        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
-        return not fname.lower().endswith('.zip')
-
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         self._redis_hash = redis_hash  # workaround for logging.

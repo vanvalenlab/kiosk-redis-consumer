@@ -148,7 +148,7 @@ class Consumer(object):
 
     def is_valid_hash(self, redis_hash):  # pylint: disable=unused-argument
         """Returns True if the consumer should work on the item"""
-        return True
+        return redis_hash is not None
 
     def get_current_timestamp(self):
         """Helper function, returns ISO formatted UTC timestamp"""
@@ -252,9 +252,15 @@ class TensorFlowServingConsumer(Consumer):
         self._redis_values = dict()
         super(TensorFlowServingConsumer, self).__init__(
             redis_client, storage_client, queue, **kwargs)
+    
+    def is_valid_hash(self, redis_hash):
+        """Don't run on zip files"""
+        if redis_hash is None:
+            return False
 
-    def _consume(self, redis_hash):
-        raise NotImplementedError
+        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
+        return not fname.lower().endswith('.zip')
+
 
     def _get_predict_client(self, model_name, model_version):
         """Returns the TensorFlow Serving gRPC client.

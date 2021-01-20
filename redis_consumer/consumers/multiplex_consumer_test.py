@@ -42,19 +42,6 @@ from redis_consumer.testing_utils import make_model_metadata_of_size
 class TestMultiplexConsumer(object):
     # pylint: disable=R0201
 
-    def test_is_valid_hash(self, mocker, redis_client):
-        storage = DummyStorage()
-        mocker.patch.object(redis_client, 'hget', lambda *x: x[0])
-
-        consumer = consumers.MultiplexConsumer(redis_client, storage, 'multiplex')
-        assert consumer.is_valid_hash(None) is False
-        assert consumer.is_valid_hash('file.ZIp') is False
-        assert consumer.is_valid_hash('predict:1234567890:file.ZIp') is False
-        assert consumer.is_valid_hash('track:123456789:file.zip') is False
-        assert consumer.is_valid_hash('predict:123456789:file.zip') is False
-        assert consumer.is_valid_hash('multiplex:1234567890:file.tiff') is True
-        assert consumer.is_valid_hash('multiplex:1234567890:file.png') is True
-
     def test__consume(self, mocker, redis_client):
         # pylint: disable=W0613
 

@@ -208,6 +208,20 @@ class TestConsumer(object):
 
 class TestTensorFlowServingConsumer(object):
     # pylint: disable=R0201,W0613,W0621
+    def test_is_valid_hash(self, mocker, redis_client):
+        storage = DummyStorage()
+        mocker.patch.object(redis_client, 'hget', lambda x, y: x.split(':')[-1])
+
+        consumer = consumers.TensorFlowServingConsumer(redis_client, storage, 'predict')
+
+        assert consumer.is_valid_hash(None) is False
+        assert consumer.is_valid_hash('file.ZIp') is False
+        assert consumer.is_valid_hash('predict:1234567890:file.ZIp') is False
+        assert consumer.is_valid_hash('track:123456789:file.zip') is False
+        assert consumer.is_valid_hash('predict:123456789:file.zip') is False
+        assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
+        assert consumer.is_valid_hash('predict:1234567890:file.png') is True
+
     def test__get_predict_client(self, redis_client):
         stg = DummyStorage()
         consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')
