@@ -261,6 +261,35 @@ class TensorFlowServingConsumer(Consumer):
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
         return not fname.lower().endswith('.zip')
 
+    def download_image(self, image_path):
+        """Download file from bucket and load it as an image"""
+        with utils.get_tempdir() as tempdir:
+            fname = self.storage.download(image_path, tempdir)
+            image = utils.get_image(fname)
+        return image
+
+    def validate_model_input(self, image, model_name, model_version):
+        """Validate that the input image meets the workflow requirements."""
+        model_metadata = self.get_model_metadata(model_name, model_version)
+        shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
+
+        rank = len(shape) - 1  # ignoring batch dimension
+        channels = shape[-1]
+
+        errtext = (f'Invalid image shape: {image.shape}. '
+                   f'The {self.queue} job expects images of shape '
+                   f'[height, widths, {channels}]')
+
+        if len(image.shape) != rank:
+            raise ValueError(errtext)
+
+        if image.shape[0] == channels:
+            image = np.rollaxis(image, 0, rank)
+
+        if image.shape[rank - 1] != channels:
+            raise ValueError(errtext)
+
+        return image
 
     def _get_predict_client(self, model_name, model_version):
         """Returns the TensorFlow Serving gRPC client.

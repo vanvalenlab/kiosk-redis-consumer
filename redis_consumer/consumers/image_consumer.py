@@ -129,9 +129,11 @@ class ImageFileConsumer(TensorFlowServingConsumer):
 
         _ = timeit.default_timer()
 
-        with utils.get_tempdir() as tempdir:
-            fname = self.storage.download(hvals.get('input_file_name'), tempdir)
-            image = utils.get_image(fname)
+        # Load input image
+        image = self.download_image(hvals.get('input_file_name'))
+
+        # Validate input image
+        image = self.validate_model_input(image, model_name, model_version)
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {

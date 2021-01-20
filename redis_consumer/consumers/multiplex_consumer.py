@@ -65,33 +65,13 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         _ = timeit.default_timer()
 
         # Load input image
-        with utils.get_tempdir() as tempdir:
-            fname = self.storage.download(hvals.get('input_file_name'), tempdir)
-            # TODO: tiffs expand the last axis, is that a problem here?
-            image = utils.get_image(fname)
+        image = self.download_image(hvals.get('input_file_name'))
 
         # squeeze extra dimension that is added by get_image
         image = np.squeeze(image)
 
-        # validate correct shape of image
-        if len(image.shape) > 3:
-            raise ValueError('Invalid image shape. An image of shape {} was supplied, but the '
-                             'multiplex model expects of images of shape'
-                             '[height, widths, 2]'.format(image.shape))
-        elif len(image.shape) < 3:
-            # TODO: Once we can pass warning messages to user, we can treat this as nuclear image
-            raise ValueError('Invalid image shape. An image of shape {} was supplied, but the '
-                             'multiplex model expects images of shape'
-                             '[height, width, 2]'.format(image.shape))
-        else:
-            if image.shape[0] == 2:
-                image = np.rollaxis(image, 0, 3)
-            elif image.shape[2] == 2:
-                pass
-            else:
-                raise ValueError('Invalid image shape. An image of shape {} was supplied, '
-                                 'but the multiplex model expects images of shape'
-                                 '[height, widths, 2]'.format(image.shape))
+        # Validate input image
+        image = self.validate_model_input(image, model_name, model_version)
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
