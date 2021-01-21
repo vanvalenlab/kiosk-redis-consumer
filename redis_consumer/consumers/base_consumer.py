@@ -264,7 +264,7 @@ class TensorFlowServingConsumer(Consumer):
 
     def download_image(self, image_path):
         """Download file from bucket and load it as an image"""
-        with utils.get_tempdir() as tempdir:
+        with tempfile.TemporaryDirectory() as tempdir:
             fname = self.storage.download(image_path, tempdir)
             image = utils.get_image(fname)
         return image
