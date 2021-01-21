@@ -365,7 +365,7 @@ class GrpcModelWrapper(object):
         self._in_tensor_dtype = str(self._metadata['in_tensor_dtype']).upper()
 
         shape = [int(x) for x in self._metadata['in_tensor_shape'].split(',')]
-        self.input_shape = shape
+        self.input_shape = tuple(shape)
 
     def send_grpc(self, img):
         """Use the TensorFlow Serving gRPC API for model inference on an image.
@@ -393,9 +393,6 @@ class GrpcModelWrapper(object):
                                   [r.shape for r in results],
                                   timeit.default_timer() - start)
 
-        if len(results) == 1:
-            results = results[0]
-
         return results
 
     def get_batch_size(self):
@@ -416,13 +413,10 @@ class GrpcModelWrapper(object):
         for t in range(0, tiles.shape[0], batch_size):
             output = self.send_grpc(tiles[t:t + batch_size])
 
-            if not isinstance(output, list):
-                output = [output]
-
             if len(results) == 0:
                 results = output
             else:
                 for i, o in enumerate(output):
                     results[i] = np.vstack((results[i], o))
 
-        return results
+        return results[0] if len(results) == 1 else results
