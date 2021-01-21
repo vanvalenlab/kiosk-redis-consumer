@@ -135,47 +135,6 @@ def get_image(filepath):
     return img.astype('float32')
 
 
-def pad_image(image, field):
-    """Pad each the input image for proper dimensions when stitiching.
-
-    Args:
-        image: np.array of image data
-        field: receptive field size of model
-
-    Returns:
-        image data padded in the x and y axes
-    """
-    window = (field - 1) // 2
-    # Pad images by the field size in the x and y axes
-    pad_width = []
-    for i in range(len(image.shape)):
-        if i == image.ndim - 3:
-            pad_width.append((window, window))
-        elif i == image.ndim - 2:
-            pad_width.append((window, window))
-        else:
-            pad_width.append((0, 0))
-
-    return np.pad(image, pad_width, mode='reflect')
-
-
-def unpad_image(x, pad_width):
-    """Unpad image padded with the pad_width.
-
-    Args:
-        image (numpy.array): Image to unpad.
-        pad_width (list): List of pads used to pad the image with np.pad.
-
-    Returns:
-        numpy.array: The unpadded image.
-    """
-    slices = []
-    for c in pad_width:
-        e = None if c[1] == 0 else -c[1]
-        slices.append(slice(c[0], e))
-    return x[tuple(slices)]
-
-
 def save_numpy_array(arr, name='', subdir='', output_dir=None):
     """Split tensor into channels and save each as a tiff file.
 
@@ -296,96 +255,6 @@ def zip_files(files, dest=None, prefix=None):
     return filepath
 
 
-def reshape_matrix(X, y, reshape_size=256, is_channels_first=False):
-    """
-    Reshape matrix of dimension 4 to have x and y of size reshape_size.
-    Adds overlapping slices to batches.
-    E.g. reshape_size of 256 yields (1, 1024, 1024, 1) -> (16, 256, 256, 1)
-
-    Args:
-        X: raw 4D image tensor
-        y: label mask of 4D image data
-        reshape_size: size of the square output tensor
-        is_channels_first: default False for channel dimension last
-
-    Returns:
-        reshaped `X` and `y` tensors in shape (`reshape_size`, `reshape_size`)
-    """
-    if X.ndim != 4:
-        raise ValueError('reshape_matrix expects X dim to be 4, got', X.ndim)
-    elif y.ndim != 4:
-        raise ValueError('reshape_matrix expects y dim to be 4, got', y.ndim)
-
-    image_size_x, _ = X.shape[2:] if is_channels_first else X.shape[1:3]
-    rep_number = np.int(np.ceil(np.float(image_size_x) / np.float(reshape_size)))
-    new_batch_size = X.shape[0] * (rep_number) ** 2
-
-    if is_channels_first:
-        new_X_shape = (new_batch_size, X.shape[1], reshape_size, reshape_size)
-        new_y_shape = (new_batch_size, y.shape[1], reshape_size, reshape_size)
-    else:
-        new_X_shape = (new_batch_size, reshape_size, reshape_size, X.shape[3])
-        new_y_shape = (new_batch_size, reshape_size, reshape_size, y.shape[3])
-
-    new_X = np.zeros(new_X_shape, dtype='float32')
-    new_y = np.zeros(new_y_shape, dtype='int32')
-
-    counter = 0
-    for b in range(X.shape[0]):
-        for i in range(rep_number):
-            for j in range(rep_number):
-                if i != rep_number - 1:
-                    x_start, x_end = i * reshape_size, (i + 1) * reshape_size
-                else:
-                    x_start, x_end = -reshape_size, X.shape[2 if is_channels_first else 1]
-
-                if j != rep_number - 1:
-                    y_start, y_end = j * reshape_size, (j + 1) * reshape_size
-                else:
-                    y_start, y_end = -reshape_size, y.shape[3 if is_channels_first else 2]
-
-                if is_channels_first:
-                    new_X[counter] = X[b, :, x_start:x_end, y_start:y_end]
-                    new_y[counter] = y[b, :, x_start:x_end, y_start:y_end]
-                else:
-                    new_X[counter] = X[b, x_start:x_end, y_start:y_end, :]
-                    new_y[counter] = y[b, x_start:x_end, y_start:y_end, :]
-
-                counter += 1
-
-    print('Reshaped feature data from {} to {}'.format(y.shape, new_y.shape))
-    print('Reshaped training data from {} to {}'.format(X.shape, new_X.shape))
-    return new_X, new_y
-
-
-def rescale(image, scale, channel_axis=-1):
-    multichannel = False
-    add_channel = False
-    if scale == 1:
-        return image  # no rescale necessary, short-circuit
-
-    if len(image.shape) != 2:  # we have a channel axis
-        try:
-            image = np.squeeze(image, axis=channel_axis)
-            add_channel = True
-        except:  # pylint: disable=bare-except
-            multichannel = True  # channel axis is not 1
-
-    rescaled_img = skimage.transform.rescale(
-        image, scale,
-        mode='edge',
-        anti_aliasing=False,
-        anti_aliasing_sigma=None,
-        multichannel=multichannel,
-        preserve_range=True,
-        order=0
-    )
-    if add_channel:
-        rescaled_img = np.expand_dims(rescaled_img, axis=channel_axis)
-    logger.debug('Rescaled image from %s to %s', image.shape, rescaled_img.shape)
-    return rescaled_img
-
-
 def _pick_model(label):
     model = settings.MODEL_CHOICES.get(label)
     if model is None:
@@ -393,21 +262,3 @@ def _pick_model(label):
         raise ValueError('Label type {} is not supported'.format(label))
 
     return model.split(':')
-
-
-def _pick_preprocess(label):
-    func = settings.PREPROCESS_CHOICES.get(label)
-    if func is None:
-        logger.error('Label type %s is not supported', label)
-        raise ValueError('Label type {} is not supported'.format(label))
-
-    return func
-
-
-def _pick_postprocess(label):
-    func = settings.POSTPROCESS_CHOICES.get(label)
-    if func is None:
-        logger.error('Label type %s is not supported', label)
-        raise ValueError('Label type {} is not supported'.format(label))
-
-    return func

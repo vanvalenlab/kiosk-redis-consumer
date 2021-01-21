@@ -29,7 +29,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import pytest
 import tarfile
 import tempfile
 import zipfile
@@ -111,6 +110,7 @@ def test_get_image(tmpdir):
     test_img_path = os.path.join(tmpdir, 'phase.tif')
     _write_image(test_img_path, 300, 300)
     test_img = utils.get_image(test_img_path)
+    print(test_img.shape)
     np.testing.assert_equal(test_img.shape, (300, 300, 1))
     # test png files
     test_img_path = os.path.join(tmpdir, 'feature_0.png')
@@ -120,92 +120,36 @@ def test_get_image(tmpdir):
     np.testing.assert_equal(test_img.shape, (400, 400, 1))
 
 
-def test_pad_image():
-    # 2D images
-    h, w = 300, 300
-    img = _get_image(h, w)
-    field_size = 61
-    padded = utils.pad_image(img, field_size)
-
-    new_h, new_w = h + (field_size - 1), w + (field_size - 1)
-    np.testing.assert_equal(padded.shape, (new_h, new_w, 1))
-
-    # 3D images
-    frames = np.random.randint(low=1, high=6)
-    imgs = np.vstack([_get_image(h, w)[None, ...] for i in range(frames)])
-    padded = utils.pad_image(imgs, field_size)
-    np.testing.assert_equal(padded.shape, (frames, new_h, new_w, 1))
-
-
-def test_unpad_image():
-    # 2D images
-    h, w = 300, 300
-
-    sizes = [
-        (300, 300),
-        (101, 101)
-    ]
-
-    pads = [
-        (10, 10),
-        (15, 15),
-        (10, 15)
-    ]
-    for pad in pads:
-        for h, w in sizes:
-            raw = _get_image(h, w)
-            pad_width = [pad, pad, (0, 0)]
-            padded = np.pad(raw, pad_width, mode='reflect')
-
-            unpadded = utils.unpad_image(padded, pad_width)
-            np.testing.assert_equal(unpadded.shape, (h, w, 1))
-            np.testing.assert_equal(unpadded, raw)
-
-            # 3D images
-            frames = np.random.randint(low=1, high=6)
-            imgs = np.vstack([_get_image(h, w)[None, ...]
-                              for _ in range(frames)])
-
-            pad_width = [(0, 0), pad, pad, (0, 0)]
-
-            padded = np.pad(imgs, pad_width, mode='reflect')
-
-            unpadded = utils.unpad_image(padded, pad_width)
-
-            np.testing.assert_equal(unpadded.shape, imgs.shape)
-            np.testing.assert_equal(unpadded, imgs)
-
-
-def test_save_numpy_array():
+def test_save_numpy_array(tmpdir):
+    tmpdir = str(tmpdir)
     h, w = 30, 30
     c = np.random.randint(low=1, high=4)
     z = np.random.randint(low=1, high=6)
 
-    with utils.get_tempdir() as tempdir:
-        # 2D images without channel axis
-        img = _get_image(h, w, 1)
-        img = np.squeeze(img)
-        files = utils.save_numpy_array(img, 'name', '/a/b/', tempdir)
-        assert len(files) == 1
-        for f in files:
-            assert os.path.isfile(f)
-            assert f.startswith(os.path.join(tempdir, 'a', 'b'))
+    # 2D images without channel axis
+    img = _get_image(h, w, 1)
+    img = np.squeeze(img)
+    files = utils.save_numpy_array(img, 'name', '/a/b/', tmpdir)
+    assert len(files) == 1
+    for f in files:
+        assert os.path.isfile(f)
+        assert f.startswith(os.path.join(tmpdir, 'a', 'b'))
 
-        # 2D images
-        img = _get_image(h, w, c)
-        files = utils.save_numpy_array(img, 'name', '/a/b/', tempdir)
-        assert len(files) == c
-        for f in files:
-            assert os.path.isfile(f)
-            assert f.startswith(os.path.join(tempdir, 'a', 'b'))
+    # 2D images
+    img = _get_image(h, w, c)
+    files = utils.save_numpy_array(img, 'name', '/a/b/', tmpdir)
+    assert len(files) == c
+    for f in files:
+        assert os.path.isfile(f)
+        assert f.startswith(os.path.join(tmpdir, 'a', 'b'))
 
-        # 3D images
-        imgs = np.vstack([_get_image(h, w, c)[None, ...] for i in range(z)])
-        files = utils.save_numpy_array(imgs, 'name', '/a/b/', tempdir)
-        assert len(files) == c
-        for f in files:
-            assert os.path.isfile(f)
-            assert f.startswith(os.path.join(tempdir, 'a', 'b'))
+    # 3D images
+    imgs = np.vstack([_get_image(h, w, c)[None, ...] for i in range(z)])
+    files = utils.save_numpy_array(imgs, 'name', '/a/b/', tmpdir)
+    assert len(files) == c
+    for f in files:
+        assert os.path.isfile(f)
+        assert f.startswith(os.path.join(tmpdir, 'a', 'b'))
 
     # Bad path will not fail, but will log error
     img = _get_image(h, w, c)
@@ -279,82 +223,6 @@ def test_zip_files(tmpdir):
         zip_path = utils.zip_files(paths, bad_dest, prefix)
 
 
-def test_reshape_matrix():
-    # K.set_image_data_format('channels_last')
-    X = np.zeros((1, 16, 16, 3))
-    y = np.zeros((1, 16, 16, 1))
-    new_size = 4
-
-    # test resize to smaller image, divisible
-    new_X, new_y = utils.reshape_matrix(X, y, new_size)
-    new_batch = np.ceil(16 / new_size) ** 2
-    assert new_X.shape == (new_batch, new_size, new_size, 3)
-    assert new_y.shape == (new_batch, new_size, new_size, 1)
-
-    # test reshape with non-divisible values.
-    new_size = 5
-    new_batch = np.ceil(16 / new_size) ** 2
-    new_X, new_y = utils.reshape_matrix(X, y, new_size)
-    assert new_X.shape == (new_batch, new_size, new_size, 3)
-    assert new_y.shape == (new_batch, new_size, new_size, 1)
-
-    # test reshape to bigger size
-    with pytest.raises(ValueError):
-        new_X, new_y = utils.reshape_matrix(X, y, 32)
-
-    # test wrong dimensions
-    bigger = np.zeros((1, 16, 16, 3, 1))
-    smaller = np.zeros((1, 16, 16))
-    with pytest.raises(ValueError):
-        new_X, new_y = utils.reshape_matrix(smaller, y, new_size)
-    with pytest.raises(ValueError):
-        new_X, new_y = utils.reshape_matrix(bigger, y, new_size)
-    with pytest.raises(ValueError):
-        new_X, new_y = utils.reshape_matrix(X, smaller, new_size)
-    with pytest.raises(ValueError):
-        new_X, new_y = utils.reshape_matrix(X, bigger, new_size)
-
-    # channels_first
-    # K.set_image_data_format('channels_first')
-    X = np.zeros((1, 3, 16, 16))
-    y = np.zeros((1, 1, 16, 16))
-    new_size = 4
-
-    # test resize to smaller image, divisible
-    new_X, new_y = utils.reshape_matrix(X, y, new_size, True)
-    new_batch = np.ceil(16 / new_size) ** 2
-    assert new_X.shape == (new_batch, 3, new_size, new_size)
-    assert new_y.shape == (new_batch, 1, new_size, new_size)
-
-    # test reshape with non-divisible values.
-    new_size = 5
-    new_batch = np.ceil(16 / new_size) ** 2
-    new_X, new_y = utils.reshape_matrix(X, y, new_size, True)
-    assert new_X.shape == (new_batch, 3, new_size, new_size)
-    assert new_y.shape == (new_batch, 1, new_size, new_size)
-
-
-def test_rescale():
-    scales = [.5, 2]
-    shapes = [(4, 4, 5), (4, 4, 1), (4, 4)]
-    for scale in scales:
-        for shape in shapes:
-            image = np.random.random(shape)
-            rescaled = utils.rescale(image, 1)
-            np.testing.assert_array_equal(rescaled, image)
-
-            rescaled = utils.rescale(image, scale)
-            expected_shape = (int(np.ceil(shape[0] * scale)),
-                              int(np.ceil(shape[1] * scale)))
-
-            if len(shape) > 2:
-                expected_shape = tuple(list(expected_shape) + [int(shape[2])])
-            assert rescaled.shape == expected_shape
-            # scale it back
-            rescaled = utils.rescale(rescaled, 1 / scale)
-            assert rescaled.shape == shape
-
-
 def test__pick_model(mocker):
     mocker.patch.object(settings, 'MODEL_CHOICES', {0: 'dummymodel:0'})
     res = utils._pick_model(0)
@@ -364,21 +232,3 @@ def test__pick_model(mocker):
 
     with pytest.raises(ValueError):
         utils._pick_model(-1)
-
-
-def test__pick_preprocess(mocker):
-    mocker.patch.object(settings, 'PREPROCESS_CHOICES', {0: 'pre'})
-    res = utils._pick_preprocess(0)
-    assert res == 'pre'
-
-    with pytest.raises(ValueError):
-        utils._pick_preprocess(-1)
-
-
-def test__pick_postprocess(mocker):
-    mocker.patch.object(settings, 'POSTPROCESS_CHOICES', {0: 'post'})
-    res = utils._pick_postprocess(0)
-    assert res == 'post'
-
-    with pytest.raises(ValueError):
-        utils._pick_postprocess(-1)

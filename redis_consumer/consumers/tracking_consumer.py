@@ -36,13 +36,13 @@ import uuid
 
 from skimage.external import tifffile
 import numpy as np
+from deepcell_toolbox.processing import normalize
 
 from redis_consumer.grpc_clients import TrackingClient
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import utils
 from redis_consumer import tracking
 from redis_consumer import settings
-from redis_consumer import processing
 
 
 class TrackingConsumer(TensorFlowServingConsumer):
@@ -92,7 +92,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
         # If not, the data must be normalized before being tracked.
         if settings.NORMALIZE_TRACKING:
             for frame in range(raw.shape[0]):
-                raw[frame, ..., 0] = processing.normalize(raw[frame, ..., 0])
+                raw[frame, ..., 0] = normalize(raw[frame, ..., 0])
 
         features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
         tracker = tracking.CellTracker(
