@@ -57,8 +57,8 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         app = self.get_grpc_app(settings.LABEL_DETECT_MODEL, LabelDetection)
 
         if not settings.LABEL_DETECT_ENABLED:
-            self.logger.debug('Label detection disabled. Label set to None.')
-            return None
+            self.logger.debug('Label detection disabled. Label set to 0.')
+            return 0  # Use NuclearSegmentation as default model
 
         batch_size = app.model.get_batch_size()
         detected_label = app.predict(image, batch_size=batch_size)
@@ -67,6 +67,21 @@ class ImageFileConsumer(TensorFlowServingConsumer):
                           detected_label, timeit.default_timer() - start)
 
         return detected_label
+
+    def get_image_label(self, label, image, redis_hash):
+        """Calculate label of image."""
+        if not label:
+            # Detect scale of image (Default to 1)
+            label = self.detect_label(image)
+            self.logger.debug('Image scale detected: %s', label)
+            self.update_key(redis_hash, {'label': label})
+        else:
+            label = int(label)
+            self.logger.debug('Image label already calculated %s', label)
+            if label not in settings.APPLICATION_CHOICES:
+                raise ValueError('Label type {} is not supported'.format(label))
+
+        return label
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
@@ -85,10 +100,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
             'identity_started': self.name,
         })
 
-        # Overridden with LABEL_DETECT_ENABLED
-        model_name = hvals.get('model_name')
-        model_version = hvals.get('model_version')
-
         _ = timeit.default_timer()
 
         # Load input image
@@ -106,27 +117,14 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         scale = hvals.get('scale', '')
         scale = self.get_image_scale(scale, image, redis_hash)
 
-        label = None
-        if settings.LABEL_DETECT_ENABLED and model_name and model_version:
-            self.logger.warning('Label Detection is enabled, but the model'
-                                ' %s:%s was specified in Redis.',
-                                model_name, model_version)
+        label = hvals.get('label', '')
+        label = self.get_image_label(label, image, redis_hash)
 
-        elif settings.LABEL_DETECT_ENABLED:
-            # Detect image label type
-            label = hvals.get('label', '')
-            if not label:
-                label = self.detect_label(image)
-                self.logger.debug('Image label detected: %s', label)
-                self.update_key(redis_hash, {'label': str(label)})
-            else:
-                label = int(label)
-                self.logger.debug('Image label already calculated: %s', label)
+        # Grap appropriate model and application class
+        model = settings.MODEL_CHOICES[label]
+        app_cls = settings.APPLICATION_CHOICES[label]
 
-            label = 0  # TODO: remove this! hotfix for bad label detection.
-
-            # Grap appropriate model
-            model_name, model_version = utils._pick_model(label)
+        model_name, model_version = model.split(':')
 
         # Validate input image
         # TODO: batch dimension wonkiness
@@ -134,14 +132,12 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         image = self.validate_model_input(image, model_name, model_version)
         image = np.expand_dims(image, axis=0)  # add batch dim back
 
-        app_cls = settings.APPLICATION_CHOICES.get(label, NuclearSegmentation)
-
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
 
-        app = self.get_grpc_app(f'{model_name}:{model_version}', app_cls)
+        app = self.get_grpc_app(model, app_cls)
 
-        results = app.predict(image, image_mpp=scale,
+        results = app.predict(image, image_mpp=scale * app.model_mpp,
                               batch_size=app.model.get_batch_size())
 
         # Save the post-processed results to a file
