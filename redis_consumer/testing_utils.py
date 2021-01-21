@@ -94,10 +94,16 @@ class DummyStorage(object):
 
 def make_model_metadata_of_size(model_shape=(-1, 256, 256, 2)):
 
+    model_shape = model_shape if isinstance(model_shape, list) else [model_shape]
+
     def get_model_metadata(model_name, model_version):  # pylint: disable=unused-argument
-        return [{
-            'in_tensor_name': 'image',
-            'in_tensor_dtype': 'DT_FLOAT',
-            'in_tensor_shape': ','.join(str(s) for s in model_shape),
-        }]
+        output = []
+
+        for ms in model_shape:
+            output.append({
+                'in_tensor_name': 'image',
+                'in_tensor_dtype': 'DT_FLOAT',
+                'in_tensor_shape': ','.join(str(s) for s in ms),
+            })
+        return output
     return get_model_metadata
