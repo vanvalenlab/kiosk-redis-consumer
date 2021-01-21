@@ -23,13 +23,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-FROM python:3.6
+FROM python:3.7
 
 WORKDIR /usr/src/app
 
-COPY requirements.txt .
+COPY requirements.txt requirements-no-deps.txt ./
 
 RUN pip install --no-cache-dir -r requirements.txt
+
+RUN pip install --no-cache-dir --no-deps -r requirements-no-deps.txt
 
 COPY . .
 
