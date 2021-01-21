@@ -608,13 +608,7 @@ class ZipFileConsumer(Consumer):
                                 len(failed_hashes),
                                 json.dumps(failed_hashes, indent=4))
 
-        # check python2 vs python3
-        if hasattr(urllib, 'parse'):
-            url_encode = urllib.parse.urlencode  # pylint: disable=E1101
-        else:
-            url_encode = urllib.urlencode  # pylint: disable=E1101
-
-        return url_encode(failed_hashes)
+        return urllib.parse.urlencode(failed_hashes)
 
     def _cleanup(self, redis_hash, children, done, failed):
         start = timeit.default_timer()
