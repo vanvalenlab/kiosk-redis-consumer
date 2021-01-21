@@ -97,9 +97,6 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         # squeeze extra dimension that is added by get_image
         image = np.squeeze(image)
 
-        # Validate input image
-        image = self.validate_model_input(image, model_name, model_version)
-
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
             'status': 'pre-processing',
@@ -110,12 +107,14 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         scale = hvals.get('scale', '')
         scale = self.get_image_scale(scale, image, redis_hash)
 
-        # Rescale each channel of the image
         image = np.expand_dims(image, axis=0)  # add in the batch dim
 
+        # Validate input image
+        image = self.validate_model_input(image, model_name, model_version)
+
         # Send data to the model
-        app = self.get_grpc_app(
-            f'{model_name}:{model_version}', MultiplexSegmentation)
+        app = self.get_grpc_app(settings.MULTIPLEX_MODEL,
+                                MultiplexSegmentation)
 
         results = app.predict(image, image_mpp=scale * app.model_mpp,
                               batch_size=settings.TF_MAX_BATCH_SIZE)
