@@ -207,22 +207,8 @@ class Consumer(object):
                 status = self.failed_status
 
             if status == self.final_status:
-                required_fields = [
-                    'model_name',
-                    'model_version',
-                    'preprocess_function',
-                    'postprocess_function',
-                ]
-                result = self.redis.hmget(redis_hash, *required_fields)
-                hvals = dict(zip(required_fields, result))
-                self.logger.debug('Consumed key %s (model %s:%s, '
-                                  'preprocessing: %s, postprocessing: %s) '
-                                  '(%s retries) in %s seconds.',
-                                  redis_hash, hvals.get('model_name'),
-                                  hvals.get('model_version'),
-                                  hvals.get('preprocess_function'),
-                                  hvals.get('postprocess_function'),
-                                  0, timeit.default_timer() - start)
+                self.logger.debug('Consumed key `%s` in %s seconds.',
+                                  redis_hash, timeit.default_timer() - start)
 
             if status in self.finished_statuses:
                 # this key is done. remove the key from the processing queue.
@@ -253,7 +239,7 @@ class TensorFlowServingConsumer(Consumer):
         self._redis_values = dict()
         super(TensorFlowServingConsumer, self).__init__(
             redis_client, storage_client, queue, **kwargs)
-    
+
     def is_valid_hash(self, redis_hash):
         """Don't run on zip files"""
         if redis_hash is None:
@@ -272,7 +258,7 @@ class TensorFlowServingConsumer(Consumer):
     def validate_model_input(self, image, model_name, model_version):
         """Validate that the input image meets the workflow requirements."""
         model_metadata = self.get_model_metadata(model_name, model_version)
-        shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
+        shape = [int(x) for x in model_metadata[0]['in_tensor_shape'].split(',')]
 
         rank = len(shape) - 1  # ignoring batch dimension
         channels = shape[-1]
