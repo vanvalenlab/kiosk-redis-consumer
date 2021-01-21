@@ -37,7 +37,9 @@ import uuid
 
 from skimage.external import tifffile
 import numpy as np
+
 from deepcell_toolbox.processing import normalize
+from deepcell_toolbox.processing import correct_drift
 
 from redis_consumer.grpc_clients import TrackingClient
 from redis_consumer.consumers import TensorFlowServingConsumer
@@ -287,7 +289,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
         # Correct for drift if enabled
         if settings.DRIFT_CORRECT_ENABLED:
             t = timeit.default_timer()
-            data['X'], data['y'] = processing.correct_drift(data['X'], data['y'])
+            data['X'], data['y'] = correct_drift(data['X'], data['y'])
             self.logger.debug('Drift correction complete in %s seconds.',
                               timeit.default_timer() - t)
 
