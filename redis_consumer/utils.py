@@ -42,8 +42,6 @@ import PIL
 from skimage.external import tifffile
 from tensorflow.keras.preprocessing.image import img_to_array
 
-from redis_consumer import settings
-
 
 logger = logging.getLogger('redis_consumer.utils')
 
