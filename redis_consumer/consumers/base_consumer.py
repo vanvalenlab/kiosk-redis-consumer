@@ -234,9 +234,6 @@ class TensorFlowServingConsumer(Consumer):
                  storage_client,
                  queue,
                  **kwargs):
-        # Create some attributes only used during consume()
-        self._redis_hash = None
-        self._redis_values = dict()
         super(TensorFlowServingConsumer, self).__init__(
             redis_client, storage_client, queue, **kwargs)
 
