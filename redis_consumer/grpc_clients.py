@@ -127,6 +127,7 @@ def make_tensor_proto(data, dtype):
 
     return tensor_proto
 
+
 class GrpcClient(object):
     """Abstract class for all gRPC clients.
 
