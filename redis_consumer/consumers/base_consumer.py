@@ -255,25 +255,36 @@ class TensorFlowServingConsumer(Consumer):
     def validate_model_input(self, image, model_name, model_version):
         """Validate that the input image meets the workflow requirements."""
         model_metadata = self.get_model_metadata(model_name, model_version)
-        shape = [int(x) for x in model_metadata[0]['in_tensor_shape'].split(',')]
+        parse_shape = lambda x: tuple(int(y) for y in x.split(','))
+        shapes = [parse_shape(x['in_tensor_shape']) for x in model_metadata]
 
-        rank = len(shape) - 1  # ignoring batch dimension
-        channels = shape[-1]
+        # cast as image to match with the list of shapes.
+        image = [image] if not isinstance(image, list) else image
 
-        errtext = (f'Invalid image shape: {image.shape}. '
-                   f'The {self.queue} job expects images of shape '
-                   f'[height, widths, {channels}]')
+        errtext = (f'Invalid image shape: {[s.shape for s in image]}. '
+                   f'The {self.queue} job expects images of shape {shapes}')
 
-        if len(image.shape) != rank:
+        if len(image) != len(shapes):
             raise ValueError(errtext)
 
-        if image.shape[0] == channels:
-            image = np.rollaxis(image, 0, rank)
+        validated = []
 
-        if image.shape[rank - 1] != channels:
-            raise ValueError(errtext)
+        for img, shape in zip(image, shapes):
+            rank = len(shape) - 1  # ignoring batch dimension
+            channels = shape[-1]
 
-        return image
+            if len(img.shape) != rank:
+                raise ValueError(errtext)
+
+            if img.shape[0] == channels:
+                img = np.rollaxis(img, 0, rank)
+
+            if img.shape[rank - 1] != channels:
+                raise ValueError(errtext)
+
+            validated.append(img)
+
+        return validated[0] if len(validated) == 1 else validated
 
     def _get_predict_client(self, model_name, model_version):
         """Returns the TensorFlow Serving gRPC client.
