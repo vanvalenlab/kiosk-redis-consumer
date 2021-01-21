@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 import time
 import timeit
 import urllib
@@ -424,7 +425,7 @@ class TensorFlowServingConsumer(Consumer):
         return scale
 
     def save_output(self, image, save_name):
-        with utils.get_tempdir() as tempdir:
+        with tempfile.TemporaryDirectory() as tempdir:
             # Save each result channel as an image file
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
@@ -476,7 +477,7 @@ class ZipFileConsumer(Consumer):
         """Extract all image files and upload them to storage and redis"""
         all_hashes = set()
         archive_uuid = uuid.uuid4().hex
-        with utils.get_tempdir() as tempdir:
+        with tempfile.TemporaryDirectory() as tempdir:
             fname = self.storage.download(hvalues.get('input_file_name'), tempdir)
             image_files = utils.get_image_files_from_dir(fname, tempdir)
             for i, imfile in enumerate(image_files):
@@ -552,7 +553,7 @@ class ZipFileConsumer(Consumer):
 
     def _upload_finished_children(self, finished_children, redis_hash):
         # saved_files = set()
-        with utils.get_tempdir() as tempdir:
+        with tempfile.TemporaryDirectory() as tempdir:
             filename = '{}.zip'.format(uuid.uuid4().hex)
 
             zip_path = os.path.join(tempdir, filename)

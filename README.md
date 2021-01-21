@@ -17,7 +17,6 @@ Consumers consume Redis events. Each type of Redis event is put into a queue (e.
 Consumers call the `_consume` method to consume each item it finds in the queue.
 This method must be implemented for every consumer.
 
-
 The quickest way to get a custom consumer up and running is to:
 
 1. Add a new file for the consumer: `redis_consumer/consumers/my_new_consumer.py`
@@ -45,7 +44,7 @@ def _consume(self, redis_hash):
     # and parsed in settings.py.
     model_name, model_version = 'CustomModel:1'.split(':')
 
-    with utils.get_tempdir() as tempdir:
+    with tempfile.TemporaryDirectory() as tempdir:
         # download the image file
         fname = self.storage.download(input_file_name, tempdir)
         # load image file as data

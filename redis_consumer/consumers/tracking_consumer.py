@@ -30,6 +30,7 @@ from __future__ import print_function
 
 import json
 import os
+import tempfile
 import time
 import timeit
 import uuid
@@ -169,7 +170,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
         uid = uuid.uuid4().hex
         for i, img in enumerate(tiff_stack):
 
-            with utils.get_tempdir() as tempdir:
+            with tempfile.TemporaryDirectory() as tempdir:
                 # Save and upload the frame.
                 segment_fname = '{}-{}-tracking-frame-{}.tif'.format(
                     uid, hvalues.get('original_name'), i)
@@ -231,7 +232,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
                 if status == self.final_status:
                     # Segmentation is finished, save and load the frame.
-                    with utils.get_tempdir() as tempdir:
+                    with tempfile.TemporaryDirectory() as tempdir:
                         out = self.redis.hget(segment_hash, 'output_file_name')
                         frame_zip = self.storage.download(out, tempdir)
                         frame_files = list(utils.iter_image_archive(
@@ -274,7 +275,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
             'identity_started': self.name,
         })
 
-        with utils.get_tempdir() as tempdir:
+        with tempfile.TemporaryDirectory() as tempdir:
             fname = self.storage.download(hvalues.get('input_file_name'),
                                           tempdir)
             data = self._load_data(redis_hash, tempdir, fname)
@@ -303,7 +304,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
         tracked_data = tracker.postprocess()
 
         self.update_key(redis_hash, {'status': 'saving-results'})
-        with utils.get_tempdir() as tempdir:
+        with tempfile.TemporaryDirectory() as tempdir:
             # Save lineage data to JSON file
             lineage_file = os.path.join(tempdir, 'lineage.json')
             with open(lineage_file, 'w') as fp:
