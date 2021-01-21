@@ -137,18 +137,19 @@ class TestStorage(object):
         backoff = client.get_backoff(attempts=5)
         assert backoff == max_backoff
 
-    def test_get_download_path(self, mocker):
+    def test_get_download_path(self, mocker, tmpdir):
+        tmpdir = str(tmpdir)
         mocker.patch('redis_consumer.storage.Storage.get_storage_client',
                      lambda *x: True)
-        with utils.get_tempdir() as tempdir:
-            bucket = 'test-bucket'
-            stg = storage.Storage(bucket, tempdir)
-            filekey = 'upload_dir/key/to.zip'
-            path = stg.get_download_path(filekey, tempdir)
-            path2 = stg.get_download_path(filekey)
-            assert path == path2
-            assert str(path).startswith(tempdir)
-            assert str(path).endswith(filekey.replace('upload_dir/', ''))
+
+        bucket = 'test-bucket'
+        stg = storage.Storage(bucket, tmpdir)
+        filekey = 'upload_dir/key/to.zip'
+        path = stg.get_download_path(filekey, tmpdir)
+        path2 = stg.get_download_path(filekey)
+        assert path == path2
+        assert str(path).startswith(tmpdir)
+        assert str(path).endswith(filekey.replace('upload_dir/', ''))
 
 
 class TestGoogleStorage(object):
