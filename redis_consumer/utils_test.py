@@ -34,22 +34,16 @@ import tarfile
 import tempfile
 import zipfile
 
+import pytest
+
 import numpy as np
-from keras_preprocessing.image import array_to_img
+from tensorflow.keras.preprocessing.image import array_to_img
 from skimage.external import tifffile as tiff
 
-from redis_consumer.pbs.predict_pb2 import PredictResponse
-from redis_consumer.pbs import types_pb2
-from redis_consumer.pbs.tensor_pb2 import TensorProto
+from redis_consumer.testing_utils import _get_image
+
 from redis_consumer import utils
 from redis_consumer import settings
-
-
-def _get_image(img_h=300, img_w=300, channels=1):
-    bias = np.random.rand(img_w, img_h, channels) * 64
-    variance = np.random.rand(img_w, img_h, channels) * (255 - 64)
-    img = np.random.rand(img_w, img_h, channels) * variance + bias
-    return img
 
 
 def _write_image(filepath, img_w=300, img_h=300):
@@ -77,77 +71,38 @@ def _write_trks(filepath, X_mean=10, y_mean=5,
             trks.add(tracked_file.name, 'tracked.npy')
 
 
-def test_make_tensor_proto():
-    # test with numpy array
-    data = _get_image(300, 300, 1)
-    proto = utils.make_tensor_proto(data, 'DT_FLOAT')
-    assert isinstance(proto, (TensorProto,))
-    # test with value
-    data = 10.0
-    proto = utils.make_tensor_proto(data, types_pb2.DT_FLOAT)
-    assert isinstance(proto, (TensorProto,))
+def test_iter_image_archive(tmpdir):
+    tmpdir = str(tmpdir)
+    zip_path = os.path.join(tmpdir, 'test.zip')
+    archive = zipfile.ZipFile(zip_path, 'w')
+    num_files = 3
+    for n in range(num_files):
+        path = os.path.join(tmpdir, '{}.tif'.format(n))
+        _write_image(path, 30, 30)
+        archive.write(path)
+    archive.close()
+
+    unzipped = [z for z in utils.iter_image_archive(zip_path, tmpdir)]
+    assert len(unzipped) == num_files
 
 
-def test_grpc_response_to_dict():
-    # pylint: disable=E1101
-    # test valid response
-    data = _get_image(300, 300, 1)
-    tensor_proto = utils.make_tensor_proto(data, 'DT_FLOAT')
-    response = PredictResponse()
-    response.outputs['prediction'].CopyFrom(tensor_proto)
-    response_dict = utils.grpc_response_to_dict(response)
-    assert isinstance(response_dict, (dict,))
-    np.testing.assert_allclose(response_dict['prediction'], data)
-    # test scalar input
-    data = 3
-    tensor_proto = utils.make_tensor_proto(data, 'DT_FLOAT')
-    response = PredictResponse()
-    response.outputs['prediction'].CopyFrom(tensor_proto)
-    response_dict = utils.grpc_response_to_dict(response)
-    assert isinstance(response_dict, (dict,))
-    np.testing.assert_allclose(response_dict['prediction'], data)
-    # test bad dtype
-    # logs an error, but should throw a KeyError as well.
-    data = _get_image(300, 300, 1)
-    tensor_proto = utils.make_tensor_proto(data, 'DT_FLOAT')
-    response = PredictResponse()
-    response.outputs['prediction'].CopyFrom(tensor_proto)
-    response.outputs['prediction'].dtype = 32
-    with pytest.raises(KeyError):
-        response_dict = utils.grpc_response_to_dict(response)
+def test_get_image_files_from_dir(tmpdir):
+    tmpdir = str(tmpdir)
 
+    zip_path = os.path.join(tmpdir, 'test.zip')
+    archive = zipfile.ZipFile(zip_path, 'w')
+    num_files = 3
+    for n in range(num_files):
+        path = os.path.join(tmpdir, '{}.tif'.format(n))
+        _write_image(path, 30, 30)
+        archive.write(path)
+    archive.close()
 
-def test_iter_image_archive():
-    with utils.get_tempdir() as tempdir:
-        zip_path = os.path.join(tempdir, 'test.zip')
-        archive = zipfile.ZipFile(zip_path, 'w')
-        num_files = 3
-        for n in range(num_files):
-            path = os.path.join(tempdir, '{}.tif'.format(n))
-            _write_image(path, 30, 30)
-            archive.write(path)
-        archive.close()
+    imfiles = list(utils.get_image_files_from_dir(path, None))
+    assert len(imfiles) == 1
 
-        unzipped = [z for z in utils.iter_image_archive(zip_path, tempdir)]
-        assert len(unzipped) == num_files
-
-
-def test_get_image_files_from_dir():
-    with utils.get_tempdir() as tempdir:
-        zip_path = os.path.join(tempdir, 'test.zip')
-        archive = zipfile.ZipFile(zip_path, 'w')
-        num_files = 3
-        for n in range(num_files):
-            path = os.path.join(tempdir, '{}.tif'.format(n))
-            _write_image(path, 30, 30)
-            archive.write(path)
-        archive.close()
-
-        imfiles = list(utils.get_image_files_from_dir(path, None))
-        assert len(imfiles) == 1
-
-        imfiles = list(utils.get_image_files_from_dir(zip_path, tempdir))
-        assert len(imfiles) == num_files
+    imfiles = list(utils.get_image_files_from_dir(zip_path, tmpdir))
+    assert len(imfiles) == num_files
 
 
 def test_get_image(tmpdir):

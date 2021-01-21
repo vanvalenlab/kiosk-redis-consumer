@@ -34,23 +34,98 @@ import json
 import logging
 import time
 import timeit
+import six
 
+import dict_to_protobuf
+from google.protobuf.json_format import MessageToJson
 import grpc
-from grpc import RpcError
 import grpc.beta.implementations
 from grpc._cython import cygrpc
-
 import numpy as np
-
-from google.protobuf.json_format import MessageToJson
+from tensorflow.core.framework.types_pb2 import DESCRIPTOR
+from tensorflow.core.framework.tensor_pb2 import TensorProto
+from tensorflow_serving.apis.prediction_service_pb2_grpc import PredictionServiceStub
+from tensorflow_serving.apis.predict_pb2 import PredictRequest
+from tensorflow_serving.apis.get_model_metadata_pb2 import GetModelMetadataRequest
 
 from redis_consumer import settings
-from redis_consumer.pbs.prediction_service_pb2_grpc import PredictionServiceStub
-from redis_consumer.pbs.predict_pb2 import PredictRequest
-from redis_consumer.pbs.get_model_metadata_pb2 import GetModelMetadataRequest
-from redis_consumer.utils import grpc_response_to_dict
-from redis_consumer.utils import make_tensor_proto
 
+
+logger = logging.getLogger('redis_consumer.grpc_clients')
+
+
+dtype_to_number = {
+    i.name: i.number for i in DESCRIPTOR.enum_types_by_name['DataType'].values
+}
+
+# TODO: build this dynamically
+number_to_dtype_value = {
+    1: 'float_val',
+    2: 'double_val',
+    3: 'int_val',
+    4: 'int_val',
+    5: 'int_val',
+    6: 'int_val',
+    7: 'string_val',
+    8: 'scomplex_val',
+    9: 'int64_val',
+    10: 'bool_val',
+    18: 'dcomplex_val',
+    19: 'half_val',
+    20: 'resource_handle_val'
+}
+
+
+def grpc_response_to_dict(grpc_response):
+    # TODO: 'unicode' object has no attribute 'ListFields'
+    # response_dict = dict_to_protobuf.protobuf_to_dict(grpc_response)
+    # return response_dict
+    grpc_response_dict = dict()
+
+    for k in grpc_response.outputs:
+        shape = [x.size for x in grpc_response.outputs[k].tensor_shape.dim]
+
+        dtype_constant = grpc_response.outputs[k].dtype
+
+        if dtype_constant not in number_to_dtype_value:
+            grpc_response_dict[k] = 'value not found'
+            logger.error('Tensor output data type not supported. '
+                         'Returning empty dict.')
+
+        dt = number_to_dtype_value[dtype_constant]
+        if shape == [1]:
+            grpc_response_dict[k] = eval(
+                'grpc_response.outputs[k].' + dt)[0]
+        else:
+            grpc_response_dict[k] = np.array(
+                eval('grpc_response.outputs[k].' + dt)).reshape(shape)
+
+    return grpc_response_dict
+
+
+def make_tensor_proto(data, dtype):
+    tensor_proto = TensorProto()
+
+    if isinstance(dtype, six.string_types):
+        dtype = dtype_to_number[dtype]
+
+    dim = [{'size': 1}]
+    values = [data]
+
+    if hasattr(data, 'shape'):
+        dim = [{'size': dim} for dim in data.shape]
+        values = list(data.reshape(-1))
+
+    tensor_proto_dict = {
+        'dtype': dtype,
+        'tensor_shape': {
+            'dim': dim
+        },
+        number_to_dtype_value[dtype]: values
+    }
+    dict_to_protobuf.dict_to_protobuf(tensor_proto_dict, tensor_proto)
+
+    return tensor_proto
 
 class GrpcClient(object):
     """Abstract class for all gRPC clients.

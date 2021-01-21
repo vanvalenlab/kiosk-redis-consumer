@@ -48,10 +48,14 @@ def redis_client():
     yield client
 
 
-def _get_image(img_h=300, img_w=300):
-    bias = np.random.rand(img_w, img_h) * 64
-    variance = np.random.rand(img_w, img_h) * (255 - 64)
-    img = np.random.rand(img_w, img_h) * variance + bias
+def _get_image(img_h=300, img_w=300, channels=None):
+    shape = [img_w, img_h]
+    if channels:
+        shape.append(channels)
+    shape = tuple(shape)
+    bias = np.random.rand(*shape) * 64
+    variance = np.random.rand(*shape) * (255 - 64)
+    img = np.random.rand(*shape) * variance + bias
     return img
 
 
