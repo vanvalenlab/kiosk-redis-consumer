@@ -227,12 +227,3 @@ def zip_files(files, dest=None, prefix=None):
     logger.debug('Zipped %s files into %s in %s seconds.',
                  len(files), filepath, timeit.default_timer() - start)
     return filepath
-
-
-def _pick_model(label):
-    model = settings.MODEL_CHOICES.get(label)
-    if model is None:
-        logger.error('Label type %s is not supported', label)
-        raise ValueError('Label type {} is not supported'.format(label))
-
-    return model.split(':')

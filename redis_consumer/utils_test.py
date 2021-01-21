@@ -221,14 +221,3 @@ def test_zip_files(tmpdir):
     with pytest.raises(Exception):
         bad_dest = os.path.join(tmpdir, 'does', 'not', 'exist')
         zip_path = utils.zip_files(paths, bad_dest, prefix)
-
-
-def test__pick_model(mocker):
-    mocker.patch.object(settings, 'MODEL_CHOICES', {0: 'dummymodel:0'})
-    res = utils._pick_model(0)
-    assert len(res) == 2
-    assert res[0] == 'dummymodel'
-    assert res[1] == '0'
-
-    with pytest.raises(ValueError):
-        utils._pick_model(-1)
