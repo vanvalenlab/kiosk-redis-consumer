@@ -32,18 +32,44 @@ import timeit
 
 import numpy as np
 
+from deepcell.applications import ScaleDetection, MultiplexSegmentation
+
 from redis_consumer.consumers import TensorFlowServingConsumer
-from redis_consumer import utils
 from redis_consumer import settings
-from redis_consumer import processing
 
 
 class MultiplexConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
+    def detect_scale(self, image):
+        """Send the image to the SCALE_DETECT_MODEL to detect the relative
+        scale difference from the image to the model's training data.
+
+        Args:
+            image (numpy.array): The image data.
+
+        Returns:
+            scale (float): The detected scale, used to rescale data.
+        """
+        start = timeit.default_timer()
+
+        app = self.get_grpc_app(settings.SCALE_DETECT_MODEL, ScaleDetection)
+
+        if not settings.SCALE_DETECT_ENABLED:
+            self.logger.debug('Scale detection disabled.')
+            return app.model_mpp
+
+        # TODO: What to do with multi-channel data?
+        # detected_scale = app.predict(image[..., 0])
+        detected_scale = 1
+
+        self.logger.debug('Scale %s detected in %s seconds',
+                          detected_scale, timeit.default_timer() - start)
+
+        return app.model_mpp * detected_scale
+
     def _consume(self, redis_hash):
         start = timeit.default_timer()
-        self._redis_hash = redis_hash  # workaround for logging.
         hvals = self.redis.hgetall(redis_hash)
 
         if hvals.get('status') in self.finished_statuses:
@@ -65,7 +91,8 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         _ = timeit.default_timer()
 
         # Load input image
-        image = self.download_image(hvals.get('input_file_name'))
+        fname = hvals.get('input_file_name')
+        image = self.download_image(fname)
 
         # squeeze extra dimension that is added by get_image
         image = np.squeeze(image)
@@ -83,41 +110,32 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         scale = hvals.get('scale', '')
         scale = self.get_image_scale(scale, image, redis_hash)
 
-        original_shape = image.shape
-
         # Rescale each channel of the image
-        image = utils.rescale(image, scale)
         image = np.expand_dims(image, axis=0)  # add in the batch dim
 
-        # Preprocess image
-        image = self.preprocess(image, ['multiplex_preprocess'])
-
         # Send data to the model
-        self.update_key(redis_hash, {'status': 'predicting'})
-        image = self.predict(image, model_name, model_version)
+        app = self.get_grpc_app(
+            f'{model_name}:{model_version}', MultiplexSegmentation)
 
-        # Post-process model results
-        self.update_key(redis_hash, {'status': 'post-processing'})
-        image = processing.format_output_multiplex(image)
-        image = self.postprocess(image, ['multiplex_postprocess_consumer'])
+        results = app.predict(image, image_mpp=scale,
+                              batch_size=settings.TF_MAX_BATCH_SIZE)
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
         self.update_key(redis_hash, {'status': 'saving-results'})
 
         save_name = hvals.get('original_name', fname)
-        dest, output_url = self.save_output(
-            image, redis_hash, save_name, original_shape[:-1])
+        dest, output_url = self.save_output(results, save_name)
 
         # Update redis with the final results
-        t = timeit.default_timer() - start
+        end = timeit.default_timer()
         self.update_key(redis_hash, {
             'status': self.final_status,
             'output_url': output_url,
-            'upload_time': timeit.default_timer() - _,
+            'upload_time': end - _,
             'output_file_name': dest,
             'total_jobs': 1,
-            'total_time': t,
+            'total_time': end - start,
             'finished_at': self.get_current_timestamp()
         })
         return self.final_status

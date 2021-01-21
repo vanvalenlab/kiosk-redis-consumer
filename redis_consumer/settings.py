@@ -33,7 +33,7 @@ import os
 import grpc
 from decouple import config
 
-from redis_consumer import processing
+import deepcell
 
 
 # remove leading/trailing '/'s from cloud bucket folder names
@@ -117,26 +117,6 @@ EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
 # Configure expiration for cached model metadata
 METADATA_EXPIRE_TIME = config('METADATA_EXPIRE_TIME', default=30, cast=int)
 
-# Pre- and Post-processing settings
-PROCESSING_FUNCTIONS = {
-    'pre': {
-        'normalize': processing.normalize,
-        'histogram_normalization': processing.phase_preprocess,
-        'multiplex_preprocess': processing.multiplex_preprocess,
-        'none': lambda x: x
-    },
-    'post': {
-        'deepcell': processing.pixelwise,  # TODO: this is deprecated.
-        'pixelwise': processing.pixelwise,
-        'watershed': processing.watershed,
-        'retinanet': processing.retinanet_to_label_image,
-        'retinanet-semantic': processing.retinanet_semantic_to_label_image,
-        'deep_watershed': processing.deep_watershed,
-        'multiplex_postprocess_consumer': processing.multiplex_postprocess_consumer,
-        'none': lambda x: x
-    },
-}
-
 # Tracking settings
 TRACKING_SEGMENT_MODEL = config('TRACKING_SEGMENT_MODEL', default='panoptic:3', cast=str)
 TRACKING_POSTPROCESS_FUNCTION = config('TRACKING_POSTPROCESS_FUNCTION',
@@ -176,14 +156,8 @@ MODEL_CHOICES = {
     2: config('CYTOPLASM_MODEL', default='FluoCytoSegmentation:0', cast=str)
 }
 
-PREPROCESS_CHOICES = {
-    0: config('NUCLEAR_PREPROCESS', default='normalize', cast=str),
-    1: config('PHASE_PREPROCESS', default='histogram_normalization', cast=str),
-    2: config('CYTOPLASM_PREPROCESS', default='histogram_normalization', cast=str)
-}
-
-POSTPROCESS_CHOICES = {
-    0: config('NUCLEAR_POSTPROCESS', default='deep_watershed', cast=str),
-    1: config('PHASE_POSTPROCESS', default='deep_watershed', cast=str),
-    2: config('CYTOPLASM_POSTPROCESS', default='deep_watershed', cast=str)
+APPLICATION_CHOICES = {
+    0: deepcell.applications.NuclearSegmentation,
+    1: deepcell.applications.CytoplasmSegmentation,
+    2: deepcell.applications.CytoplasmSegmentation
 }

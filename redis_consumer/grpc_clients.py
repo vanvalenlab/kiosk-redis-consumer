@@ -343,3 +343,85 @@ class TrackingClient(PredictClient):
         # clamp to an integer between 0 and 100
         progress = min(100, max(0, round(progress)))
         self.progress_callback(self.redis_hash, progress)
+
+
+class GrpcModelWrapper(object):
+    """A wrapper class that mocks a Keras model using a gRPC client.
+
+    https://github.com/vanvalenlab/deepcell-tf/blob/master/deepcell/applications
+    """
+
+    def __init__(self, client, model_metadata):
+        self._client = client
+
+        if len(model_metadata) > 1:
+            # TODO: how to handle this?
+            raise NotImplementedError('Multiple input tensors are not supported.')
+
+        self._metadata = model_metadata[0]
+
+        self._in_tensor_name = self._metadata['in_tensor_name']
+        self._in_tensor_dtype = str(self._metadata['in_tensor_dtype']).upper()
+
+        shape = [int(x) for x in self._metadata['in_tensor_shape'].split(',')]
+        self.input_shape = shape
+
+    def send_grpc(self, img):
+        """Use the TensorFlow Serving gRPC API for model inference on an image.
+
+        Args:
+            img (numpy.array): The image to send to the model
+
+        Returns:
+            numpy.array: The results of model inference.
+        """
+        start = timeit.default_timer()
+        if self._in_tensor_dtype == 'DT_HALF':
+            # TODO: seems like should cast to "half"
+            # but the model rejects the type, wants "int" or "long"
+            img = img.astype('int')
+
+        req_data = [{'in_tensor_name': self._in_tensor_name,
+                     'in_tensor_dtype': self._in_tensor_dtype,
+                     'data': img}]
+
+        prediction = self._client.predict(req_data, settings.GRPC_TIMEOUT)
+        results = [prediction[k] for k in sorted(prediction.keys())]
+
+        self._client.logger.debug('Got prediction results of shape %s in %s s.',
+                                  [r.shape for r in results],
+                                  timeit.default_timer() - start)
+
+        if len(results) == 1:
+            results = results[0]
+
+        return results
+
+    def get_batch_size(self):
+        """Calculate the best batch size based on TF_MAX_BATCH_SIZE and
+        TF_MIN_MODEL_SIZE
+        """
+        rank = len(self.input_shape)
+        ratio = (self.input_shape[rank - 3] / settings.TF_MIN_MODEL_SIZE) * \
+                (self.input_shape[rank - 2] / settings.TF_MIN_MODEL_SIZE) * \
+                (self.input_shape[rank - 1])
+
+        batch_size = int(settings.TF_MAX_BATCH_SIZE // ratio)
+        return batch_size
+
+    def predict(self, tiles, batch_size):
+        results = []
+
+        for t in range(0, tiles.shape[0], batch_size):
+            output = self.send_grpc(tiles[t:t + batch_size])
+
+            if not isinstance(output, list):
+                output = [output]
+
+            if len(results) == 0:
+                results = output
+            else:
+                for i, o in enumerate(output):
+                    results[i] = np.vstack((results[i], o))
+
+        return results

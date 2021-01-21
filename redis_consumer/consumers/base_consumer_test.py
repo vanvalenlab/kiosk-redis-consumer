@@ -395,60 +395,6 @@ class TestTensorFlowServingConsumer(object):
             x = np.random.random((300, 300, 1))
             consumer.predict(x, model_name='modelname', model_version=0)
 
-    def test__get_processing_function(self, mocker, redis_client):
-        mocker.patch.object(settings, 'PROCESSING_FUNCTIONS', {
-            'valid': {
-                'valid': lambda x: True
-            }
-        })
-
-        storage = DummyStorage()
-        consumer = consumers.ImageFileConsumer(redis_client, storage, 'q')
-
-        x = consumer._get_processing_function('VaLiD', 'vAlId')
-        y = consumer._get_processing_function('vAlId', 'VaLiD')
-        assert x == y
-
-        with pytest.raises(ValueError):
-            consumer._get_processing_function('invalid', 'valid')
-
-        with pytest.raises(ValueError):
-            consumer._get_processing_function('valid', 'invalid')
-
-    def test_process(self, mocker, redis_client):
-        # TODO: better test coverage
-        storage = DummyStorage()
-        queue = 'q'
-        img = np.random.random((1, 32, 32, 1))
-
-        mocker.patch.object(settings, 'PROCESSING_FUNCTIONS', {
-            'valid': {
-                'valid': lambda x: x,
-                'retinanet': lambda *x: x[0],
-                'retinanet-semantic': lambda x: x,
-            }
-        })
-
-        consumer = consumers.ImageFileConsumer(redis_client, storage, queue)
-
-        mocker.patch.object(consumer, '_redis_hash', 'a hash')
-
-        output = consumer.process(img, '', '')
-        np.testing.assert_equal(img, output)
-
-        # image is returned but channel squeezed out
-        output = consumer.process(img, 'valid', 'valid')
-        np.testing.assert_equal(img[0], output)
-
-        img = np.random.random((2, 32, 32, 1))
-        output = consumer.process(img, 'retinanet-semantic', 'valid')
-        np.testing.assert_equal(img[0], output)
-
-        consumer._rawshape = (21, 21)
-        img = np.random.random((1, 32, 32, 1))
-        output = consumer.process(img, 'retinanet', 'valid')
-        np.testing.assert_equal(img[0], output)
-
     def test_get_image_scale(self, mocker, redis_client):
         stg = DummyStorage()
         consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')

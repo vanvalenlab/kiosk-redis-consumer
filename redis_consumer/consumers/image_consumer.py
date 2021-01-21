@@ -28,10 +28,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import timeit
 
 import numpy as np
+
+from deepcell.applications import LabelDetection, NuclearSegmentation
 
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import utils
@@ -40,37 +41,6 @@ from redis_consumer import settings
 
 class ImageFileConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
-
-    def detect_scale(self, image):
-        """Send the image to the SCALE_DETECT_MODEL to detect the relative
-        scale difference from the image to the model's training data.
-
-        Args:
-            image (numpy.array): The image data.
-
-        Returns:
-            scale (float): The detected scale, used to rescale data.
-        """
-        start = timeit.default_timer()
-
-        if not settings.SCALE_DETECT_ENABLED:
-            self.logger.debug('Scale detection disabled. Scale set to 1.')
-            return 1
-
-        model_name, model_version = settings.SCALE_DETECT_MODEL.split(':')
-
-        scales = self.predict(image, model_name, model_version,
-                              untile=False)
-
-        detected_scale = np.mean(scales)
-
-        error_rate = .01  # error rate is ~1% for current model.
-        if abs(detected_scale - 1) < error_rate:
-            detected_scale = 1
-
-        self.logger.debug('Scale %s detected in %s seconds',
-                          detected_scale, timeit.default_timer() - start)
-        return detected_scale
 
     def detect_label(self, image):
         """Send the image to the LABEL_DETECT_MODEL to detect the type of image
@@ -84,31 +54,23 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         """
         start = timeit.default_timer()
 
+        app = self.get_grpc_app(settings.LABEL_DETECT_MODEL, LabelDetection)
+
         if not settings.LABEL_DETECT_ENABLED:
             self.logger.debug('Label detection disabled. Label set to None.')
             return None
 
-        model_name, model_version = settings.LABEL_DETECT_MODEL.split(':')
+        batch_size = app.model.get_batch_size()
+        detected_label = app.predict(image, batch_size=batch_size)
 
-        labels = self.predict(image, model_name, model_version,
-                              untile=False)
+        self.logger.debug('Label %s detected in %s seconds',
+                          detected_label, timeit.default_timer() - start)
 
-        labels = np.array(labels)
-        vote = labels.sum(axis=0)
-        maj = vote.max()
-
-        detected = np.where(vote == maj)[-1][0]
-
-        self.logger.debug('Label %s detected in %s seconds.',
-                          detected, timeit.default_timer() - start)
-        return detected
+        return detected_label
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
-        # hold on to the redis hash/values for logging purposes
-        self._redis_hash = redis_hash
-        self._redis_values = hvals
 
         if hvals.get('status') in self.finished_statuses:
             self.logger.warning('Found completed hash `%s` with status %s.',
@@ -130,10 +92,9 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         _ = timeit.default_timer()
 
         # Load input image
-        image = self.download_image(hvals.get('input_file_name'))
-
-        # Validate input image
-        image = self.validate_model_input(image, model_name, model_version)
+        fname = hvals.get('input_file_name')
+        image = self.download_image(fname)
+        image = np.expand_dims(image, axis=0)  # add a batch dimension
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
@@ -145,13 +106,6 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         scale = hvals.get('scale', '')
         scale = self.get_image_scale(scale, image, redis_hash)
 
-        original_shape = image.shape
-
-        image = utils.rescale(image, scale)
-
-        # Save shape value for postprocessing purposes
-        # TODO this is a big janky
-        self._rawshape = image.shape
         label = None
         if settings.LABEL_DETECT_ENABLED and model_name and model_version:
             self.logger.warning('Label Detection is enabled, but the model'
@@ -169,56 +123,43 @@ class ImageFileConsumer(TensorFlowServingConsumer):
                 label = int(label)
                 self.logger.debug('Image label already calculated: %s', label)
 
+            label = 0  # TODO: remove this! hotfix for bad label detection.
+
             # Grap appropriate model
             model_name, model_version = utils._pick_model(label)
 
-        if settings.LABEL_DETECT_ENABLED and label is not None:
-            pre_funcs = utils._pick_preprocess(label).split(',')
-        else:
-            pre_funcs = hvals.get('preprocess_function', '').split(',')
+        # Validate input image
+        # TODO: batch dimension wonkiness
+        image = image[0]  # remove batch dimension
+        image = self.validate_model_input(image, model_name, model_version)
+        image = np.expand_dims(image, axis=0)  # add batch dim back
 
-        image = np.expand_dims(image, axis=0)  # add in the batch dim
-        image = self.preprocess(image, pre_funcs)
+        app_cls = settings.APPLICATION_CHOICES.get(label, NuclearSegmentation)
 
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
 
-        image = self.predict(image, model_name, model_version)
+        app = self.get_grpc_app(f'{model_name}:{model_version}', app_cls)
 
-        # Post-process model results
-        self.update_key(redis_hash, {'status': 'post-processing'})
-
-        if settings.LABEL_DETECT_ENABLED and label is not None:
-            post_funcs = utils._pick_postprocess(label).split(',')
-        else:
-            post_funcs = hvals.get('postprocess_function', '').split(',')
-
-        image = self.postprocess(image, post_funcs)
+        results = app.predict(image, image_mpp=scale,
+                              batch_size=app.model.get_batch_size())
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
         self.update_key(redis_hash, {'status': 'saving-results'})
 
         save_name = hvals.get('original_name', fname)
-
-        if isinstance(image, list):
-            for i, img in enumerate(image):
-                if img.shape[-1] != 1:
-                    image[i] = np.expand_dims(img, axis=-1)
-        elif image.shape[-1] != 1:
-            image = np.expand_dims(image, axis=-1)
-        dest, output_url = self.save_output(
-            image, redis_hash, save_name, original_shape[:-1])
+        dest, output_url = self.save_output(results, save_name)
 
         # Update redis with the final results
-        t = timeit.default_timer() - start
+        end = timeit.default_timer()
         self.update_key(redis_hash, {
             'status': self.final_status,
             'output_url': output_url,
-            'upload_time': timeit.default_timer() - _,
+            'upload_time': end - _,
             'output_file_name': dest,
             'total_jobs': 1,
-            'total_time': t,
+            'total_time': end - start,
             'finished_at': self.get_current_timestamp()
         })
         return self.final_status
