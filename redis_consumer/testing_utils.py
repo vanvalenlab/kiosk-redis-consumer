@@ -76,12 +76,14 @@ class DummyStorage(object):
                 img = _get_image()
                 base, ext = os.path.splitext(path)
                 _path = '{}{}{}'.format(base, i, ext)
-                tiff.imsave(os.path.join(dest, _path), img)
-                paths.append(_path)
+                outpath = os.path.join(dest, _path)
+                tiff.imsave(outpath, img)
+                paths.append(outpath)
             return utils.zip_files(paths, dest)
         img = _get_image()
-        tiff.imsave(os.path.join(dest, path), img)
-        return path
+        outpath = os.path.join(dest, path)
+        tiff.imsave(outpath, img)
+        return outpath
 
     def upload(self, zip_path, subdir=None):
         return 'zip_path.zip', 'blob.public_url'
