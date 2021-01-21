@@ -28,8 +28,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import itertools
 import json
+import os
+import random
 import time
 
 import numpy as np
@@ -37,24 +38,29 @@ import numpy as np
 import pytest
 
 from redis_consumer import consumers
+from redis_consumer.grpc_clients import GrpcModelWrapper
 from redis_consumer import settings
 
-from redis_consumer.testing_utils import Bunch, DummyStorage, redis_client
+from redis_consumer.testing_utils import _get_image
+from redis_consumer.testing_utils import Bunch
+from redis_consumer.testing_utils import DummyStorage
+from redis_consumer.testing_utils import redis_client  # pylint: disable=unused-import
+from redis_consumer.testing_utils import make_model_metadata_of_size
 
 
 class TestConsumer(object):
     # pylint: disable=R0201,W0621
     def test_get_redis_hash(self, mocker, redis_client):
         mocker.patch.object(settings, 'EMPTY_QUEUE_TIMEOUT', 0.01)
-        queue_name = 'q'
-        consumer = consumers.Consumer(redis_client, None, queue_name)
+        queue = 'q'
+        consumer = consumers.Consumer(redis_client, None, queue)
 
         # test emtpy queue
         assert consumer.get_redis_hash() is None
 
         # test that invalid items are not processed and are removed.
         item = 'item to process'
-        redis_client.lpush(queue_name, item)
+        redis_client.lpush(queue, item)
         # is_valid_hash returns True by default
         assert consumer.get_redis_hash() == item
         assert redis_client.llen(consumer.processing_queue) == 1
@@ -64,7 +70,7 @@ class TestConsumer(object):
 
         # test invalid hash is failed and removed from queue
         mocker.patch.object(consumer, 'is_valid_hash', return_value=False)
-        redis_client.lpush(queue_name, 'invalid')
+        redis_client.lpush(queue, 'invalid')
         assert consumer.get_redis_hash() is None  # invalid hash, returns None
         # invalid has was removed from the processing queue
         assert redis_client.llen(consumer.processing_queue) == 0
@@ -76,9 +82,9 @@ class TestConsumer(object):
         assert consumer.get_redis_hash() is None
 
     def test_purge_processing_queue(self, redis_client):
-        queue_name = 'q'
+        queue = 'q'
         keys = ['abc', 'def', 'xyz']
-        consumer = consumers.Consumer(redis_client, None, queue_name)
+        consumer = consumers.Consumer(redis_client, None, queue)
         # set keys in processing queue
         for key in keys:
             redis_client.lpush(consumer.processing_queue, key)
@@ -116,16 +122,16 @@ class TestConsumer(object):
         assert redis_values.get('status') == 'failed'
 
     def test__put_back_hash(self, redis_client):
-        queue_name = 'q'
+        queue = 'q'
 
         # test emtpy queue
-        consumer = consumers.Consumer(redis_client, None, queue_name)
+        consumer = consumers.Consumer(redis_client, None, queue)
         consumer._put_back_hash('DNE')  # should be None, shows warning
 
         # put back the proper item
         item = 'redis_hash1'
         redis_client.lpush(consumer.processing_queue, item)
-        consumer = consumers.Consumer(redis_client, None, queue_name)
+        consumer = consumers.Consumer(redis_client, None, queue)
         consumer._put_back_hash(item)
         assert redis_client.llen(consumer.processing_queue) == 0
         assert redis_client.llen(consumer.queue) == 1
@@ -134,7 +140,7 @@ class TestConsumer(object):
         # put back the wrong item
         other = 'otherhash'
         redis_client.lpush(consumer.processing_queue, other, item)
-        consumer = consumers.Consumer(redis_client, None, queue_name)
+        consumer = consumers.Consumer(redis_client, None, queue)
         consumer._put_back_hash(item)
         assert redis_client.llen(consumer.processing_queue) == 0
         assert redis_client.llen(consumer.queue) == 2
@@ -143,12 +149,12 @@ class TestConsumer(object):
 
     def test_consume(self, mocker, redis_client):
         mocker.patch.object(settings, 'EMPTY_QUEUE_TIMEOUT', 0)
-        queue_name = 'q'
+        queue = 'q'
         keys = [str(x) for x in range(1, 10)]
         err = OSError('thrown on purpose')
         i = 0
 
-        consumer = consumers.Consumer(redis_client, DummyStorage(), queue_name)
+        consumer = consumers.Consumer(redis_client, DummyStorage(), queue)
 
         def throw_error(*_, **__):
             raise err
@@ -208,6 +214,7 @@ class TestConsumer(object):
 
 class TestTensorFlowServingConsumer(object):
     # pylint: disable=R0201,W0613,W0621
+
     def test_is_valid_hash(self, mocker, redis_client):
         storage = DummyStorage()
         mocker.patch.object(redis_client, 'hget', lambda x, y: x.split(':')[-1])
@@ -222,6 +229,78 @@ class TestTensorFlowServingConsumer(object):
         assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
         assert consumer.is_valid_hash('predict:1234567890:file.png') is True
 
+    def test_download_image(self, redis_client):
+        storage = DummyStorage()
+        consumer = consumers.TensorFlowServingConsumer(redis_client, storage, 'q')
+
+        image = consumer.download_image('test.tif')
+        assert isinstance(image, np.ndarray)
+        assert not os.path.exists('test.tif')
+
+    def test_validate_model_input(self, mocker, redis_client):
+        storage = DummyStorage()
+        consumer = consumers.TensorFlowServingConsumer(redis_client, storage, 'q')
+
+        model_input_shape = (-1, 32, 32, 1)
+
+        mocked_metadata = make_model_metadata_of_size(model_input_shape)
+        mocker.patch.object(consumer, 'get_model_metadata', mocked_metadata)
+
+        # test valid channels last shapes
+        valid_input_shapes = [
+            (32, 32, 1),  # exact same shape
+            (64, 64, 1),  # bigger
+            (32, 32, 1),  # smaller
+            (33, 31, 1),  # mixed
+        ]
+        for shape in valid_input_shapes:
+            # check channels last
+            img = np.ones(shape)
+            valid_img = consumer.validate_model_input(img, 'model', '1')
+            np.testing.assert_array_equal(img, valid_img)
+
+            # should also work for channels first
+            img = np.rollaxis(img, -1, 0)
+            valid_img = consumer.validate_model_input(img, 'model', '1')
+            expected_img = np.rollaxis(img, 0, img.ndim)
+            np.testing.assert_array_equal(expected_img, valid_img)
+
+        # test invalid shapes
+        invalid_input_shapes = [
+            (32, 1),  # rank too small
+            (32, 32, 32, 1),  # rank too large
+            (32, 32, 2),  # wrong channels
+            (16, 64, 2),  # wrong channels with mixed shape
+        ]
+        for shape in invalid_input_shapes:
+            img = np.ones(shape)
+            with pytest.raises(ValueError):
+                consumer.validate_model_input(img, 'model', '1')
+
+        # test multiple inputs/metadata
+        count = 3
+        model_input_shape = [(-1, 32, 32, 1)] * count
+        mocked_metadata = make_model_metadata_of_size(model_input_shape)
+        mocker.patch.object(consumer, 'get_model_metadata', mocked_metadata)
+        image = [np.ones(s) for s in valid_input_shapes[:count]]
+        valid_img = consumer.validate_model_input(image, 'model', '1')
+        # each image should be validated
+        for i, j in zip(image, valid_img):
+            np.testing.assert_array_equal(i, j)
+
+        # metadata and image counts do not match
+        with pytest.raises(ValueError):
+            image = [np.ones(s) for s in valid_input_shapes[:count]]
+            consumer.validate_model_input(img, 'model', '1')
+
+        # correct number of inputs, but one invalid entry
+        with pytest.raises(ValueError):
+            image = [np.ones(s) for s in valid_input_shapes[:count]]
+            # set a random entry to be invalid
+            i = random.randint(0, count)
+            image[i] = np.ones(random.choice(invalid_input_shapes))
+            consumer.validate_model_input(image, 'model', '1')
+
     def test__get_predict_client(self, redis_client):
         stg = DummyStorage()
         consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')
@@ -230,33 +309,6 @@ class TestTensorFlowServingConsumer(object):
             consumer._get_predict_client('model_name', 'model_version')
 
         consumer._get_predict_client('model_name', 1)
-
-    def test_grpc_image(self, mocker, redis_client):
-        storage = DummyStorage()
-        queue = 'q'
-
-        consumer = consumers.TensorFlowServingConsumer(
-            redis_client, storage, queue)
-
-        model_shape = (-1, 128, 128, 1)
-
-        def _get_predict_client(model_name, model_version):
-            return Bunch(predict=lambda x, y: {
-                'prediction': x[0]['data']
-            })
-
-        mocker.patch.object(consumer, '_get_predict_client', _get_predict_client)
-
-        img = np.zeros((1, 32, 32, 3))
-        out = consumer.grpc_image(img, 'model', 1, model_shape, 'i', 'DT_HALF')
-        assert img.shape == out.shape
-        assert img.sum() == out.sum()
-
-        img = np.zeros((32, 32, 3))
-        consumer._redis_hash = 'not none'
-        out = consumer.grpc_image(img, 'model', 1, model_shape, 'i', 'DT_HALF')
-        assert (1,) + img.shape == out.shape
-        assert img.sum() == out.sum()
 
     def test_get_model_metadata(self, mocker, redis_client):
         model_shape = (-1, 216, 216, 1)
@@ -338,67 +390,10 @@ class TestTensorFlowServingConsumer(object):
                                 _get_bad_predict_client)
             consumer.get_model_metadata('model', 1)
 
-    def test_predict(self, mocker, redis_client):
-        model_shape = (-1, 128, 128, 1)
-        stg = DummyStorage()
-        consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')
-
-        mocker.patch.object(settings, 'TF_MAX_BATCH_SIZE', 2)
-        mocker.patch.object(consumer, 'get_model_metadata', lambda x, y: [{
-            'in_tensor_name': 'image',
-            'in_tensor_dtype': 'DT_HALF',
-            'in_tensor_shape': ','.join(str(s) for s in model_shape),
-        }])
-
-        def grpc_image(data, *args, **kwargs):
-            return data
-
-        def grpc_image_list(data, *args, **kwargs):  # pylint: disable=W0613
-            return [data, data]
-
-        image_shapes = [
-            (256, 256, 1),
-            (128, 128, 1),
-            (64, 64, 1),
-            (100, 100, 1),
-            (300, 300, 1),
-            (257, 301, 1),
-            (65, 127, 1),
-            (127, 129, 1),
-        ]
-        grpc_funcs = (grpc_image, grpc_image_list)
-        untiles = (False, True)
-        prod = itertools.product(image_shapes, grpc_funcs, untiles)
-
-        for image_shape, grpc_func, untile in prod:
-            x = np.random.random(image_shape)
-            mocker.patch.object(consumer, 'grpc_image', grpc_func)
-
-            consumer.predict(x, model_name='modelname', model_version=0,
-                             untile=untile)
-
-        # test image larger than max dimensions
-        with pytest.raises(ValueError):
-            mocker.patch.object(settings, 'MAX_IMAGE_WIDTH', 300)
-            mocker.patch.object(settings, 'MAX_IMAGE_HEIGHT', 300)
-            x = np.random.random((301, 301, 1))
-            consumer.predict(x, model_name='modelname', model_version=0)
-
-        # test mismatch of input data and model shape
-        with pytest.raises(ValueError):
-            x = np.random.random((5,))
-            consumer.predict(x, model_name='modelname', model_version=0)
-
-        # test multiple model metadata inputs are not supported
-        with pytest.raises(ValueError):
-            mocker.patch.object(consumer, 'get_model_metadata', grpc_image_list)
-            x = np.random.random((300, 300, 1))
-            consumer.predict(x, model_name='modelname', model_version=0)
-
     def test_get_image_scale(self, mocker, redis_client):
         stg = DummyStorage()
         consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')
-        image = np.random.random((256, 256, 1))
+        image = _get_image(256, 256, 1)
 
         # test no scale provided
         expected = 2
@@ -420,6 +415,44 @@ class TestTensorFlowServingConsumer(object):
         with pytest.raises(ValueError):
             scale = settings.MIN_SCALE - 0.1
             consumer.get_image_scale(scale, image, 'some hash')
+
+    def test_get_grpc_app(self, mocker, redis_client):
+        stg = DummyStorage()
+        consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')
+
+        get_metadata = make_model_metadata_of_size()
+        get_mock_client = lambda *x: Bunch(predict=lambda *x: None)
+        mocker.patch.object(consumer, 'get_model_metadata', get_metadata)
+        mocker.patch.object(consumer, '_get_predict_client', get_mock_client)
+
+        app = consumer.get_grpc_app('model:0', lambda x: x)
+
+        assert isinstance(app, GrpcModelWrapper)
+
+    def test_detect_scale(self, mocker, redis_client):
+        # pylint: disable=W0613
+        shape = (1, 256, 256, 1)
+        consumer = consumers.TensorFlowServingConsumer(redis_client, None, 'q')
+
+        image = _get_image(shape[1] * 2, shape[2] * 2, shape[3])
+
+        expected_scale = random.uniform(0.5, 1.5)
+        # model_mpp = random.uniform(0.5, 1.5)
+
+        mock_app = Bunch(
+            predict=lambda *x, **y: expected_scale,
+            # model_mpp=model_mpp,
+            model=Bunch(get_batch_size=lambda *x: 1))
+
+        mocker.patch.object(consumer, 'get_grpc_app', lambda *x: mock_app)
+
+        mocker.patch.object(settings, 'SCALE_DETECT_ENABLED', False)
+        scale = consumer.detect_scale(image)
+        assert scale == 1  # model_mpp
+
+        mocker.patch.object(settings, 'SCALE_DETECT_ENABLED', True)
+        scale = consumer.detect_scale(image)
+        assert scale == expected_scale  # * model_mpp
 
 
 class TestZipFileConsumer(object):
