@@ -42,12 +42,12 @@ from skimage.external import tifffile as tiff
 from redis_consumer.testing_utils import _get_image
 
 from redis_consumer import utils
-from redis_consumer import settings
 
 
 def _write_image(filepath, img_w=300, img_h=300):
-    imarray = _get_image(img_h, img_w)
-    if filepath.lower().endswith('tif') or filepath.lower().endswith('tiff'):
+    imarray = _get_image(img_h, img_w, 1)
+    _, ext = os.path.splitext(filepath.lower())
+    if ext in {'.tif', '.tiff'}:
         tiff.imsave(filepath, imarray[..., 0])
     else:
         img = array_to_img(imarray, scale=False, data_format='channels_last')
