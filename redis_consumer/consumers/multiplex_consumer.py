@@ -57,7 +57,7 @@ class MultiplexConsumer(TensorFlowServingConsumer):
 
         if not settings.SCALE_DETECT_ENABLED:
             self.logger.debug('Scale detection disabled.')
-            return app.model_mpp
+            return 1
 
         # TODO: What to do with multi-channel data?
         # detected_scale = app.predict(image[..., 0])
@@ -66,7 +66,7 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         self.logger.debug('Scale %s detected in %s seconds',
                           detected_scale, timeit.default_timer() - start)
 
-        return app.model_mpp * detected_scale
+        return detected_scale
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
@@ -117,7 +117,7 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         app = self.get_grpc_app(
             f'{model_name}:{model_version}', MultiplexSegmentation)
 
-        results = app.predict(image, image_mpp=scale,
+        results = app.predict(image, image_mpp=scale * app.model_mpp,
                               batch_size=settings.TF_MAX_BATCH_SIZE)
 
         # Save the post-processed results to a file

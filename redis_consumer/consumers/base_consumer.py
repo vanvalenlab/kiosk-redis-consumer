@@ -391,7 +391,7 @@ class TensorFlowServingConsumer(Consumer):
 
         if not settings.SCALE_DETECT_ENABLED:
             self.logger.debug('Scale detection disabled.')
-            return app.model_mpp
+            return 1  # app.model_mpp
 
         batch_size = app.model.get_batch_size()
         detected_scale = app.predict(image, batch_size=batch_size)
@@ -399,7 +399,8 @@ class TensorFlowServingConsumer(Consumer):
         self.logger.debug('Scale %s detected in %s seconds',
                           detected_scale, timeit.default_timer() - start)
 
-        return app.model_mpp * detected_scale
+        # detected_scale = detected_scale * app.model_mpp
+        return detected_scale
 
     def get_image_scale(self, scale, image, redis_hash):
         """Calculate scale of image and rescale"""
