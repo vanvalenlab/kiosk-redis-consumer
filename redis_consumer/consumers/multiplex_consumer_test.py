@@ -28,66 +28,32 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import itertools
-
 import numpy as np
 
 import pytest
 
 from redis_consumer import consumers
-from redis_consumer.testing_utils import redis_client, DummyStorage
-from redis_consumer.testing_utils import make_model_metadata_of_size
+from redis_consumer.testing_utils import Bunch
+from redis_consumer.testing_utils import DummyStorage
+from redis_consumer.testing_utils import redis_client
 
 
 class TestMultiplexConsumer(object):
-    # pylint: disable=R0201
+    # pylint: disable=R0201,W0621
 
-    def test__consume(self, mocker, redis_client):
-        # pylint: disable=W0613
+    def test__consume_finished_status(self, redis_client):
+        queue = 'q'
+        storage = DummyStorage()
 
-        def make_grpc_image(model_shape=(-1, 256, 256, 2)):
-            # pylint: disable=E1101
-            shape = model_shape[1:-1]
+        consumer = consumers.MultiplexConsumer(redis_client, storage, queue)
 
-            def grpc(data, *args, **kwargs):
-                inner_shape = tuple([1] + list(shape) + [1])
-                feature_shape = tuple([1] + list(shape) + [3])
-
-                inner = np.random.random(inner_shape)
-                feature = np.random.random(feature_shape)
-
-                inner2 = np.random.random(inner_shape)
-                feature2 = np.random.random(feature_shape)
-                return [inner, feature, inner2, feature2]
-
-            return grpc
-
-        image_shapes = [
-            (2, 300, 300),  # channels first
-            (300, 300, 2),  # channels last
-        ]
-
-        model_shapes = [
-            (-1, 600, 600, 2),  # image too small, pad
-            (-1, 300, 300, 2),  # image is exactly the right size
-            (-1, 150, 150, 2),  # image too big, tile
-            (-1, 150, 600, 2),  # image has one size too small, one size too big
-            (-1, 600, 150, 2),  # image has one size too small, one size too big
-        ]
-
-        scales = ['.9', '1.1', '']
-
-        job_data = {
-            'input_file_name': 'file.tiff',
-        }
-
-        consumer = consumers.MultiplexConsumer(redis_client, DummyStorage(), 'multiplex')
+        empty_data = {'input_file_name': 'file.tiff'}
 
         test_hash = 0
         # test finished statuses are returned
         for status in (consumer.failed_status, consumer.final_status):
             test_hash += 1
-            data = job_data.copy()
+            data = empty_data.copy()
             data['status'] = status
             redis_client.hmset(test_hash, data)
             result = consumer._consume(test_hash)
@@ -96,50 +62,34 @@ class TestMultiplexConsumer(object):
             assert result == status
             test_hash += 1
 
-        prod = itertools.product(model_shapes, scales, image_shapes)
+    def test__consume(self, mocker, redis_client):
+        # pylint: disable=W0613
+        queue = 'multiplex'
+        storage = DummyStorage()
 
-        for model_shape, scale, image_shape in prod:
-            mocker.patch('redis_consumer.utils.get_image',
-                         lambda x: np.random.random(list(image_shape) + [1]))
+        consumer = consumers.MultiplexConsumer(redis_client, storage, queue)
 
-            metadata = make_model_metadata_of_size(model_shape)
-            grpc_image = make_grpc_image(model_shape)
-            mocker.patch.object(consumer, 'get_model_metadata', metadata)
-            mocker.patch.object(consumer, 'grpc_image', grpc_image)
-            mocker.patch.object(consumer, 'postprocess',
-                                lambda *x: np.random.randint(0, 5, size=(300, 300, 1)))
+        empty_data = {'input_file_name': 'file.tiff'}
 
-            data = job_data.copy()
-            data['scale'] = scale
+        output_shape = (1, 256, 256, 2)
 
-            redis_client.hmset(test_hash, data)
-            result = consumer._consume(test_hash)
-            assert result == consumer.final_status
-            result = redis_client.hget(test_hash, 'status')
-            assert result == consumer.final_status
-            test_hash += 1
+        mock_app = Bunch(
+            predict=lambda *x, **y: np.random.randint(1, 5, size=output_shape),
+            model_mpp=1,
+            model=Bunch(
+                get_batch_size=lambda *x: 1,
+                input_shape=(1, 32, 32, 1)
+            )
+        )
 
-        model_shape = (-1, 150, 150, 2)
-        invalid_image_shapes = [
-            (150, 150),
-            (150,),
-            (150, 150, 1),
-            (1, 150, 150),
-            (3, 150, 150),
-            (1, 1, 150, 150)
-        ]
+        mocker.patch.object(consumer, 'get_grpc_app', lambda *x: mock_app)
+        mocker.patch.object(consumer, 'get_image_scale', lambda *x: 1)
+        mocker.patch.object(consumer, 'validate_model_input', lambda *x: x[0])
 
-        for image_shape in invalid_image_shapes:
-            mocker.patch('redis_consumer.utils.get_image',
-                         lambda x: np.random.random(list(image_shape) + [1]))
-            metadata = make_model_metadata_of_size(model_shape)
-            grpc_image = make_grpc_image(model_shape)
-            mocker.patch.object(consumer, 'get_model_metadata', metadata)
-            mocker.patch.object(consumer, 'grpc_image', grpc_image)
+        test_hash = 'some hash'
 
-            data = job_data.copy()
-            data['scale'] = '1'
-
-            redis_client.hmset(test_hash, data)
-            with pytest.raises(ValueError, match='Invalid image shape'):
-                _ = consumer._consume(test_hash)
+        redis_client.hmset(test_hash, empty_data)
+        result = consumer._consume(test_hash)
+        assert result == consumer.final_status
+        result = redis_client.hget(test_hash, 'status')
+        assert result == consumer.final_status
