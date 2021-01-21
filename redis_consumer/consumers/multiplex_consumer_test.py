@@ -33,6 +33,8 @@ import numpy as np
 import pytest
 
 from redis_consumer import consumers
+from redis_consumer import settings
+from redis_consumer.testing_utils import _get_image
 from redis_consumer.testing_utils import Bunch
 from redis_consumer.testing_utils import DummyStorage
 from redis_consumer.testing_utils import redis_client
@@ -40,6 +42,31 @@ from redis_consumer.testing_utils import redis_client
 
 class TestMultiplexConsumer(object):
     # pylint: disable=R0201,W0621
+
+    def test_detect_scale(self, mocker, redis_client):
+        # pylint: disable=W0613
+        shape = (1, 256, 256, 1)
+        consumer = consumers.MultiplexConsumer(redis_client, None, 'q')
+
+        image = _get_image(shape[1] * 2, shape[2] * 2, shape[3])
+
+        expected_scale = 1  # random.uniform(0.5, 1.5)
+        # model_mpp = random.uniform(0.5, 1.5)
+
+        mock_app = Bunch(
+            predict=lambda *x, **y: expected_scale,
+            # model_mpp=model_mpp,
+            model=Bunch(get_batch_size=lambda *x: 1))
+
+        mocker.patch.object(consumer, 'get_grpc_app', lambda *x: mock_app)
+
+        mocker.patch.object(settings, 'SCALE_DETECT_ENABLED', False)
+        scale = consumer.detect_scale(image)
+        assert scale == 1  # model_mpp
+
+        mocker.patch.object(settings, 'SCALE_DETECT_ENABLED', True)
+        scale = consumer.detect_scale(image)
+        assert scale == expected_scale  # * model_mpp
 
     def test__consume_finished_status(self, redis_client):
         queue = 'q'
