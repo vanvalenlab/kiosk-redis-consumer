@@ -169,7 +169,9 @@ class PredictClient(GrpcClient):
 
     def __init__(self, host, model_name, model_version):
         super(PredictClient, self).__init__(host)
-        self.logger = logging.getLogger(f'{model_name}:{model_version}:gRPC')
+        self.logger = logging.getLogger('{}:{}:gRPC'.format(
+            model_name, model_version
+        ))
         self.model_name = model_name
         self.model_version = model_version
 

@@ -261,8 +261,9 @@ class TensorFlowServingConsumer(Consumer):
         # cast as image to match with the list of shapes.
         image = [image] if not isinstance(image, list) else image
 
-        errtext = (f'Invalid image shape: {[s.shape for s in image]}. '
-                   f'The {self.queue} job expects images of shape {shapes}')
+        errtext = ('Invalid image shape: {}. The {} job expects '
+                   'images of shape{}').format(
+                       [s.shape for s in image], self.queue, shapes)
 
         if len(image) != len(shapes):
             raise ValueError(errtext)

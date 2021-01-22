@@ -50,7 +50,7 @@ class DummyPredictClient(object):
     def predict(self, request_data, request_timeout=10):
         retval = {}
         for i, d in enumerate(request_data):
-            retval[f'prediction{i}'] = d.get('data')
+            retval['prediction{}'.format(i)] = d.get('data')
         return retval
 
 
