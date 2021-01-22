@@ -433,7 +433,7 @@ class TensorFlowServingConsumer(Consumer):
             for i, im in enumerate(image):
                 outpaths.extend(utils.save_numpy_array(
                     im,
-                    name='{}_{}'.format(name, i),
+                    name=str(name),
                     subdir=subdir, output_dir=tempdir))
 
             # Save each prediction image as zip file
