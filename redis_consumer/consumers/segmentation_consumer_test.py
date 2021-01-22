@@ -43,14 +43,14 @@ from redis_consumer.testing_utils import redis_client
 from redis_consumer.testing_utils import _get_image
 
 
-class TestImageFileConsumer(object):
+class TestSegmentationConsumer(object):
     # pylint: disable=R0201,W0621
 
     def test_detect_label(self, mocker, redis_client):
         # pylint: disable=W0613
         shape = (1, 256, 256, 1)
         queue = 'q'
-        consumer = consumers.ImageFileConsumer(redis_client, None, queue)
+        consumer = consumers.SegmentationConsumer(redis_client, None, queue)
 
         expected_label = random.randint(1, 9)
 
@@ -73,7 +73,7 @@ class TestImageFileConsumer(object):
     def test_get_image_label(self, mocker, redis_client):
         queue = 'q'
         stg = DummyStorage()
-        consumer = consumers.ImageFileConsumer(redis_client, stg, queue)
+        consumer = consumers.SegmentationConsumer(redis_client, stg, queue)
         image = _get_image(256, 256, 1)
 
         # test no label provided
@@ -101,7 +101,7 @@ class TestImageFileConsumer(object):
         queue = 'q'
         storage = DummyStorage()
 
-        consumer = consumers.ImageFileConsumer(redis_client, storage, queue)
+        consumer = consumers.SegmentationConsumer(redis_client, storage, queue)
 
         empty_data = {'input_file_name': 'file.tiff'}
 
@@ -123,7 +123,7 @@ class TestImageFileConsumer(object):
         queue = 'predict'
         storage = DummyStorage()
 
-        consumer = consumers.ImageFileConsumer(redis_client, storage, queue)
+        consumer = consumers.SegmentationConsumer(redis_client, storage, queue)
 
         empty_data = {'input_file_name': 'file.tiff'}
 

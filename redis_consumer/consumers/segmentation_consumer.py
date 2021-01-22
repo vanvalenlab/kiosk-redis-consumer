@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""ImageFileConsumer class for consuming image segmentation jobs."""
+"""SegmentationConsumer class for consuming image segmentation jobs."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -32,14 +32,13 @@ import timeit
 
 import numpy as np
 
-from deepcell.applications import LabelDetection, NuclearSegmentation
+from deepcell.applications import LabelDetection
 
 from redis_consumer.consumers import TensorFlowServingConsumer
-from redis_consumer import utils
 from redis_consumer import settings
 
 
-class ImageFileConsumer(TensorFlowServingConsumer):
+class SegmentationConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
     def detect_label(self, image):

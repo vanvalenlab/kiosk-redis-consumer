@@ -33,14 +33,15 @@ from redis_consumer.consumers.base_consumer import TensorFlowServingConsumer
 from redis_consumer.consumers.base_consumer import ZipFileConsumer
 
 # Custom Workflow consumers
-from redis_consumer.consumers.image_consumer import ImageFileConsumer
+from redis_consumer.consumers.segmentation_consumer import SegmentationConsumer
 from redis_consumer.consumers.tracking_consumer import TrackingConsumer
 from redis_consumer.consumers.multiplex_consumer import MultiplexConsumer
 # TODO: Import future custom Consumer classes.
 
 
 CONSUMERS = {
-    'image': ImageFileConsumer,
+    'image': SegmentationConsumer,  # deprecated, use "segmentation" instead.
+    'segmentation': SegmentationConsumer,
     'zip': ZipFileConsumer,
     'tracking': TrackingConsumer,
     'multiplex': MultiplexConsumer,
