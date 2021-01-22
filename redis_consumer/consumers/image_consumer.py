@@ -66,7 +66,7 @@ class ImageFileConsumer(TensorFlowServingConsumer):
         self.logger.debug('Label %s detected in %s seconds',
                           detected_label, timeit.default_timer() - start)
 
-        return detected_label
+        return int(detected_label)
 
     def get_image_label(self, label, image, redis_hash):
         """Calculate label of image."""
