@@ -297,7 +297,7 @@ class TestTensorFlowServingConsumer(object):
         with pytest.raises(ValueError):
             image = [np.ones(s) for s in valid_input_shapes[:count]]
             # set a random entry to be invalid
-            i = random.randint(0, count)
+            i = random.randint(0, count - 1)
             image[i] = np.ones(random.choice(invalid_input_shapes))
             consumer.validate_model_input(image, 'model', '1')
 
