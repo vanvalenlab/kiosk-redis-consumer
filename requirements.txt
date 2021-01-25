@@ -12,8 +12,8 @@ dict-to-protobuf==0.0.3.9
 protobuf>=3.6.0
 
 # misc storage and redis clients
-boto3==1.9.195
-google-cloud-storage>=1.16.1
-python-decouple==3.1
+boto3>=1.9.195,<2
+google-cloud-storage>=1.16.1,<2
+python-decouple>=3.1,<4
 redis==3.4.1
 pytz==2019.1
