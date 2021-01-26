@@ -93,7 +93,6 @@ if __name__ == '__main__':
         'final_status': 'done',
         'failed_status': 'failed',
         'name': settings.HOSTNAME,
-        'output_dir': settings.OUTPUT_DIR,
     }
 
     _logger.debug('Getting `%s` consumer with args %s.',

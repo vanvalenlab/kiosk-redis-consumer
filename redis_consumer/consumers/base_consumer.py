@@ -66,13 +66,11 @@ class Consumer(object):
                  queue,
                  final_status='done',
                  failed_status='failed',
-                 name=settings.HOSTNAME,
-                 output_dir=settings.OUTPUT_DIR):
+                 name=settings.HOSTNAME):
         self.redis = redis_client
         self.storage = storage_client
         self.queue = str(queue).lower()
         self.name = name
-        self.output_dir = output_dir
         self.final_status = final_status
         self.failed_status = failed_status
         self.finished_statuses = {final_status, failed_status}

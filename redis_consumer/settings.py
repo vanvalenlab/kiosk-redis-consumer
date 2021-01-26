@@ -75,9 +75,8 @@ CLOUD_PROVIDER = config('CLOUD_PROVIDER', cast=str, default='gke').lower()
 # Application directories
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOWNLOAD_DIR = os.path.join(ROOT_DIR, 'download')
-OUTPUT_DIR = os.path.join(ROOT_DIR, 'output')
 
-for d in (DOWNLOAD_DIR, OUTPUT_DIR):
+for d in (DOWNLOAD_DIR,):
     try:
         os.mkdir(d)
     except OSError:
