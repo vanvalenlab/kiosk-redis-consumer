@@ -46,6 +46,11 @@ from tensorflow.keras.preprocessing.image import img_to_array
 logger = logging.getLogger('redis_consumer.utils')
 
 
+def strip_bucket_path(path):
+    """Remove leading/trailing '/'s from cloud bucket folder names"""
+    return '/'.join(y for y in path.split('/') if y)
+
+
 def iter_image_archive(zip_path, destination):
     """Extract all files in archive and yield the paths of all images.
 

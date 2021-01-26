@@ -70,6 +70,15 @@ def _write_trks(filepath, X_mean=10, y_mean=5,
             trks.add(tracked_file.name, 'tracked.npy')
 
 
+def test_strip_bucket_path():
+    path = 'path/to/file'
+    # leading, trailing, and both format strings
+    format_strs = ['/{}', '{}/', '/{}/']
+    for fmtstr in format_strs:
+        stripped = utils.strip_bucket_path(fmtstr.format(path))
+        assert path == stripped
+
+
 def test_iter_image_archive(tmpdir):
     tmpdir = str(tmpdir)
     zip_path = os.path.join(tmpdir, 'test.zip')

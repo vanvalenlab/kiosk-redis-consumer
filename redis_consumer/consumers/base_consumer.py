@@ -419,6 +419,7 @@ class TensorFlowServingConsumer(Consumer):
         return scale
 
     def save_output(self, image, save_name):
+        """Save output images into a zip file and upload it."""
         with tempfile.TemporaryDirectory() as tempdir:
             # Save each result channel as an image file
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
@@ -439,7 +440,7 @@ class TensorFlowServingConsumer(Consumer):
 
             # Upload the zip file to cloud storage bucket
             cleaned = zip_file.replace(tempdir, '')
-            subdir = os.path.dirname(settings._strip(cleaned))
+            subdir = os.path.dirname(utils.strip_bucket_path(cleaned))
             subdir = subdir if subdir else None
             dest, output_url = self.storage.upload(zip_file, subdir=subdir)
 
@@ -476,7 +477,7 @@ class ZipFileConsumer(Consumer):
             image_files = utils.get_image_files_from_dir(fname, tempdir)
             for i, imfile in enumerate(image_files):
 
-                clean_imfile = settings._strip(imfile.replace(tempdir, ''))
+                clean_imfile = utils.strip_bucket_path(imfile.replace(tempdir, ''))
                 # Save each result channel as an image file
                 subdir = os.path.join(archive_uuid, os.path.dirname(clean_imfile))
                 dest, _ = self.storage.upload(imfile, subdir=subdir)
