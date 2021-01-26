@@ -180,6 +180,13 @@ class PredictClient(GrpcClient):
             PredictRequest: 'Predict',
         }
 
+        # Retry-able gRPC status codes
+        self.retry_status_codes = {
+            grpc.StatusCode.DEADLINE_EXCEEDED,
+            grpc.StatusCode.RESOURCE_EXHAUSTED,
+            grpc.StatusCode.UNAVAILABLE
+        }
+
     def _retry_grpc(self, request, request_timeout):
         request_name = request.__class__.__name__
         self.logger.info('Sending %s to %s.', request_name, self.host)
@@ -211,7 +218,7 @@ class PredictClient(GrpcClient):
                                           '%s', request_name, count, err)
                         raise err
 
-                    if err.code() in settings.GRPC_RETRY_STATUSES:
+                    if err.code() in self.retry_status_codes:
                         count += 1
                         is_true_failure = err.code() != grpc.StatusCode.UNAVAILABLE
                         true_failures += int(is_true_failure)

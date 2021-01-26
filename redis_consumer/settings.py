@@ -30,7 +30,6 @@ from __future__ import print_function
 
 import os
 
-import grpc
 from decouple import config
 
 import deepcell
@@ -63,13 +62,6 @@ TF_MIN_MODEL_SIZE = config('TF_MIN_MODEL_SIZE', default=128, cast=int)
 # gRPC API timeout in seconds
 GRPC_TIMEOUT = config('GRPC_TIMEOUT', default=30, cast=int)
 GRPC_BACKOFF = config('GRPC_BACKOFF', default=3, cast=int)
-
-# Retry-able gRPC status codes
-GRPC_RETRY_STATUSES = {
-    grpc.StatusCode.DEADLINE_EXCEEDED,
-    grpc.StatusCode.RESOURCE_EXHAUSTED,
-    grpc.StatusCode.UNAVAILABLE
-}
 
 # timeout/backoff wait time in seconds
 REDIS_TIMEOUT = config('REDIS_TIMEOUT', default=3, cast=int)
