@@ -57,9 +57,7 @@ def iter_image_archive(zip_path, destination):
         Iterator of all image paths in extracted archive
     """
     archive = zipfile.ZipFile(zip_path, 'r', allowZip64=True)
-
-    def is_valid(x):
-        return os.path.splitext(x)[1] and '__MACOSX' not in x
+    is_valid = lambda x: os.path.splitext(x)[1] and '__MACOSX' not in x
     for info in archive.infolist():
         extracted = archive.extract(info, path=destination)
         if os.path.isfile(extracted):
