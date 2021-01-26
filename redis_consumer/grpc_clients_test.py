@@ -154,3 +154,7 @@ class TestGrpcModelWrapper(object):
 
         results = wrapper.predict(input_data, batch_size=batch_size)
         np.testing.assert_array_equal(input_data, results)
+
+        # no batch size
+        results = wrapper.predict(input_data)
+        np.testing.assert_array_equal(input_data, results)
