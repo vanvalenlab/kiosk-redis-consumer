@@ -131,10 +131,10 @@ class TestStorage(object):
         max_backoff = 30
         client = storage.Storage('bucket', max_backoff=max_backoff)
         backoff = client.get_backoff(attempts=0)
-        assert 1 < backoff < 2
+        assert 1 < backoff <= 2
 
         backoff = client.get_backoff(attempts=3)
-        assert 8 < backoff < 9
+        assert 8 < backoff <= 9
 
         backoff = client.get_backoff(attempts=5)
         assert backoff == max_backoff
