@@ -218,10 +218,9 @@ def zip_files(files, dest=None, prefix=None):
                 name = f.replace(dest, '')
                 name = name[1:] if name.startswith(os.path.sep) else name
                 zf.write(f, arcname=name)
-        logger.debug('Saved %s files to %s', len(files), filepath)
+        logger.debug('Saved %s files to %s in %s seconds.',
+                     len(files), filepath, timeit.default_timer() - start)
     except Exception as err:
         logger.error('Failed to write zipfile: %s', err)
         raise err
-    logger.debug('Zipped %s files into %s in %s seconds.',
-                 len(files), filepath, timeit.default_timer() - start)
     return filepath
