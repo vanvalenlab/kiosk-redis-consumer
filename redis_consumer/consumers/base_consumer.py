@@ -430,9 +430,9 @@ class TensorFlowServingConsumer(Consumer):
                 image = [image]
 
             outpaths = []
-            for i, im in enumerate(image):
+            for img in image:
                 outpaths.extend(utils.save_numpy_array(
-                    im,
+                    img,
                     name=str(name),
                     subdir=subdir, output_dir=tempdir))
 
