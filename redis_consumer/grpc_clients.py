@@ -395,8 +395,11 @@ class GrpcModelWrapper(object):
         batch_size = int(settings.TF_MAX_BATCH_SIZE // ratio)
         return batch_size
 
-    def predict(self, tiles, batch_size):
+    def predict(self, tiles, batch_size=None):
         results = []
+
+        if batch_size is None:
+            batch_size = self.get_batch_size()
 
         for t in range(0, tiles.shape[0], batch_size):
             output = self.send_grpc(tiles[t:t + batch_size])

@@ -116,8 +116,7 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         app = self.get_grpc_app(settings.MULTIPLEX_MODEL,
                                 MultiplexSegmentation)
 
-        results = app.predict(image, image_mpp=scale * app.model_mpp,
-                              batch_size=settings.TF_MAX_BATCH_SIZE)
+        results = app.predict(image, image_mpp=scale * app.model_mpp)
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
