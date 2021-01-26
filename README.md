@@ -37,28 +37,19 @@ def _consume(self, redis_hash):
                             redis_hash, hvals.get('status'))
         return hvals.get('status')
 
-    # the data to process with the model, required.
-    input_file_name = hvals.get('input_file_name')
+    # Load input image
+    fname = hvals.get('input_file_name')
+    image = self.download_image(fname)
 
     # the model can be passed in as an environment variable,
     # and parsed in settings.py.
-    model_name, model_version = 'CustomModel:1'.split(':')
+    model = 'NuclearSegmentation:1'
 
-    with tempfile.TemporaryDirectory() as tempdir:
-        # download the image file
-        fname = self.storage.download(input_file_name, tempdir)
-        # load image file as data
-        image = utils.get_image(fname)
+    # Use a custom Application from deepcell.applications
+    app = self.get_grpc_app(model, deepcell.applications.NuclearSegmentation)
 
-    # pre- and post-processing can be used with the BaseConsumer.process,
-    # which uses pre-defined functions in settings.PROCESSING_FUNCTIONS.
-    image = self.preprocess(image, 'normalize')
-
-    # send the data to the model
-    results = self.predict(image, model_name, model_version)
-
-    # post-process model results
-    image = self.postprocess(image, 'deep_watershed')
+    # Run the predictions on the image
+    results = app.predict(image)
 
     # save the results as an image file and upload it to the bucket
     save_name = hvals.get('original_name', fname)
