@@ -37,32 +37,33 @@ import logging.handlers
 import sys
 import traceback
 
+import decouple
+
 import redis_consumer
 from redis_consumer import settings
 
 
-def initialize_logger(debug_mode=True):
+def initialize_logger(log_level='DEBUG'):
+    log_level = str(log_level).upper()
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
-    formatter = logging.Formatter('[%(asctime)s]:[%(levelname)s]:[%(name)s]: %(message)s')
+    formatter = logging.Formatter('[%(levelname)s]:[%(name)s]: %(message)s')
     console = logging.StreamHandler(stream=sys.stdout)
     console.setFormatter(formatter)
 
-    fh = logging.handlers.RotatingFileHandler(
-        filename='redis-consumer.log',
-        maxBytes=10000000,
-        backupCount=10)
-    fh.setFormatter(formatter)
-
-    if debug_mode:
-        console.setLevel(logging.DEBUG)
-    else:
+    if log_level == 'CRITICAL':
+        console.setLevel(logging.CRITICAL)
+    elif log_level == 'ERROR':
+        console.setLevel(logging.ERROR)
+    elif log_level == 'WARN':
+        console.setLevel(logging.WARN)
+    elif log_level == 'INFO':
         console.setLevel(logging.INFO)
-    fh.setLevel(logging.DEBUG)
+    else:
+        console.setLevel(logging.DEBUG)
 
     logger.addHandler(console)
-    logger.addHandler(fh)
 
 
 def get_consumer(consumer_type, **kwargs):
@@ -74,7 +75,7 @@ def get_consumer(consumer_type, **kwargs):
 
 
 if __name__ == '__main__':
-    initialize_logger(settings.DEBUG)
+    initialize_logger(decouple.config('LOG_LEVEL', default='DEBUG'))
 
     _logger = logging.getLogger(__file__)
 

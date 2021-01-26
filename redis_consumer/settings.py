@@ -41,9 +41,6 @@ def _strip(x):
     return '/'.join(y for y in x.split('/') if y)
 
 
-# Debug Mode
-DEBUG = config('DEBUG', cast=bool, default=False)
-
 # Consumer settings
 INTERVAL = config('INTERVAL', default=10, cast=int)
 CONSUMER_TYPE = config('CONSUMER_TYPE', default='image')
@@ -87,9 +84,8 @@ CLOUD_PROVIDER = config('CLOUD_PROVIDER', cast=str, default='gke').lower()
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOWNLOAD_DIR = os.path.join(ROOT_DIR, 'download')
 OUTPUT_DIR = os.path.join(ROOT_DIR, 'output')
-LOG_DIR = os.path.join(ROOT_DIR, 'logs')
 
-for d in (DOWNLOAD_DIR, OUTPUT_DIR, LOG_DIR):
+for d in (DOWNLOAD_DIR, OUTPUT_DIR):
     try:
         os.mkdir(d)
     except OSError:
