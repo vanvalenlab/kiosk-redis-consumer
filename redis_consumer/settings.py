@@ -35,11 +35,6 @@ from decouple import config
 import deepcell
 
 
-# remove leading/trailing '/'s from cloud bucket folder names
-def _strip(x):
-    return '/'.join(y for y in x.split('/') if y)
-
-
 # Application directories
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOWNLOAD_DIR = os.path.join(ROOT_DIR, 'download')
