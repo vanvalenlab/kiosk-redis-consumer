@@ -355,7 +355,7 @@ class TensorFlowServingConsumer(Consumer):
             inputs = inputs['serving_default']['inputs']
 
             finished = timeit.default_timer() - start
-            self.logger.debug('Got model metadata for %s in %s seconds.',
+            self.logger.info('Got model metadata for %s in %s seconds.',
                               model, finished)
 
             self.redis.hset(model, 'metadata', json.dumps(inputs))
