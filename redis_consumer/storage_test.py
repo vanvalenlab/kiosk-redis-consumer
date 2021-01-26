@@ -119,7 +119,7 @@ def test_get_client():
     GKE = storage.get_client('GS://anotherbucket')
     assert isinstance(gke, type(GKE))
 
-    bad_values = ['s3', 'gs', 's3:/badval', 'gs//badval']
+    bad_values = ['s3', 'gs', 's3:/badval', 'gs//badval', 'other://bucket']
     for bad_value in bad_values:
         with pytest.raises(ValueError):
             _ = storage.get_client(bad_value)
