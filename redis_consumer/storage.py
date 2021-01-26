@@ -51,23 +51,25 @@ class StorageException(Exception):
     pass
 
 
-def get_client(cloud_provider):
-    """Returns the Storage Client appropriate for the cloud provider
-    # Arguments:
-        cloud_provider: Indicates which cloud platform (AWS vs GKE)
-    # Returns:
-        storage_client: Client for interacting with the cloud.
+def get_client(bucket):
+    """Get the Storage Client appropriate for the bucket.
+
+    Args:
+        bucket (str): Bucket including
+
+    Returns:
+        ~Storage: Client for interacting with the cloud.
     """
-    cloud_provider = str(cloud_provider).lower()
+    protocol, bucket_name = str(bucket).lower().split('://', 1)
     logger = logging.getLogger('storage.get_client')
-    if cloud_provider == 'aws':
-        storage_client = S3Storage(settings.AWS_S3_BUCKET)
-    elif cloud_provider == 'gke':
-        storage_client = GoogleStorage(settings.GCLOUD_STORAGE_BUCKET)
+    if protocol == 's3':
+        storage_client = S3Storage(bucket_name)
+    elif protocol == 'gs':
+        storage_client = GoogleStorage(bucket_name)
     else:
-        errmsg = 'Bad value for CLOUD_PROVIDER: %s'
-        logger.error(errmsg, cloud_provider)
-        raise ValueError(errmsg % cloud_provider)
+        errmsg = 'Unknown STORAGE_BUCKET protocol: %s'
+        logger.error(errmsg, protocol)
+        raise ValueError(errmsg % protocol)
     return storage_client
 
 

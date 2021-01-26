@@ -84,7 +84,7 @@ if __name__ == '__main__':
         port=settings.REDIS_PORT,
         backoff=settings.REDIS_TIMEOUT)
 
-    storage_client = redis_consumer.storage.get_client(settings.CLOUD_PROVIDER)
+    storage_client = redis_consumer.storage.get_client(settings.STORAGE_BUCKET)
 
     consumer_kwargs = {
         'redis_client': redis,

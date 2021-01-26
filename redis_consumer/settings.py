@@ -69,9 +69,6 @@ EMPTY_QUEUE_TIMEOUT = config('EMPTY_QUEUE_TIMEOUT', default=5, cast=int)
 DO_NOTHING_TIMEOUT = config('DO_NOTHING_TIMEOUT', default=0.5, cast=float)
 STORAGE_MAX_BACKOFF = config('STORAGE_MAX_BACKOFF', default=60, cast=float)
 
-# Cloud storage
-CLOUD_PROVIDER = config('CLOUD_PROVIDER', cast=str, default='gke').lower()
-
 # Application directories
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOWNLOAD_DIR = os.path.join(ROOT_DIR, 'download')
@@ -84,12 +81,11 @@ for d in (DOWNLOAD_DIR,):
 
 # AWS Credentials
 AWS_REGION = config('AWS_REGION', default='us-east-1')
-AWS_S3_BUCKET = config('AWS_S3_BUCKET', default='default-bucket')
 AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='specify_me')
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='specify_me')
 
-# Google Credentials
-GCLOUD_STORAGE_BUCKET = config('GKE_BUCKET', default='default-bucket')
+# Cloud Storage Bucket
+STORAGE_BUCKET = config('STORAGE_BUCKET', default='s3://default-bucket')
 
 # Pod Meteadta
 HOSTNAME = config('HOSTNAME', default='host-unkonwn')
