@@ -356,7 +356,7 @@ class TensorFlowServingConsumer(Consumer):
 
             finished = timeit.default_timer() - start
             self.logger.info('Got model metadata for %s in %s seconds.',
-                              model, finished)
+                             model, finished)
 
             self.redis.hset(model, 'metadata', json.dumps(inputs))
             self.redis.expire(model, settings.METADATA_EXPIRE_TIME)
