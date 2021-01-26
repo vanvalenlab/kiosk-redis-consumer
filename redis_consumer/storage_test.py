@@ -109,18 +109,20 @@ class DummyS3Client(object):
 
 
 def test_get_client():
-    aws = storage.get_client('aws')
-    AWS = storage.get_client('AWS')
+    aws = storage.get_client('s3://bucket')
+    AWS = storage.get_client('S3://anotherbucket')
     assert isinstance(aws, type(AWS))
 
     # TODO: set GCLOUD env vars to test this
     # with pytest.raises(OSError):
-    gke = storage.get_client('gke')
-    GKE = storage.get_client('GKE')
+    gke = storage.get_client('gs://bucket')
+    GKE = storage.get_client('GS://anotherbucket')
     assert isinstance(gke, type(GKE))
 
-    with pytest.raises(ValueError):
-        _ = storage.get_client('bad_value')
+    bad_values = ['s3', 'gs', 's3:/badval', 'gs//badval']
+    for bad_value in bad_values:
+        with pytest.raises(ValueError):
+            _ = storage.get_client(bad_value)
 
 
 class TestStorage(object):

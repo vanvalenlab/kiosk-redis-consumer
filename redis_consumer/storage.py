@@ -60,7 +60,11 @@ def get_client(bucket):
     Returns:
         ~Storage: Client for interacting with the cloud.
     """
-    protocol, bucket_name = str(bucket).lower().split('://', 1)
+    try:
+        protocol, bucket_name = str(bucket).lower().split('://', 1)
+    except ValueError:
+        raise ValueError('Invalid storage bucket name: {}'.format(bucket))
+
     logger = logging.getLogger('storage.get_client')
     if protocol == 's3':
         storage_client = S3Storage(bucket_name)
