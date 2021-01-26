@@ -72,11 +72,11 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         if not label:
             # Detect scale of image (Default to 1)
             label = self.detect_label(image)
-            self.logger.debug('Image scale detected: %s', label)
+            self.logger.debug('Image label detected: %s.', label)
             self.update_key(redis_hash, {'label': label})
         else:
             label = int(label)
-            self.logger.debug('Image label already calculated %s', label)
+            self.logger.debug('Image label already calculated: %s.', label)
             if label not in settings.APPLICATION_CHOICES:
                 raise ValueError('Label type {} is not supported'.format(label))
 
