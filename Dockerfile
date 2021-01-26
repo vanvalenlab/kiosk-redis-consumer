@@ -28,7 +28,7 @@ FROM python:3.6-slim-buster
 WORKDIR /usr/src/app
 
 RUN apt-get update && apt-get install -y \
-    build-essential && \
+    build-essential libglib2.0-0 && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt requirements-no-deps.txt ./
