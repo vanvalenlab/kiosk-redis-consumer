@@ -169,7 +169,7 @@ class PredictClient(GrpcClient):
 
     def __init__(self, host, model_name, model_version):
         super(PredictClient, self).__init__(host)
-        self.logger = logging.getLogger('{}:{}:gRPC'.format(
+        self.logger = logging.getLogger('gRPC:{}:{}'.format(
             model_name, model_version
         ))
         self.model_name = model_name
@@ -182,9 +182,7 @@ class PredictClient(GrpcClient):
 
     def _retry_grpc(self, request, request_timeout):
         request_name = request.__class__.__name__
-        self.logger.info('Sending %s to %s model %s:%s.',
-                         request_name, self.host,
-                         self.model_name, self.model_version)
+        self.logger.info('Sending %s to %s.', request_name, self.host)
 
         true_failures, count = 0, 0
 
@@ -201,8 +199,9 @@ class PredictClient(GrpcClient):
                     api_call = getattr(stub, api_endpoint_name)
                     response = api_call(request, timeout=request_timeout)
 
-                    self.logger.debug('%s finished in %s seconds.',
-                                      request_name, timeit.default_timer() - t)
+                    self.logger.debug('%s finished in %s seconds (%s retries).',
+                                      request_name, timeit.default_timer() - t,
+                                      true_failures)
                     return response
 
                 except grpc.RpcError as err:
@@ -241,38 +240,24 @@ class PredictClient(GrpcClient):
                     raise err
 
     def predict(self, request_data, request_timeout=10):
-        self.logger.info('Sending PredictRequest to %s model %s:%s.',
-                         self.host, self.model_name, self.model_version)
-
-        t = timeit.default_timer()
-        request = PredictRequest()
-        self.logger.debug('Created PredictRequest object in %s seconds.',
-                          timeit.default_timer() - t)
-
         # pylint: disable=E1101
+        request = PredictRequest()
         request.model_spec.name = self.model_name
         request.model_spec.version.value = self.model_version
 
-        t = timeit.default_timer()
         for d in request_data:
             tensor_proto = make_tensor_proto(d['data'], d['in_tensor_dtype'])
             request.inputs[d['in_tensor_name']].CopyFrom(tensor_proto)
 
-        self.logger.debug('Made tensor protos in %s seconds.',
-                          timeit.default_timer() - t)
-
         response = self._retry_grpc(request, request_timeout)
         response_dict = grpc_response_to_dict(response)
 
-        self.logger.info('Got PredictResponse with keys: %s ',
+        self.logger.info('Got PredictResponse with keys: %s.',
                          list(response_dict))
 
         return response_dict
 
     def get_model_metadata(self, request_timeout=10):
-        self.logger.info('Sending GetModelMetadataRequest to %s model %s:%s.',
-                         self.host, self.model_name, self.model_version)
-
         # pylint: disable=E1101
         request = GetModelMetadataRequest()
         request.metadata_field.append('signature_def')
@@ -280,14 +265,7 @@ class PredictClient(GrpcClient):
         request.model_spec.version.value = self.model_version
 
         response = self._retry_grpc(request, request_timeout)
-
-        t = timeit.default_timer()
-
         response_dict = json.loads(MessageToJson(response))
-
-        self.logger.debug('gRPC GetModelMetadataProtobufConversion took '
-                          '%s seconds.', timeit.default_timer() - t)
-
         return response_dict
 
 
