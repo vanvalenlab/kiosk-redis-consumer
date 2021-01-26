@@ -248,10 +248,10 @@ class TestTensorFlowServingConsumer(object):
 
         # test valid channels last shapes
         valid_input_shapes = [
-            (32, 32, 1),  # exact same shape
-            (64, 64, 1),  # bigger
-            (32, 32, 1),  # smaller
-            (33, 31, 1),  # mixed
+            (1, 32, 32, 1),  # exact same shape
+            (1, 64, 64, 1),  # bigger
+            (1, 32, 32, 1),  # smaller
+            (1, 33, 31, 1),  # mixed
         ]
         for shape in valid_input_shapes:
             # check channels last
@@ -260,17 +260,18 @@ class TestTensorFlowServingConsumer(object):
             np.testing.assert_array_equal(img, valid_img)
 
             # should also work for channels first
-            img = np.rollaxis(img, -1, 0)
+            img = np.rollaxis(img, -1, 1)
             valid_img = consumer.validate_model_input(img, 'model', '1')
             expected_img = np.rollaxis(img, 0, img.ndim)
             np.testing.assert_array_equal(expected_img, valid_img)
 
         # test invalid shapes
         invalid_input_shapes = [
-            (32, 1),  # rank too small
-            (32, 32, 32, 1),  # rank too large
-            (32, 32, 2),  # wrong channels
-            (16, 64, 2),  # wrong channels with mixed shape
+            (32, 32, 1),  # no batch dimension
+            (1, 32, 1),  # rank too small
+            (1, 32, 32, 32, 1),  # rank too large
+            (1, 32, 32, 2),  # wrong channels
+            (1, 16, 64, 2),  # wrong channels with mixed shape
         ]
         for shape in invalid_input_shapes:
             img = np.ones(shape)

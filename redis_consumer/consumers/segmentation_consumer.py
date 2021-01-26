@@ -126,10 +126,7 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         model_name, model_version = model.split(':')
 
         # Validate input image
-        # TODO: batch dimension wonkiness
-        image = image[0]  # remove batch dimension
         image = self.validate_model_input(image, model_name, model_version)
-        image = np.expand_dims(image, axis=0)  # add batch dim back
 
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})

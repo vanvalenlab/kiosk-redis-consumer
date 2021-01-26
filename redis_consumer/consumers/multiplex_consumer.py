@@ -93,6 +93,7 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         # Load input image
         fname = hvals.get('input_file_name')
         image = self.download_image(fname)
+        image = np.expand_dims(image, axis=0)  # add in the batch dim
 
         # squeeze extra dimension that is added by get_image
         image = np.squeeze(image)
@@ -106,8 +107,6 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         # TODO: implement detect_scale here for multiplex model
         scale = hvals.get('scale', '')
         scale = self.get_image_scale(scale, image, redis_hash)
-
-        image = np.expand_dims(image, axis=0)  # add in the batch dim
 
         # Validate input image
         image = self.validate_model_input(image, model_name, model_version)

@@ -269,14 +269,14 @@ class TensorFlowServingConsumer(Consumer):
         validated = []
 
         for img, shape in zip(image, shapes):
-            rank = len(shape) - 1  # ignoring batch dimension
+            rank = len(shape)  # expects a batch dimension
             channels = shape[-1]
 
             if len(img.shape) != rank:
                 raise ValueError(errtext)
 
-            if img.shape[0] == channels:
-                img = np.rollaxis(img, 0, rank)
+            if img.shape[1] == channels:
+                img = np.rollaxis(img, 1, rank)
 
             if img.shape[rank - 1] != channels:
                 raise ValueError(errtext)
