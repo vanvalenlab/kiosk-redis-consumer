@@ -40,6 +40,10 @@ def _strip(x):
     return '/'.join(y for y in x.split('/') if y)
 
 
+# Application directories
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DOWNLOAD_DIR = os.path.join(ROOT_DIR, 'download')
+
 # Consumer settings
 INTERVAL = config('INTERVAL', default=10, cast=int)
 CONSUMER_TYPE = config('CONSUMER_TYPE', default='image')
@@ -68,16 +72,6 @@ REDIS_TIMEOUT = config('REDIS_TIMEOUT', default=3, cast=int)
 EMPTY_QUEUE_TIMEOUT = config('EMPTY_QUEUE_TIMEOUT', default=5, cast=int)
 DO_NOTHING_TIMEOUT = config('DO_NOTHING_TIMEOUT', default=0.5, cast=float)
 STORAGE_MAX_BACKOFF = config('STORAGE_MAX_BACKOFF', default=60, cast=float)
-
-# Application directories
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DOWNLOAD_DIR = os.path.join(ROOT_DIR, 'download')
-
-for d in (DOWNLOAD_DIR,):
-    try:
-        os.mkdir(d)
-    except OSError:
-        pass
 
 # AWS Credentials
 AWS_REGION = config('AWS_REGION', default='us-east-1')

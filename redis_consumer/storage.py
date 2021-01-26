@@ -91,6 +91,12 @@ class Storage(object):
         self.logger = logging.getLogger(str(self.__class__.__name__))
         self.max_backoff = max_backoff
 
+        # try to write the download dir in case it does not exist.
+        try:
+            os.mkdir(self.download_dir)
+        except OSError:
+            pass
+
     def get_backoff(self, attempts):
         """Get backoff time based on previous number of attempts"""
         milis = random.randint(1, 1000) / 1000
