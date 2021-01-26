@@ -93,10 +93,11 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         # Load input image
         fname = hvals.get('input_file_name')
         image = self.download_image(fname)
-        image = np.expand_dims(image, axis=0)  # add in the batch dim
 
         # squeeze extra dimension that is added by get_image
         image = np.squeeze(image)
+        # add in the batch dim
+        image = np.expand_dims(image, axis=0)
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
