@@ -136,8 +136,20 @@ class SegmentationConsumer(TensorFlowServingConsumer):
 
         app = self.get_grpc_app(model, app_cls)
 
+        t = timeit.default_timer()
+
         results = app.predict(image, image_mpp=scale * app.model_mpp,
                               batch_size=app.model.get_batch_size())
+
+        # log output
+        pre = app.preprocessing_fn
+        post = app.postprocessing_fn
+        self.logger.info('%s finished with %s pre-processing '
+                         'and %s post-processing in %s seconds.',
+                         app.__class__.__name__,
+                         pre.__name__ if pre is not None else 'None',
+                         post.__name__ if post is not None else 'None',
+                         timeit.default_timer() - t)
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
