@@ -109,7 +109,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
             features=features)
 
         self.logger.debug('Created Tracker in %s seconds.',
-                          timeit.default_timer - t)
+                          timeit.default_timer() - t)
         return tracker
 
     def _update_progress(self, redis_hash, progress):
