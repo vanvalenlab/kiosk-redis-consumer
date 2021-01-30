@@ -293,32 +293,50 @@ class TrackingClient(PredictClient):
 
     def predict(self, data, request_timeout=10):
         t = timeit.default_timer()
-        self.logger.info('Tracking data of shape %s with %s model %s:%s.',
-                         [d.shape for d in data],
+        self.logger.info('Tracking data with %s model %s:%s.',
                          self.host, self.model_name, self.model_version)
 
+        # TODO: features should be retrieved from model metadata
+        features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
+        features = sorted(features)
+        # Grab a random value from the data dict and select batch dim (num cell comparisons)
+        batch_size = next(iter(data.values())).shape[0]
+        self.logger.info('batch size: %s', batch_size)
         results = []
-        for b in range(0, data[0].shape[0], settings.TF_MAX_BATCH_SIZE):
+        #  from 0 to Num Cells (comparisons) in increments of TF batch size
+        for b in range(0, batch_size, settings.TF_MAX_BATCH_SIZE):
             request_data = []
-            for i, model_input in enumerate(data):
-                d = {
-                    'in_tensor_name': 'input{}'.format(i),
+            for f in features:
+                input_name1 = '{}_input1'.format(f)
+                d1 = {
+                    'in_tensor_name': input_name1,
                     'in_tensor_dtype': 'DT_FLOAT',
-                    'data': model_input[b:b + settings.TF_MAX_BATCH_SIZE]
+                    'data': data[input_name1][b:b + settings.TF_MAX_BATCH_SIZE]
                 }
-                request_data.append(d)
+                request_data.append(d1)
+
+                input_name2 = '{}_input2'.format(f)
+                d2 = {
+                    'in_tensor_name': input_name2,
+                    'in_tensor_dtype': 'DT_FLOAT',
+                    'data': data[input_name2][b:b + settings.TF_MAX_BATCH_SIZE]
+                }
+                request_data.append(d2)
 
             response_dict = super(TrackingClient, self).predict(
                 request_data, request_timeout)
 
-            output = response_dict['prediction']
+            output = [response_dict[k] for k in sorted(response_dict.keys())]
+            if len(output) == 1:
+                output = output[0]
+
             if len(results) == 0:
                 results = output
             else:
                 results = np.vstack((results, output))
 
         self.logger.info('Tracked %s input pairs in %s seconds.',
-                         data[0].shape[0], timeit.default_timer() - t)
+                         batch_size, timeit.default_timer() - t)
 
         return np.array(results)
 

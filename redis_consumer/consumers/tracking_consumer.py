@@ -89,6 +89,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
         return model
 
     def _get_tracker(self, redis_hash, hvalues, raw, segmented):
+        self.logger.debug('Creating tracker...')
+        t = timeit.default_timer()
         tracking_model = self._get_model(redis_hash, hvalues)
 
         # Some tracking models do not have an ImageNormalization Layer.
@@ -109,7 +111,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
             neighborhood_scale_size=settings.NEIGHBORHOOD_SCALE_SIZE,
             features=features)
 
-        self.logger.debug('Created tracker!')
+        self.logger.debug('Created Tracker in %s seconds.',
+                          timeit.default_timer() - t)
         return tracker
 
     def _update_progress(self, redis_hash, progress):

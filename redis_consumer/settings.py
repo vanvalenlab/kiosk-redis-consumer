@@ -101,10 +101,10 @@ NORMALIZE_TRACKING = config('NORMALIZE_TRACKING', default=True, cast=bool)
 
 # tracking.cell_tracker settings TODO: can we extract from model_metadata?
 MAX_DISTANCE = config('MAX_DISTANCE', default=50, cast=int)
-TRACK_LENGTH = config('TRACK_LENGTH', default=5, cast=int)
+TRACK_LENGTH = config('TRACK_LENGTH', default=9, cast=int)
 DIVISION = config('DIVISION', default=0.9, cast=float)
-BIRTH = config('BIRTH', default=0.95, cast=float)
-DEATH = config('DEATH', default=0.95, cast=float)
+BIRTH = config('BIRTH', default=0.99, cast=float)
+DEATH = config('DEATH', default=0.99, cast=float)
 NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30, cast=int)
 
 MAX_SCALE = config('MAX_SCALE', default=3, cast=float)
