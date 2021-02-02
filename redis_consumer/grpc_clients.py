@@ -371,7 +371,9 @@ class GrpcModelWrapper(object):
             batch_size = self.get_batch_size()
 
         for t in range(0, tiles[0].shape[0], batch_size):
-            output = self.send_grpc([tile[t:t + batch_size] for tile in tiles])
+            inputs = [tile[t:t + batch_size] for tile in tiles]
+            inputs = inputs[0] if len(inputs) == 1 else inputs
+            output = self.send_grpc(inputs)
 
             if len(results) == 0:
                 results = output
