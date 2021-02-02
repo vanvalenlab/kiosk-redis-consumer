@@ -322,7 +322,7 @@ class GrpcModelWrapper(object):
 
             if m['in_tensor_dtype'] == 'DT_HALF':
                 # seems like should cast to "half"
-            # but the model rejects the type, wants "int" or "long"
+                # but the model rejects the type, wants "int" or "long"
                 data = data.astype('int')
 
             req_data.append({
