@@ -32,7 +32,6 @@ from redis_consumer import grpc_clients
 from redis_consumer import redis
 from redis_consumer import settings
 from redis_consumer import storage
-from redis_consumer import tracking
 from redis_consumer import utils
 
 del absolute_import
