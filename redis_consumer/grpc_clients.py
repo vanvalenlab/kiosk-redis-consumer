@@ -360,18 +360,15 @@ class GrpcModelWrapper(object):
 
     def __init__(self, client, model_metadata):
         self._client = client
+        self._metadata = model_metadata
 
-        if len(model_metadata) > 1:
-            # TODO: how to handle this?
-            raise NotImplementedError('Multiple input tensors are not supported.')
-
-        self._metadata = model_metadata[0]
-
-        self._in_tensor_name = self._metadata['in_tensor_name']
-        self._in_tensor_dtype = str(self._metadata['in_tensor_dtype']).upper()
-
-        shape = [int(x) for x in self._metadata['in_tensor_shape'].split(',')]
-        self.input_shape = tuple(shape)
+        shapes = [
+            tuple([int(x) for x in m['in_tensor_shape'].split(',')])
+            for m in self._metadata
+        ]
+        if len(shapes) == 1:
+            shapes = shapes[0]
+        self.input_shape = shapes
 
     def send_grpc(self, img):
         """Use the TensorFlow Serving gRPC API for model inference on an image.
@@ -383,14 +380,32 @@ class GrpcModelWrapper(object):
             numpy.array: The results of model inference.
         """
         start = timeit.default_timer()
-        if self._in_tensor_dtype == 'DT_HALF':
-            # TODO: seems like should cast to "half"
-            # but the model rejects the type, wants "int" or "long"
-            img = img.astype('int')
 
-        req_data = [{'in_tensor_name': self._in_tensor_name,
-                     'in_tensor_dtype': self._in_tensor_dtype,
-                     'data': img}]
+        # cast input as list
+        if not isinstance(img, list):
+            img = [img]
+
+        if len(self._metadata) != len(img):
+            raise ValueError('Expected {} model inputs but got {}.'.format(
+                len(self._metadata), len(img)))
+
+        req_data = []
+
+        for i, m in enumerate(self._metadata):
+            data = img[i]
+
+            self._client.logger.info('%s: %s', i, m)
+
+            if m['in_tensor_dtype'] == 'DT_HALF':
+                # seems like should cast to "half"
+            # but the model rejects the type, wants "int" or "long"
+                data = data.astype('int')
+
+            req_data.append({
+                'in_tensor_name': m['in_tensor_name'],
+                'in_tensor_dtype': m['in_tensor_dtype'],
+                'data': data
+            })
 
         prediction = self._client.predict(req_data, settings.GRPC_TIMEOUT)
         results = [prediction[k] for k in sorted(prediction.keys())]
@@ -405,10 +420,16 @@ class GrpcModelWrapper(object):
         """Calculate the best batch size based on TF_MAX_BATCH_SIZE and
         TF_MIN_MODEL_SIZE
         """
-        rank = len(self.input_shape)
-        ratio = (self.input_shape[rank - 3] / settings.TF_MIN_MODEL_SIZE) * \
-                (self.input_shape[rank - 2] / settings.TF_MIN_MODEL_SIZE) * \
-                (self.input_shape[rank - 1])
+        input_shape = self.input_shape
+        if not isinstance(input_shape, list):
+            input_shape = [input_shape]
+
+        ratio = 1
+        for shape in input_shape:
+            rank = len(shape)
+            ratio *= (shape[rank - 3] / settings.TF_MIN_MODEL_SIZE) * \
+                     (shape[rank - 2] / settings.TF_MIN_MODEL_SIZE) * \
+                     (shape[rank - 1])
 
         batch_size = int(settings.TF_MAX_BATCH_SIZE // ratio)
         return batch_size
@@ -416,11 +437,17 @@ class GrpcModelWrapper(object):
     def predict(self, tiles, batch_size=None):
         results = []
 
+        if isinstance(tiles, dict):
+            tiles = [tiles[m['in_tensor_name']] for m in self._metadata]
+
+        if not isinstance(tiles, list):
+            tiles = [tiles]
+
         if batch_size is None:
             batch_size = self.get_batch_size()
 
-        for t in range(0, tiles.shape[0], batch_size):
-            output = self.send_grpc(tiles[t:t + batch_size])
+        for t in range(0, tiles[0].shape[0], batch_size):
+            output = self.send_grpc([tile[t:t + batch_size] for tile in tiles])
 
             if len(results) == 0:
                 results = output
