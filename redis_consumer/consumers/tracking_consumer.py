@@ -197,14 +197,12 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
-        hvalues = self.redis.hgetall(redis_hash)
-        self.logger.debug('Found `%s:*` hash to process "%s": %s',
-                          self.queue, redis_hash, json.dumps(hvalues, indent=4))
+        hvals = self.redis.hgetall(redis_hash)
 
-        if hvalues.get('status') in self.finished_statuses:
+        if hvals.get('status') in self.finished_statuses:
             self.logger.warning('Found completed hash `%s` with status %s.',
-                                redis_hash, hvalues.get('status'))
-            return hvalues.get('status')
+                                redis_hash, hvals.get('status'))
+            return hvals.get('status')
 
         # Set status and initial progress
         self.update_key(redis_hash, {
@@ -214,7 +212,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
         })
 
         with tempfile.TemporaryDirectory() as tempdir:
-            fname = self.storage.download(hvalues.get('input_file_name'),
+            fname = self.storage.download(hvals.get('input_file_name'),
                                           tempdir)
             data = self._load_data(redis_hash, tempdir, fname)
 
