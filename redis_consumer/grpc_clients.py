@@ -318,8 +318,6 @@ class GrpcModelWrapper(object):
         for i, m in enumerate(self._metadata):
             data = img[i]
 
-            self._client.logger.info('%s: %s', i, m)
-
             if m['in_tensor_dtype'] == 'DT_HALF':
                 # seems like should cast to "half"
                 # but the model rejects the type, wants "int" or "long"
