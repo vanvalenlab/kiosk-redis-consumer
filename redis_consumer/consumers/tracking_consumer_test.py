@@ -84,16 +84,6 @@ class TestTrackingConsumer(object):
         assert consumer.is_valid_hash('track:1234567890:file.trk') is True
         assert consumer.is_valid_hash('track:1234567890:file.trks') is True
 
-    def test__update_progress(self, redis_client):
-        queue = 'track'
-        storage = DummyStorage()
-        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
-
-        redis_hash = 'a job hash'
-        progress = random.randint(0, 99)
-        consumer._update_progress(redis_hash, progress)
-        assert int(redis_client.hget(redis_hash, 'progress')) == progress
-
     def test__load_data(self, tmpdir, mocker, redis_client):
         queue = 'track'
         storage = DummyStorage()

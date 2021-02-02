@@ -67,11 +67,6 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
         return valid_file
 
-    def _update_progress(self, redis_hash, progress):
-        self.update_key(redis_hash, {
-            'progress': progress,
-        })
-
     def _load_data(self, redis_hash, subdir, fname):
         """
         Given the upload location `input_file_name`, and the downloaded
