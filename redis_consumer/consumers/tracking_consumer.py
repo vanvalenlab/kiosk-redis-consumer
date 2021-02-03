@@ -188,8 +188,9 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
         # Cast y to int to avoid issues during fourier transform/drift correction
         # TODO: extra dimension in labels.
-        return {'X': np.expand_dims(tiff_stack, axis=-1),
-                'y': np.array(labels, dtype='uint16')}
+        y = np.array(labels, dtype='uint16')
+        y = y[:, 0] if y.shape[1] == 1 else y
+        return {'X': np.expand_dims(tiff_stack, axis=-1), 'y': y}
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
