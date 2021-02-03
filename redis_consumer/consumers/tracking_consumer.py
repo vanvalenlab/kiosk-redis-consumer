@@ -187,8 +187,10 @@ class TrackingConsumer(TensorFlowServingConsumer):
         labels = [frames[i] for i in range(num_frames)]
 
         # Cast y to int to avoid issues during fourier transform/drift correction
-        # TODO: extra dimension in labels.
         y = np.array(labels, dtype='uint16')
+        # TODO: Why is there an extra dimension?
+        # Not a problem in tests, only with application based results.
+        # Issue with batch dimension from outputs?
         y = y[:, 0] if y.shape[1] == 1 else y
         return {'X': np.expand_dims(tiff_stack, axis=-1), 'y': y}
 
