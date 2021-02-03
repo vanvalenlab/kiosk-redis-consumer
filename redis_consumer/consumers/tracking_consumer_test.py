@@ -45,27 +45,6 @@ from redis_consumer.testing_utils import redis_client
 from redis_consumer.testing_utils import _get_image
 
 
-class DummyTracker(object):
-    # pylint: disable=R0201,W0613
-    def __init__(self, *_, **__):
-        pass
-
-    def _track_cells(self):
-        return None
-
-    def track_cells(self):
-        return None
-
-    def dump(self, *_, **__):
-        return None
-
-    def postprocess(self, *_, **__):
-        return {
-            'y_tracked': np.zeros((32, 32, 1)),
-            'tracks': []
-        }
-
-
 class TestTrackingConsumer(object):
     # pylint: disable=R0201,W0621
     def test_is_valid_hash(self, mocker, redis_client):
