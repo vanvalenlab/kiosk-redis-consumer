@@ -175,3 +175,16 @@ class TestGrpcModelWrapper(object):
         input_data = [np.ones((batch_size * 2, 30, 30, 1))] * 2
         results = wrapper.predict(input_data, batch_size=batch_size)
         np.testing.assert_array_equal(input_data, results)
+
+        # dictionary input
+        metadata = self._get_metadata()
+        wrapper = grpc_clients.GrpcModelWrapper(None, metadata)
+        mocker.patch.object(wrapper, 'send_grpc', mock_send_grpc)
+        input_data = {
+            m['in_tensor_name']: np.ones((batch_size * 2, 30, 30, 1))
+            for m in metadata
+        }
+        results = wrapper.predict(input_data, batch_size=batch_size)
+        for m in metadata:
+            np.testing.assert_array_equal(
+                input_data[m['in_tensor_name']], results)
