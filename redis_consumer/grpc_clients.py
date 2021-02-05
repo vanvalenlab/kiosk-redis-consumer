@@ -414,6 +414,7 @@ class GrpcModelWrapper(object):
         return batch_size
 
     def predict(self, tiles, batch_size=None):
+        # TODO: Can the result size be known beforehand via model metadata?
         results = []
 
         if batch_size is None:
