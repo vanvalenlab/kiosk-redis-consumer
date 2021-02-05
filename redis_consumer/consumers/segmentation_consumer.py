@@ -134,12 +134,8 @@ class SegmentationConsumer(TensorFlowServingConsumer):
 
         app = self.get_grpc_app(model, app_cls)
 
-        # Temporary patch
-        app.preprocessing_fn = normalize
-
         results = app.predict(image, batch_size=None,
-                              image_mpp=scale * app.model_mpp,
-                              preprocess_kwargs={})
+                              image_mpp=scale * app.model_mpp)
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
