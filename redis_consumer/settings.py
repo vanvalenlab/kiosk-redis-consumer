@@ -90,14 +90,8 @@ EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
 METADATA_EXPIRE_TIME = config('METADATA_EXPIRE_TIME', default=30, cast=int)
 
 # Tracking settings
-TRACKING_SEGMENT_MODEL = config('TRACKING_SEGMENT_MODEL', default='panoptic:3', cast=str)
-TRACKING_POSTPROCESS_FUNCTION = config('TRACKING_POSTPROCESS_FUNCTION',
-                                       default='retinanet', cast=str)
-
 TRACKING_MODEL = config('TRACKING_MODEL', default='TrackingModel:0', cast=str)
-
 DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=False, cast=bool)
-NORMALIZE_TRACKING = config('NORMALIZE_TRACKING', default=True, cast=bool)
 
 # tracking.cell_tracker settings TODO: can we extract from model_metadata?
 MAX_DISTANCE = config('MAX_DISTANCE', default=50, cast=int)
@@ -107,12 +101,11 @@ BIRTH = config('BIRTH', default=0.99, cast=float)
 DEATH = config('DEATH', default=0.99, cast=float)
 NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30, cast=int)
 
-MAX_SCALE = config('MAX_SCALE', default=3, cast=float)
-MIN_SCALE = config('MIN_SCALE', default=1 / MAX_SCALE, cast=float)
-
 # Scale detection settings
 SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:1')
 SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
+MAX_SCALE = config('MAX_SCALE', default=3, cast=float)
+MIN_SCALE = config('MIN_SCALE', default=1 / MAX_SCALE, cast=float)
 
 # Type detection settings
 LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', cast=str)

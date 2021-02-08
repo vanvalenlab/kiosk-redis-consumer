@@ -109,9 +109,11 @@ class TestGrpcModelWrapper(object):
         wrapper = grpc_clients.GrpcModelWrapper(None, metadata)
         assert wrapper.input_shape == self.shape
 
-        multi_metadata = [metadata, metadata]
-        with pytest.raises(NotImplementedError):
-            wrapper = grpc_clients.GrpcModelWrapper(None, multi_metadata)
+        metadata += metadata
+        wrapper = grpc_clients.GrpcModelWrapper(None, metadata)
+        assert isinstance(wrapper.input_shape, list)
+        for s in wrapper.input_shape:
+            assert s == self.shape
 
     def test_get_batch_size(self, mocker):
         metadata = self._get_metadata()
@@ -122,9 +124,10 @@ class TestGrpcModelWrapper(object):
             batch_size = wrapper.get_batch_size()
             assert batch_size == settings.TF_MAX_BATCH_SIZE * m * m
 
-    def test_send_grpc(self, mocker):
+    def test_send_grpc(self):
         client = DummyPredictClient(1, 2, 3)
         metadata = self._get_metadata()
+        metadata[0]['in_tensor_dtype'] = 'DT_HALF'
         wrapper = grpc_clients.GrpcModelWrapper(client, metadata)
 
         input_data = np.ones(self.shape)
@@ -133,19 +136,25 @@ class TestGrpcModelWrapper(object):
         assert len(result) == 1
         np.testing.assert_array_equal(result[0], input_data)
 
-        input_data = np.ones(self.shape)
-        mocker.patch.object(wrapper, '_in_tensor_dtype', 'DT_HALF')
+        # test multiple inputs
+        metadata = self._get_metadata() + self._get_metadata()
+        input_data = [np.ones(self.shape)] * 2
+        wrapper = grpc_clients.GrpcModelWrapper(client, metadata)
         result = wrapper.send_grpc(input_data)
         assert isinstance(result, list)
-        assert len(result) == 1
-        np.testing.assert_array_equal(result[0], input_data)
+        assert len(result) == 2
+        np.testing.assert_array_equal(result, input_data)
+
+        # test inputs don't match metadata
+        with pytest.raises(ValueError):
+            wrapper.send_grpc(np.ones(self.shape))
 
     def test_predict(self, mocker):
         metadata = self._get_metadata()
         wrapper = grpc_clients.GrpcModelWrapper(None, metadata)
 
         def mock_send_grpc(img):
-            return [img]
+            return img if isinstance(img, list) else [img]
 
         mocker.patch.object(wrapper, 'send_grpc', mock_send_grpc)
 
@@ -158,3 +167,24 @@ class TestGrpcModelWrapper(object):
         # no batch size
         results = wrapper.predict(input_data)
         np.testing.assert_array_equal(input_data, results)
+
+        # multiple inputs
+        metadata = self._get_metadata() * 2
+        wrapper = grpc_clients.GrpcModelWrapper(None, metadata)
+        mocker.patch.object(wrapper, 'send_grpc', mock_send_grpc)
+        input_data = [np.ones((batch_size * 2, 30, 30, 1))] * 2
+        results = wrapper.predict(input_data, batch_size=batch_size)
+        np.testing.assert_array_equal(input_data, results)
+
+        # dictionary input
+        metadata = self._get_metadata()
+        wrapper = grpc_clients.GrpcModelWrapper(None, metadata)
+        mocker.patch.object(wrapper, 'send_grpc', mock_send_grpc)
+        input_data = {
+            m['in_tensor_name']: np.ones((batch_size * 2, 30, 30, 1))
+            for m in metadata
+        }
+        results = wrapper.predict(input_data, batch_size=batch_size)
+        for m in metadata:
+            np.testing.assert_array_equal(
+                input_data[m['in_tensor_name']], results)

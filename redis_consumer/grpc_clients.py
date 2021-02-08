@@ -276,82 +276,6 @@ class PredictClient(GrpcClient):
         return response_dict
 
 
-class TrackingClient(PredictClient):
-    """gRPC Client for tensorflow-serving API.
-
-    Arguments:
-        host: string, the hostname and port of the server (`localhost:8080`)
-        model_name: string, name of model served by tensorflow-serving
-        model_version: integer, version of the named model
-    """
-
-    def __init__(self, host, model_name, model_version,
-                 redis_hash, progress_callback):
-        self.redis_hash = redis_hash
-        self.progress_callback = progress_callback
-        super(TrackingClient, self).__init__(host, model_name, model_version)
-
-    def predict(self, data, request_timeout=10):
-        t = timeit.default_timer()
-        self.logger.info('Tracking data with %s model %s:%s.',
-                         self.host, self.model_name, self.model_version)
-
-        # TODO: features should be retrieved from model metadata
-        features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
-        features = sorted(features)
-        # Grab a random value from the data dict and select batch dim (num cell comparisons)
-        batch_size = next(iter(data.values())).shape[0]
-        self.logger.info('batch size: %s', batch_size)
-        results = []
-        #  from 0 to Num Cells (comparisons) in increments of TF batch size
-        for b in range(0, batch_size, settings.TF_MAX_BATCH_SIZE):
-            request_data = []
-            for f in features:
-                input_name1 = '{}_input1'.format(f)
-                d1 = {
-                    'in_tensor_name': input_name1,
-                    'in_tensor_dtype': 'DT_FLOAT',
-                    'data': data[input_name1][b:b + settings.TF_MAX_BATCH_SIZE]
-                }
-                request_data.append(d1)
-
-                input_name2 = '{}_input2'.format(f)
-                d2 = {
-                    'in_tensor_name': input_name2,
-                    'in_tensor_dtype': 'DT_FLOAT',
-                    'data': data[input_name2][b:b + settings.TF_MAX_BATCH_SIZE]
-                }
-                request_data.append(d2)
-
-            response_dict = super(TrackingClient, self).predict(
-                request_data, request_timeout)
-
-            output = [response_dict[k] for k in sorted(response_dict.keys())]
-            if len(output) == 1:
-                output = output[0]
-
-            if len(results) == 0:
-                results = output
-            else:
-                results = np.vstack((results, output))
-
-        self.logger.info('Tracked %s input pairs in %s seconds.',
-                         batch_size, timeit.default_timer() - t)
-
-        return np.array(results)
-
-    def progress(self, progress):
-        """Update the internal state regarding progress
-
-        Arguments:
-            progress: float, the progress in the interval [0, 1]
-        """
-        progress *= 100
-        # clamp to an integer between 0 and 100
-        progress = min(100, max(0, round(progress)))
-        self.progress_callback(self.redis_hash, progress)
-
-
 class GrpcModelWrapper(object):
     """A wrapper class that mocks a Keras model using a gRPC client.
 
@@ -360,18 +284,15 @@ class GrpcModelWrapper(object):
 
     def __init__(self, client, model_metadata):
         self._client = client
+        self._metadata = model_metadata
 
-        if len(model_metadata) > 1:
-            # TODO: how to handle this?
-            raise NotImplementedError('Multiple input tensors are not supported.')
-
-        self._metadata = model_metadata[0]
-
-        self._in_tensor_name = self._metadata['in_tensor_name']
-        self._in_tensor_dtype = str(self._metadata['in_tensor_dtype']).upper()
-
-        shape = [int(x) for x in self._metadata['in_tensor_shape'].split(',')]
-        self.input_shape = tuple(shape)
+        shapes = [
+            tuple([int(x) for x in m['in_tensor_shape'].split(',')])
+            for m in self._metadata
+        ]
+        if len(shapes) == 1:
+            shapes = shapes[0]
+        self.input_shape = shapes
 
     def send_grpc(self, img):
         """Use the TensorFlow Serving gRPC API for model inference on an image.
@@ -383,14 +304,30 @@ class GrpcModelWrapper(object):
             numpy.array: The results of model inference.
         """
         start = timeit.default_timer()
-        if self._in_tensor_dtype == 'DT_HALF':
-            # TODO: seems like should cast to "half"
-            # but the model rejects the type, wants "int" or "long"
-            img = img.astype('int')
 
-        req_data = [{'in_tensor_name': self._in_tensor_name,
-                     'in_tensor_dtype': self._in_tensor_dtype,
-                     'data': img}]
+        # cast input as list
+        if not isinstance(img, list):
+            img = [img]
+
+        if len(self._metadata) != len(img):
+            raise ValueError('Expected {} model inputs but got {}.'.format(
+                len(self._metadata), len(img)))
+
+        req_data = []
+
+        for i, m in enumerate(self._metadata):
+            data = img[i]
+
+            if m['in_tensor_dtype'] == 'DT_HALF':
+                # seems like should cast to "half"
+                # but the model rejects the type, wants "int" or "long"
+                data = data.astype('int')
+
+            req_data.append({
+                'in_tensor_name': m['in_tensor_name'],
+                'in_tensor_dtype': m['in_tensor_dtype'],
+                'data': data
+            })
 
         prediction = self._client.predict(req_data, settings.GRPC_TIMEOUT)
         results = [prediction[k] for k in sorted(prediction.keys())]
@@ -405,10 +342,16 @@ class GrpcModelWrapper(object):
         """Calculate the best batch size based on TF_MAX_BATCH_SIZE and
         TF_MIN_MODEL_SIZE
         """
-        rank = len(self.input_shape)
-        ratio = (self.input_shape[rank - 3] / settings.TF_MIN_MODEL_SIZE) * \
-                (self.input_shape[rank - 2] / settings.TF_MIN_MODEL_SIZE) * \
-                (self.input_shape[rank - 1])
+        input_shape = self.input_shape
+        if not isinstance(input_shape, list):
+            input_shape = [input_shape]
+
+        ratio = 1
+        for shape in input_shape:
+            rank = len(shape)
+            ratio *= (shape[rank - 3] / settings.TF_MIN_MODEL_SIZE) * \
+                     (shape[rank - 2] / settings.TF_MIN_MODEL_SIZE) * \
+                     (shape[rank - 1])
 
         batch_size = int(settings.TF_MAX_BATCH_SIZE // ratio)
         return batch_size
@@ -417,11 +360,19 @@ class GrpcModelWrapper(object):
         # TODO: Can the result size be known beforehand via model metadata?
         results = []
 
+        if isinstance(tiles, dict):
+            tiles = [tiles[m['in_tensor_name']] for m in self._metadata]
+
+        if not isinstance(tiles, list):
+            tiles = [tiles]
+
         if batch_size is None:
             batch_size = self.get_batch_size()
 
-        for t in range(0, tiles.shape[0], batch_size):
-            output = self.send_grpc(tiles[t:t + batch_size])
+        for t in range(0, tiles[0].shape[0], batch_size):
+            inputs = [tile[t:t + batch_size] for tile in tiles]
+            inputs = inputs[0] if len(inputs) == 1 else inputs
+            output = self.send_grpc(inputs)
 
             if len(results) == 0:
                 results = output
