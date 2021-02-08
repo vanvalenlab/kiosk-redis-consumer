@@ -34,22 +34,98 @@ import json
 import logging
 import time
 import timeit
+import six
 
+import dict_to_protobuf
+from google.protobuf.json_format import MessageToJson
 import grpc
-from grpc import RpcError
 import grpc.beta.implementations
 from grpc._cython import cygrpc
-
 import numpy as np
-
-from google.protobuf.json_format import MessageToJson
+from tensorflow.core.framework.types_pb2 import DESCRIPTOR
+from tensorflow.core.framework.tensor_pb2 import TensorProto
+from tensorflow_serving.apis.prediction_service_pb2_grpc import PredictionServiceStub
+from tensorflow_serving.apis.predict_pb2 import PredictRequest
+from tensorflow_serving.apis.get_model_metadata_pb2 import GetModelMetadataRequest
 
 from redis_consumer import settings
-from redis_consumer.pbs.prediction_service_pb2_grpc import PredictionServiceStub
-from redis_consumer.pbs.predict_pb2 import PredictRequest
-from redis_consumer.pbs.get_model_metadata_pb2 import GetModelMetadataRequest
-from redis_consumer.utils import grpc_response_to_dict
-from redis_consumer.utils import make_tensor_proto
+
+
+logger = logging.getLogger('redis_consumer.grpc_clients')
+
+
+dtype_to_number = {
+    i.name: i.number for i in DESCRIPTOR.enum_types_by_name['DataType'].values
+}
+
+# TODO: build this dynamically
+number_to_dtype_value = {
+    1: 'float_val',
+    2: 'double_val',
+    3: 'int_val',
+    4: 'int_val',
+    5: 'int_val',
+    6: 'int_val',
+    7: 'string_val',
+    8: 'scomplex_val',
+    9: 'int64_val',
+    10: 'bool_val',
+    18: 'dcomplex_val',
+    19: 'half_val',
+    20: 'resource_handle_val'
+}
+
+
+def grpc_response_to_dict(grpc_response):
+    # TODO: 'unicode' object has no attribute 'ListFields'
+    # response_dict = dict_to_protobuf.protobuf_to_dict(grpc_response)
+    # return response_dict
+    grpc_response_dict = dict()
+
+    for k in grpc_response.outputs:
+        shape = [x.size for x in grpc_response.outputs[k].tensor_shape.dim]
+
+        dtype_constant = grpc_response.outputs[k].dtype
+
+        if dtype_constant not in number_to_dtype_value:
+            grpc_response_dict[k] = 'value not found'
+            logger.error('Tensor output data type not supported. '
+                         'Returning empty dict.')
+
+        dt = number_to_dtype_value[dtype_constant]
+        if shape == [1]:
+            grpc_response_dict[k] = eval(
+                'grpc_response.outputs[k].' + dt)[0]
+        else:
+            grpc_response_dict[k] = np.array(
+                eval('grpc_response.outputs[k].' + dt)).reshape(shape)
+
+    return grpc_response_dict
+
+
+def make_tensor_proto(data, dtype):
+    tensor_proto = TensorProto()
+
+    if isinstance(dtype, six.string_types):
+        dtype = dtype_to_number[dtype]
+
+    dim = [{'size': 1}]
+    values = [data]
+
+    if hasattr(data, 'shape'):
+        dim = [{'size': dim} for dim in data.shape]
+        values = list(data.reshape(-1))
+
+    tensor_proto_dict = {
+        'dtype': dtype,
+        'tensor_shape': {
+            'dim': dim
+        },
+        number_to_dtype_value[dtype]: values
+    }
+    dict_to_protobuf.dict_to_protobuf(tensor_proto_dict, tensor_proto)
+
+    return tensor_proto
 
 
 class GrpcClient(object):
@@ -93,6 +169,9 @@ class PredictClient(GrpcClient):
 
     def __init__(self, host, model_name, model_version):
         super(PredictClient, self).__init__(host)
+        self.logger = logging.getLogger('gRPC:{}:{}'.format(
+            model_name, model_version
+        ))
         self.model_name = model_name
         self.model_version = model_version
 
@@ -101,11 +180,16 @@ class PredictClient(GrpcClient):
             PredictRequest: 'Predict',
         }
 
+        # Retry-able gRPC status codes
+        self.retry_status_codes = {
+            grpc.StatusCode.DEADLINE_EXCEEDED,
+            grpc.StatusCode.RESOURCE_EXHAUSTED,
+            grpc.StatusCode.UNAVAILABLE
+        }
+
     def _retry_grpc(self, request, request_timeout):
         request_name = request.__class__.__name__
-        self.logger.info('Sending %s to %s model %s:%s.',
-                         request_name, self.host,
-                         self.model_name, self.model_version)
+        self.logger.info('Sending %s to %s.', request_name, self.host)
 
         true_failures, count = 0, 0
 
@@ -122,8 +206,9 @@ class PredictClient(GrpcClient):
                     api_call = getattr(stub, api_endpoint_name)
                     response = api_call(request, timeout=request_timeout)
 
-                    self.logger.debug('%s finished in %s seconds.',
-                                      request_name, timeit.default_timer() - t)
+                    self.logger.debug('%s finished in %s seconds (%s retries).',
+                                      request_name, timeit.default_timer() - t,
+                                      true_failures)
                     return response
 
                 except grpc.RpcError as err:
@@ -133,7 +218,7 @@ class PredictClient(GrpcClient):
                                           '%s', request_name, count, err)
                         raise err
 
-                    if err.code() in settings.GRPC_RETRY_STATUSES:
+                    if err.code() in self.retry_status_codes:
                         count += 1
                         is_true_failure = err.code() != grpc.StatusCode.UNAVAILABLE
                         true_failures += int(is_true_failure)
@@ -162,38 +247,24 @@ class PredictClient(GrpcClient):
                     raise err
 
     def predict(self, request_data, request_timeout=10):
-        self.logger.info('Sending PredictRequest to %s model %s:%s.',
-                         self.host, self.model_name, self.model_version)
-
-        t = timeit.default_timer()
-        request = PredictRequest()
-        self.logger.debug('Created PredictRequest object in %s seconds.',
-                          timeit.default_timer() - t)
-
         # pylint: disable=E1101
+        request = PredictRequest()
         request.model_spec.name = self.model_name
         request.model_spec.version.value = self.model_version
 
-        t = timeit.default_timer()
         for d in request_data:
             tensor_proto = make_tensor_proto(d['data'], d['in_tensor_dtype'])
             request.inputs[d['in_tensor_name']].CopyFrom(tensor_proto)
 
-        self.logger.debug('Made tensor protos in %s seconds.',
-                          timeit.default_timer() - t)
-
         response = self._retry_grpc(request, request_timeout)
         response_dict = grpc_response_to_dict(response)
 
-        self.logger.info('Got PredictResponse with keys: %s ',
+        self.logger.info('Got PredictResponse with keys: %s.',
                          list(response_dict))
 
         return response_dict
 
     def get_model_metadata(self, request_timeout=10):
-        self.logger.info('Sending GetModelMetadataRequest to %s model %s:%s.',
-                         self.host, self.model_name, self.model_version)
-
         # pylint: disable=E1101
         request = GetModelMetadataRequest()
         request.metadata_field.append('signature_def')
@@ -201,88 +272,112 @@ class PredictClient(GrpcClient):
         request.model_spec.version.value = self.model_version
 
         response = self._retry_grpc(request, request_timeout)
-
-        t = timeit.default_timer()
-
         response_dict = json.loads(MessageToJson(response))
-
-        self.logger.debug('gRPC GetModelMetadataProtobufConversion took '
-                          '%s seconds.', timeit.default_timer() - t)
-
         return response_dict
 
 
-class TrackingClient(PredictClient):
-    """gRPC Client for tensorflow-serving API.
+class GrpcModelWrapper(object):
+    """A wrapper class that mocks a Keras model using a gRPC client.
 
-    Arguments:
-        host: string, the hostname and port of the server (`localhost:8080`)
-        model_name: string, name of model served by tensorflow-serving
-        model_version: integer, version of the named model
+    https://github.com/vanvalenlab/deepcell-tf/blob/master/deepcell/applications
     """
 
-    def __init__(self, host, model_name, model_version,
-                 redis_hash, progress_callback):
-        self.redis_hash = redis_hash
-        self.progress_callback = progress_callback
-        super(TrackingClient, self).__init__(host, model_name, model_version)
+    def __init__(self, client, model_metadata):
+        self._client = client
+        self._metadata = model_metadata
 
-    def predict(self, data, request_timeout=10):
-        t = timeit.default_timer()
-        self.logger.info('Tracking data with %s model %s:%s.',
-                         self.host, self.model_name, self.model_version)
+        shapes = [
+            tuple([int(x) for x in m['in_tensor_shape'].split(',')])
+            for m in self._metadata
+        ]
+        if len(shapes) == 1:
+            shapes = shapes[0]
+        self.input_shape = shapes
 
-        # TODO: features should be retrieved from model metadata
-        features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
-        features = sorted(features)
-        # Grab a random value from the data dict and select batch dim (num cell comparisons)
-        batch_size = next(iter(data.values())).shape[0]
-        self.logger.info('batch size: %s', batch_size)
+    def send_grpc(self, img):
+        """Use the TensorFlow Serving gRPC API for model inference on an image.
+
+        Args:
+            img (numpy.array): The image to send to the model
+
+        Returns:
+            numpy.array: The results of model inference.
+        """
+        start = timeit.default_timer()
+
+        # cast input as list
+        if not isinstance(img, list):
+            img = [img]
+
+        if len(self._metadata) != len(img):
+            raise ValueError('Expected {} model inputs but got {}.'.format(
+                len(self._metadata), len(img)))
+
+        req_data = []
+
+        for i, m in enumerate(self._metadata):
+            data = img[i]
+
+            if m['in_tensor_dtype'] == 'DT_HALF':
+                # seems like should cast to "half"
+                # but the model rejects the type, wants "int" or "long"
+                data = data.astype('int')
+
+            req_data.append({
+                'in_tensor_name': m['in_tensor_name'],
+                'in_tensor_dtype': m['in_tensor_dtype'],
+                'data': data
+            })
+
+        prediction = self._client.predict(req_data, settings.GRPC_TIMEOUT)
+        results = [prediction[k] for k in sorted(prediction.keys())]
+
+        self._client.logger.debug('Got prediction results of shape %s in %s s.',
+                                  [r.shape for r in results],
+                                  timeit.default_timer() - start)
+
+        return results
+
+    def get_batch_size(self):
+        """Calculate the best batch size based on TF_MAX_BATCH_SIZE and
+        TF_MIN_MODEL_SIZE
+        """
+        input_shape = self.input_shape
+        if not isinstance(input_shape, list):
+            input_shape = [input_shape]
+
+        ratio = 1
+        for shape in input_shape:
+            rank = len(shape)
+            ratio *= (shape[rank - 3] / settings.TF_MIN_MODEL_SIZE) * \
+                     (shape[rank - 2] / settings.TF_MIN_MODEL_SIZE) * \
+                     (shape[rank - 1])
+
+        batch_size = int(settings.TF_MAX_BATCH_SIZE // ratio)
+        return batch_size
+
+    def predict(self, tiles, batch_size=None):
+        # TODO: Can the result size be known beforehand via model metadata?
         results = []
-        #  from 0 to Num Cells (comparisons) in increments of TF batch size
-        for b in range(0, batch_size, settings.TF_MAX_BATCH_SIZE):
-            request_data = []
-            for f in features:
-                input_name1 = '{}_input1'.format(f)
-                d1 = {
-                    'in_tensor_name': input_name1,
-                    'in_tensor_dtype': 'DT_FLOAT',
-                    'data': data[input_name1][b:b + settings.TF_MAX_BATCH_SIZE]
-                }
-                request_data.append(d1)
 
-                input_name2 = '{}_input2'.format(f)
-                d2 = {
-                    'in_tensor_name': input_name2,
-                    'in_tensor_dtype': 'DT_FLOAT',
-                    'data': data[input_name2][b:b + settings.TF_MAX_BATCH_SIZE]
-                }
-                request_data.append(d2)
+        if isinstance(tiles, dict):
+            tiles = [tiles[m['in_tensor_name']] for m in self._metadata]
 
-            response_dict = super(TrackingClient, self).predict(
-                request_data, request_timeout)
+        if not isinstance(tiles, list):
+            tiles = [tiles]
 
-            output = [response_dict[k] for k in sorted(response_dict.keys())]
-            if len(output) == 1:
-                output = output[0]
+        if batch_size is None:
+            batch_size = self.get_batch_size()
+
+        for t in range(0, tiles[0].shape[0], batch_size):
+            inputs = [tile[t:t + batch_size] for tile in tiles]
+            inputs = inputs[0] if len(inputs) == 1 else inputs
+            output = self.send_grpc(inputs)
 
             if len(results) == 0:
                 results = output
             else:
-                results = np.vstack((results, output))
+                for i, o in enumerate(output):
+                    results[i] = np.vstack((results[i], o))
 
-        self.logger.info('Tracked %s input pairs in %s seconds.',
-                         batch_size, timeit.default_timer() - t)
-
-        return np.array(results)
-
-    def progress(self, progress):
-        """Update the internal state regarding progress
-
-        Arguments:
-            progress: float, the progress in the interval [0, 1]
-        """
-        progress *= 100
-        # clamp to an integer between 0 and 100
-        progress = min(100, max(0, round(progress)))
-        self.progress_callback(self.redis_hash, progress)
+        return results[0] if len(results) == 1 else results

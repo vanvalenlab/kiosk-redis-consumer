@@ -30,6 +30,7 @@ from __future__ import print_function
 
 import json
 import os
+import tempfile
 import time
 import timeit
 import uuid
@@ -37,12 +38,13 @@ import uuid
 from skimage.external import tifffile
 import numpy as np
 
-from redis_consumer.grpc_clients import TrackingClient
+from deepcell_toolbox.processing import correct_drift
+
+from deepcell.applications import CellTracking
+
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import utils
-from redis_consumer import tracking
 from redis_consumer import settings
-from redis_consumer import processing
 
 
 class TrackingConsumer(TensorFlowServingConsumer):
@@ -64,58 +66,6 @@ class TrackingConsumer(TensorFlowServingConsumer):
         self.logger.debug('Got key %s and decided %s', redis_hash, valid_file)
 
         return valid_file
-
-    def _get_model(self, redis_hash, hvalues):
-        hostname = '{}:{}'.format(settings.TF_HOST, settings.TF_PORT)
-
-        # Pick model based on redis or default setting
-        model = hvalues.get('model_name', '')
-        version = hvalues.get('model_version', '')
-        if not model or not version:
-            model, version = settings.TRACKING_MODEL.split(':')
-
-        t = timeit.default_timer()
-        model = TrackingClient(host=hostname,
-                               redis_hash=redis_hash,
-                               model_name=model,
-                               model_version=int(version),
-                               progress_callback=self._update_progress)
-
-        self.logger.debug('Created the TrackingClient in %s seconds.',
-                          timeit.default_timer() - t)
-        return model
-
-    def _get_tracker(self, redis_hash, hvalues, raw, segmented):
-        self.logger.debug('Creating tracker...')
-        t = timeit.default_timer()
-        tracking_model = self._get_model(redis_hash, hvalues)
-
-        # Some tracking models do not have an ImageNormalization Layer.
-        # If not, the data must be normalized before being tracked.
-        if settings.NORMALIZE_TRACKING:
-            for frame in range(raw.shape[0]):
-                raw[frame, ..., 0] = processing.normalize(raw[frame, ..., 0])
-
-        features = {'appearance', 'distance', 'neighborhood', 'regionprop'}
-        tracker = tracking.CellTracker(
-            raw, segmented,
-            tracking_model,
-            max_distance=settings.MAX_DISTANCE,
-            track_length=settings.TRACK_LENGTH,
-            division=settings.DIVISION,
-            birth=settings.BIRTH,
-            death=settings.DEATH,
-            neighborhood_scale_size=settings.NEIGHBORHOOD_SCALE_SIZE,
-            features=features)
-
-        self.logger.debug('Created Tracker in %s seconds.',
-                          timeit.default_timer() - t)
-        return tracker
-
-    def _update_progress(self, redis_hash, progress):
-        self.update_key(redis_hash, {
-            'progress': progress,
-        })
 
     def _load_data(self, redis_hash, subdir, fname):
         """
@@ -148,20 +98,6 @@ class TrackingConsumer(TensorFlowServingConsumer):
                              'with 3 dimensions, (time, width, height)'.format(
                                  tiff_stack.shape))
 
-        # Calculate scale of a subset of raw
-        scale = hvalues.get('scale', '')
-        scale = scale if settings.SCALE_DETECT_ENABLED else 1
-
-        # Pick model and postprocess based on either label or defaults
-        if settings.LABEL_DETECT_ENABLED:
-            # model and postprocessing will be determined automatically
-            # by the ImageFileConsumer
-            model_name, model_version = '', ''
-            postprocess_function = ''
-        else:
-            model_name, model_version = settings.TRACKING_SEGMENT_MODEL.split(':')
-            postprocess_function = settings.TRACKING_POSTPROCESS_FUNCTION
-
         num_frames = len(tiff_stack)
         hash_to_frame = {}
         remaining_hashes = set()
@@ -172,7 +108,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
         uid = uuid.uuid4().hex
         for i, img in enumerate(tiff_stack):
 
-            with utils.get_tempdir() as tempdir:
+            with tempfile.TemporaryDirectory() as tempdir:
                 # Save and upload the frame.
                 segment_fname = '{}-{}-tracking-frame-{}.tif'.format(
                     uid, hvalues.get('original_name'), i)
@@ -187,15 +123,10 @@ class TrackingConsumer(TensorFlowServingConsumer):
                 'identity_upload': self.name,
                 'input_file_name': upload_file_name,
                 'original_name': segment_fname,
-                'model_name': model_name,
-                'model_version': model_version,
-                'postprocess_function': postprocess_function,
                 'status': 'new',
                 'created_at': current_timestamp,
                 'updated_at': current_timestamp,
-                'url': upload_file_url,
-                'scale': scale,
-                # 'label': str(label)
+                'url': upload_file_url
             }
 
             # make a hash for this frame
@@ -234,7 +165,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
                 if status == self.final_status:
                     # Segmentation is finished, save and load the frame.
-                    with utils.get_tempdir() as tempdir:
+                    with tempfile.TemporaryDirectory() as tempdir:
                         out = self.redis.hget(segment_hash, 'output_file_name')
                         frame_zip = self.storage.download(out, tempdir)
                         frame_files = list(utils.iter_image_archive(
@@ -256,19 +187,21 @@ class TrackingConsumer(TensorFlowServingConsumer):
         labels = [frames[i] for i in range(num_frames)]
 
         # Cast y to int to avoid issues during fourier transform/drift correction
-        return {'X': np.expand_dims(tiff_stack, axis=-1),
-                'y': np.array(labels, dtype='uint16')}
+        y = np.array(labels, dtype='uint16')
+        # TODO: Why is there an extra dimension?
+        # Not a problem in tests, only with application based results.
+        # Issue with batch dimension from outputs?
+        y = y[:, 0] if y.shape[1] == 1 else y
+        return {'X': np.expand_dims(tiff_stack, axis=-1), 'y': y}
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
-        hvalues = self.redis.hgetall(redis_hash)
-        self.logger.debug('Found `%s:*` hash to process "%s": %s',
-                          self.queue, redis_hash, json.dumps(hvalues, indent=4))
+        hvals = self.redis.hgetall(redis_hash)
 
-        if hvalues.get('status') in self.finished_statuses:
+        if hvals.get('status') in self.finished_statuses:
             self.logger.warning('Found completed hash `%s` with status %s.',
-                                redis_hash, hvalues.get('status'))
-            return hvalues.get('status')
+                                redis_hash, hvals.get('status'))
+            return hvals.get('status')
 
         # Set status and initial progress
         self.update_key(redis_hash, {
@@ -277,8 +210,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
             'identity_started': self.name,
         })
 
-        with utils.get_tempdir() as tempdir:
-            fname = self.storage.download(hvalues.get('input_file_name'),
+        with tempfile.TemporaryDirectory() as tempdir:
+            fname = self.storage.download(hvals.get('input_file_name'),
                                           tempdir)
             data = self._load_data(redis_hash, tempdir, fname)
 
@@ -289,36 +222,36 @@ class TrackingConsumer(TensorFlowServingConsumer):
         # Correct for drift if enabled
         if settings.DRIFT_CORRECT_ENABLED:
             t = timeit.default_timer()
-            data['X'], data['y'] = processing.correct_drift(data['X'], data['y'])
+            data['X'], data['y'] = correct_drift(data['X'], data['y'])
             self.logger.debug('Drift correction complete in %s seconds.',
                               timeit.default_timer() - t)
 
-        # TODO: Add support for rescaling in the tracker
-        tracker = self._get_tracker(redis_hash, hvalues, data['X'], data['y'])
+        # Send data to the model
+        app = self.get_grpc_app(settings.TRACKING_MODEL, CellTracking,
+                                birth=settings.BIRTH,
+                                death=settings.DEATH,
+                                division=settings.DIVISION,
+                                track_length=settings.TRACK_LENGTH)
 
-        self.logger.debug('Trying to track...')
+        self.logger.debug('Tracking...')
         self.update_key(redis_hash, {'status': 'predicting'})
-        tracker.track_cells()
+        results = app.predict(data['X'], data['y'])
         self.logger.debug('Tracking done!')
 
-        self.update_key(redis_hash, {'status': 'post-processing'})
-        # Post-process and save the output file
-        tracked_data = tracker.postprocess()
-
         self.update_key(redis_hash, {'status': 'saving-results'})
-        with utils.get_tempdir() as tempdir:
+        with tempfile.TemporaryDirectory() as tempdir:
             # Save lineage data to JSON file
             lineage_file = os.path.join(tempdir, 'lineage.json')
             with open(lineage_file, 'w') as fp:
-                json.dump(tracked_data['tracks'], fp)
+                json.dump(results['tracks'], fp)
 
-            save_name = hvalues.get('original_name', fname)
+            save_name = hvals.get('original_name', fname)
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
 
             # Save tracked data as tiff stack
             outpaths = utils.save_numpy_array(
-                tracked_data['y_tracked'], name=name,
+                results['y_tracked'], name=name,
                 subdir=subdir, output_dir=tempdir)
 
             outpaths.append(lineage_file)

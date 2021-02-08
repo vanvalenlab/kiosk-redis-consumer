@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 import time
 import timeit
 import urllib
@@ -42,9 +43,9 @@ import zipfile
 import numpy as np
 import pytz
 
-from deepcell_toolbox.utils import tile_image, untile_image, resize
+from deepcell.applications import ScaleDetection
 
-from redis_consumer.grpc_clients import PredictClient
+from redis_consumer.grpc_clients import PredictClient, GrpcModelWrapper
 from redis_consumer import utils
 from redis_consumer import settings
 
@@ -65,13 +66,11 @@ class Consumer(object):
                  queue,
                  final_status='done',
                  failed_status='failed',
-                 name=settings.HOSTNAME,
-                 output_dir=settings.OUTPUT_DIR):
+                 name=settings.HOSTNAME):
         self.redis = redis_client
         self.storage = storage_client
         self.queue = str(queue).lower()
         self.name = name
-        self.output_dir = output_dir
         self.final_status = final_status
         self.failed_status = failed_status
         self.finished_statuses = {final_status, failed_status}
@@ -148,7 +147,7 @@ class Consumer(object):
 
     def is_valid_hash(self, redis_hash):  # pylint: disable=unused-argument
         """Returns True if the consumer should work on the item"""
-        return True
+        return redis_hash is not None
 
     def get_current_timestamp(self):
         """Helper function, returns ISO formatted UTC timestamp"""
@@ -206,22 +205,8 @@ class Consumer(object):
                 status = self.failed_status
 
             if status == self.final_status:
-                required_fields = [
-                    'model_name',
-                    'model_version',
-                    'preprocess_function',
-                    'postprocess_function',
-                ]
-                result = self.redis.hmget(redis_hash, *required_fields)
-                hvals = dict(zip(required_fields, result))
-                self.logger.debug('Consumed key %s (model %s:%s, '
-                                  'preprocessing: %s, postprocessing: %s) '
-                                  '(%s retries) in %s seconds.',
-                                  redis_hash, hvals.get('model_name'),
-                                  hvals.get('model_version'),
-                                  hvals.get('preprocess_function'),
-                                  hvals.get('postprocess_function'),
-                                  0, timeit.default_timer() - start)
+                self.logger.debug('Consumed key `%s` in %s seconds.',
+                                  redis_hash, timeit.default_timer() - start)
 
             if status in self.finished_statuses:
                 # this key is done. remove the key from the processing queue.
@@ -247,14 +232,58 @@ class TensorFlowServingConsumer(Consumer):
                  storage_client,
                  queue,
                  **kwargs):
-        # Create some attributes only used during consume()
-        self._redis_hash = None
-        self._redis_values = dict()
         super(TensorFlowServingConsumer, self).__init__(
             redis_client, storage_client, queue, **kwargs)
 
-    def _consume(self, redis_hash):
-        raise NotImplementedError
+    def is_valid_hash(self, redis_hash):
+        """Don't run on zip files"""
+        if redis_hash is None:
+            return False
+
+        fname = str(self.redis.hget(redis_hash, 'input_file_name'))
+        return not fname.lower().endswith('.zip')
+
+    def download_image(self, image_path):
+        """Download file from bucket and load it as an image"""
+        with tempfile.TemporaryDirectory() as tempdir:
+            fname = self.storage.download(image_path, tempdir)
+            image = utils.get_image(fname)
+        return image
+
+    def validate_model_input(self, image, model_name, model_version):
+        """Validate that the input image meets the workflow requirements."""
+        model_metadata = self.get_model_metadata(model_name, model_version)
+        parse_shape = lambda x: tuple(int(y) for y in x.split(','))
+        shapes = [parse_shape(x['in_tensor_shape']) for x in model_metadata]
+
+        # cast as image to match with the list of shapes.
+        image = [image] if not isinstance(image, list) else image
+
+        errtext = ('Invalid image shape: {}. The {} job expects '
+                   'images of shape{}').format(
+                       [s.shape for s in image], self.queue, shapes)
+
+        if len(image) != len(shapes):
+            raise ValueError(errtext)
+
+        validated = []
+
+        for img, shape in zip(image, shapes):
+            rank = len(shape)  # expects a batch dimension
+            channels = shape[-1]
+
+            if len(img.shape) != rank:
+                raise ValueError(errtext)
+
+            if img.shape[1] == channels:
+                img = np.rollaxis(img, 1, rank)
+
+            if img.shape[rank - 1] != channels:
+                raise ValueError(errtext)
+
+            validated.append(img)
+
+        return validated[0] if len(validated) == 1 else validated
 
     def _get_predict_client(self, model_name, model_version):
         """Returns the TensorFlow Serving gRPC client.
@@ -272,61 +301,6 @@ class TensorFlowServingConsumer(Consumer):
         self.logger.debug('Created the PredictClient in %s seconds.',
                           timeit.default_timer() - t)
         return client
-
-    def grpc_image(self, img, model_name, model_version, model_shape,
-                   in_tensor_name='image', in_tensor_dtype='DT_FLOAT'):
-        """Use the TensorFlow Serving gRPC API for model inference on an image.
-
-        Args:
-            img (numpy.array): The image to send to the model
-            model_name (str): The name of the model
-            model_version (int): The version of the model
-            model_shape (tuple): The shape of input data for the model
-            in_tensor_name (str): The name of the input tensor for the request
-            in_tensor_dtype (str): The dtype of the input data
-
-        Returns:
-            numpy.array: The results of model inference.
-        """
-        in_tensor_dtype = str(in_tensor_dtype).upper()
-
-        start = timeit.default_timer()
-        self.logger.debug('Segmenting image of shape %s with model %s:%s',
-                          img.shape, model_name, model_version)
-
-        if len(model_shape) == img.ndim + 1:
-            img = np.expand_dims(img, axis=0)
-
-        if in_tensor_dtype == 'DT_HALF':
-            # TODO: seems like should cast to "half"
-            # but the model rejects the type, wants "int" or "long"
-            img = img.astype('int')
-
-        req_data = [{'in_tensor_name': in_tensor_name,
-                     'in_tensor_dtype': in_tensor_dtype,
-                     'data': img}]
-
-        client = self._get_predict_client(model_name, model_version)
-
-        prediction = client.predict(req_data, settings.GRPC_TIMEOUT)
-        results = [prediction[k] for k in sorted(prediction.keys())]
-
-        if len(results) == 1:
-            results = results[0]
-
-        finished = timeit.default_timer() - start
-        if self._redis_hash is not None:
-            self.update_key(self._redis_hash, {
-                'prediction_time': finished,
-            })
-        self.logger.debug('Segmented key %s (model %s:%s, '
-                          'preprocessing: %s, postprocessing: %s)'
-                          ' (%s retries) in %s seconds.',
-                          self._redis_hash, model_name, model_version,
-                          self._redis_values.get('preprocess_function'),
-                          self._redis_values.get('postprocess_function'),
-                          0, finished)
-        return results
 
     def parse_model_metadata(self, metadata):
         """Parse the metadata response and return list of input metadata.
@@ -379,8 +353,8 @@ class TensorFlowServingConsumer(Consumer):
             inputs = inputs['serving_default']['inputs']
 
             finished = timeit.default_timer() - start
-            self.logger.debug('Got model metadata for %s in %s seconds.',
-                              model, finished)
+            self.logger.info('Got model metadata for %s in %s seconds.',
+                             model, finished)
 
             self.redis.hset(model, 'metadata', json.dumps(inputs))
             self.redis.expire(model, settings.METADATA_EXPIRE_TIME)
@@ -389,11 +363,43 @@ class TensorFlowServingConsumer(Consumer):
             self.logger.error('Malformed metadata: %s', model_metadata)
             raise err
 
-    def detect_scale(self, image):  # pylint: disable=unused-argument
-        """Stub for scale detection"""
-        self.logger.debug('Scale was not given. Defaults to 1')
-        scale = 1
-        return scale
+    def get_grpc_app(self, model, application_cls, **kwargs):
+        """
+        Create an application from deepcell.applications
+        with a gRPC model wrapper as a model
+        """
+        model_name, model_version = model.split(':')
+        model_metadata = self.get_model_metadata(model_name, model_version)
+        client = self._get_predict_client(model_name, model_version)
+        model_wrapper = GrpcModelWrapper(client, model_metadata)
+        return application_cls(model_wrapper, **kwargs)
+
+    def detect_scale(self, image):
+        """Send the image to the SCALE_DETECT_MODEL to detect the relative
+        scale difference from the image to the model's training data.
+
+        Args:
+            image (numpy.array): The image data.
+
+        Returns:
+            scale (float): The detected scale, used to rescale data.
+        """
+        start = timeit.default_timer()
+
+        app = self.get_grpc_app(settings.SCALE_DETECT_MODEL, ScaleDetection)
+
+        if not settings.SCALE_DETECT_ENABLED:
+            self.logger.debug('Scale detection disabled.')
+            return 1  # app.model_mpp
+
+        batch_size = app.model.get_batch_size()
+        detected_scale = app.predict(image, batch_size=batch_size)
+
+        self.logger.debug('Scale %s detected in %s seconds',
+                          detected_scale, timeit.default_timer() - start)
+
+        # detected_scale = detected_scale * app.model_mpp
+        return detected_scale
 
     def get_image_scale(self, scale, image, redis_hash):
         """Calculate scale of image and rescale"""
@@ -412,326 +418,9 @@ class TensorFlowServingConsumer(Consumer):
                                      settings.MAX_SCALE))
         return scale
 
-    def _predict_big_image(self,
-                           image,
-                           model_name,
-                           model_version,
-                           model_shape,
-                           model_input_name='image',
-                           model_dtype='DT_FLOAT',
-                           untile=True,
-                           stride_ratio=0.75):
-        """Use tile_image to tile image for the model and untile the results.
-
-        Args:
-            image (numpy.array): image data as numpy.
-            model_name (str): hosted model to send image data.
-            model_version (str): model version to query.
-            model_shape (tuple): shape of the model's expected input.
-            model_dtype (str): dtype of the model's input array.
-            model_input_name (str): name of the model's input array.
-            untile (bool): untiles results back to image shape if True.
-            stride_ratio (float): amount to overlap between tiles, (0, 1].
-
-        Returns:
-            numpy.array: untiled results from the model.
-        """
-        model_ndim = len(model_shape)
-        input_shape = (model_shape[model_ndim - 3], model_shape[model_ndim - 2])
-
-        ratio = (model_shape[model_ndim - 3] / settings.TF_MIN_MODEL_SIZE) * \
-                (model_shape[model_ndim - 2] / settings.TF_MIN_MODEL_SIZE) * \
-                (model_shape[model_ndim - 1])
-
-        batch_size = int(settings.TF_MAX_BATCH_SIZE // ratio)
-
-        tiles, tiles_info = tile_image(
-            np.expand_dims(image, axis=0),
-            model_input_shape=input_shape,
-            stride_ratio=stride_ratio)
-
-        self.logger.debug('Tiling image of shape %s into shape %s.',
-                          image.shape, tiles.shape)
-
-        # max_batch_size is 1 by default.
-        # dependent on the tf-serving configuration
-        results = []
-        for t in range(0, tiles.shape[0], batch_size):
-            batch = tiles[t:t + batch_size]
-            output = self.grpc_image(
-                batch, model_name, model_version, model_shape,
-                in_tensor_name=model_input_name,
-                in_tensor_dtype=model_dtype)
-
-            if not isinstance(output, list):
-                output = [output]
-
-            if len(results) == 0:
-                results = output
-            else:
-                for i, o in enumerate(output):
-                    results[i] = np.vstack((results[i], o))
-
-        if not untile:
-            image = results
-        else:
-            image = [untile_image(r, tiles_info, model_input_shape=input_shape)
-                     for r in results]
-
-        image = image[0] if len(image) == 1 else image
-        return image
-
-    def _predict_small_image(self,
-                             image,
-                             model_name,
-                             model_version,
-                             model_shape,
-                             model_input_name='image',
-                             model_dtype='DT_FLOAT'):
-        """Pad an image that is too small for the model, and unpad the results.
-
-        Args:
-            img (numpy.array): The too-small image to be predicted with
-                model_name and model_version.
-            model_name (str): hosted model to send image data.
-            model_version (str): model version to query.
-            model_shape (tuple): shape of the model's expected input.
-            model_input_name (str): name of the model's input array.
-            model_dtype (str): dtype of the model's input array.
-
-        Returns:
-            numpy.array: unpadded results from the model.
-        """
-        pad_width = []
-        model_ndim = len(model_shape)
-        for i in range(image.ndim):
-            if i in {image.ndim - 3, image.ndim - 2}:
-                if i == image.ndim - 3:
-                    diff = model_shape[model_ndim - 3] - image.shape[i]
-                else:
-                    diff = model_shape[model_ndim - 2] - image.shape[i]
-
-                if diff > 0:
-                    if diff % 2:
-                        pad_width.append((diff // 2, diff // 2 + 1))
-                    else:
-                        pad_width.append((diff // 2, diff // 2))
-                else:
-                    pad_width.append((0, 0))
-            else:
-                pad_width.append((0, 0))
-
-        self.logger.info('Padding image from shape %s to shape %s.',
-                         image.shape, tuple([x + y1 + y2 for x, (y1, y2) in
-                                             zip(image.shape, pad_width)]))
-
-        padded_img = np.pad(image, pad_width, 'reflect')
-        image = self.grpc_image(padded_img, model_name, model_version,
-                                model_shape, in_tensor_name=model_input_name,
-                                in_tensor_dtype=model_dtype)
-
-        image = [image] if not isinstance(image, list) else image
-
-        # pad batch_size and frames for each output.
-        pad_widths = [pad_width] * len(image)
-        for i, im in enumerate(image):
-            while len(pad_widths[i]) < im.ndim:
-                pad_widths[i].insert(0, (0, 0))
-
-        # unpad results
-        image = [utils.unpad_image(i, p) for i, p in zip(image, pad_widths)]
-        image = image[0] if len(image) == 1 else image
-
-        return image
-
-    def predict(self, image, model_name, model_version, untile=True):
-        """Performs model inference on the image data.
-
-        Args:
-            image (numpy.array): the image data
-            model_name (str): hosted model to send image data.
-            model_version (int): model version to query.
-            untile (bool): Whether to untile the tiled inference results. This
-                should be True when the model output is the same shape as the
-                input, and False otherwise.
-        """
-        start = timeit.default_timer()
-        model_metadata = self.get_model_metadata(model_name, model_version)
-
-        # TODO: generalize for more than a single input.
-        if len(model_metadata) > 1:
-            raise ValueError('Model {}:{} has {} required inputs but was only '
-                             'given {} inputs.'.format(
-                                 model_name, model_version,
-                                 len(model_metadata), len(image)))
-        model_metadata = model_metadata[0]
-
-        model_input_name = model_metadata['in_tensor_name']
-        model_dtype = model_metadata['in_tensor_dtype']
-
-        model_shape = [int(x) for x in model_metadata['in_tensor_shape'].split(',')]
-        model_ndim = len(model_shape)
-
-        image = image[0] if image.shape[0] == 1 else image
-
-        if model_ndim != image.ndim + 1:
-            raise ValueError('Image of shape {} is incompatible with model '
-                             '{}:{} with input shape {}'.format(
-                                 image.shape, model_name, model_version,
-                                 tuple(model_shape)))
-
-        if (image.shape[-2] > settings.MAX_IMAGE_WIDTH or
-                image.shape[-3] > settings.MAX_IMAGE_HEIGHT):
-            raise ValueError(
-                'The image is too large! Rescaled images have a maximum size '
-                'of ({}, {}) but found size {}.'.format(
-                    settings.MAX_IMAGE_WIDTH,
-                    settings.MAX_IMAGE_HEIGHT,
-                    image.shape))
-
-        size_x = model_shape[model_ndim - 3]
-        size_y = model_shape[model_ndim - 2]
-
-        size_x = image.shape[image.ndim - 3] if size_x <= 0 else size_x
-        size_y = image.shape[image.ndim - 2] if size_y <= 0 else size_y
-
-        self.logger.debug('Calling predict on model %s:%s with input shape %s'
-                          ' and dtype %s to segment an image of shape %s.',
-                          model_name, model_version, tuple(model_shape),
-                          model_dtype, image.shape)
-
-        if (image.shape[image.ndim - 3] < size_x or
-                image.shape[image.ndim - 2] < size_y):
-            # image is too small for the model, pad the image.
-            image = self._predict_small_image(image, model_name, model_version,
-                                              model_shape, model_input_name,
-                                              model_dtype)
-        elif (image.shape[image.ndim - 3] > size_x or
-              image.shape[image.ndim - 2] > size_y):
-            # image is too big for the model, multiple images are tiled.
-            image = self._predict_big_image(image, model_name, model_version,
-                                            model_shape, model_input_name,
-                                            model_dtype, untile=untile)
-        else:
-            # image size is perfect, just send it to the model
-            image = self.grpc_image(image, model_name, model_version,
-                                    model_shape, model_input_name, model_dtype)
-
-        if isinstance(image, list):
-            output_shapes = [i.shape for i in image]
-        else:
-            output_shapes = [image.shape]  # cast as list
-
-        self.logger.debug('Got response from model %s:%s of shape %s in %s '
-                          'seconds.', model_name, model_version, output_shapes,
-                          timeit.default_timer() - start)
-
-        return image
-
-    def _get_processing_function(self, process_type, function_name):
-        """Based on the function category and name, return the function.
-
-        Args:
-            process_type (str): "pre" or "post" processing
-            function_name (str): Name processing function, must exist in
-                settings.PROCESSING_FUNCTIONS.
-
-        Returns:
-            function: the selected pre- or post-processing function.
-        """
-        clean = lambda x: str(x).lower()
-        # first, verify the route parameters
-        name = clean(function_name)
-        cat = clean(process_type)
-        if cat not in settings.PROCESSING_FUNCTIONS:
-            raise ValueError('Processing functions are either "pre" or "post" '
-                             'processing.  Got %s.' % cat)
-
-        if name not in settings.PROCESSING_FUNCTIONS[cat]:
-            raise ValueError('"%s" is not a valid %s-processing function'
-                             % (name, cat))
-        return settings.PROCESSING_FUNCTIONS[cat][name]
-
-    def process(self, image, key, process_type):
-        """Apply the pre- or post-processing function to the image data.
-
-        Args:
-            image (numpy.array): The image data to process.
-            key (str): The name of the function to use.
-            process_type (str): "pre" or "post" processing.
-
-        Returns:
-            numpy.array: The processed image data.
-        """
-        start = timeit.default_timer()
-        if not key:
-            return image
-
-        f = self._get_processing_function(process_type, key)
-
-        if key == 'retinanet-semantic':
-            # image[:-1] is targeted at a two semantic head panoptic model
-            # TODO This may need to be modified and generalized in the future
-            results = f(image[:-1])
-        elif key == 'retinanet':
-            results = f(image, self._rawshape[0], self._rawshape[1])
-        else:
-            results = f(image)
-
-        if not isinstance(results, list) and results.shape[0] == 1:
-            results = np.squeeze(results, axis=0)
-
-        finished = timeit.default_timer() - start
-
-        self.update_key(self._redis_hash, {
-            '{}process_time'.format(process_type): finished
-        })
-
-        self.logger.debug('%s-processed key %s (model %s:%s, preprocessing: %s,'
-                          ' postprocessing: %s) in %s seconds.',
-                          process_type.capitalize(), self._redis_hash,
-                          self._redis_values.get('model_name'),
-                          self._redis_values.get('model_version'),
-                          self._redis_values.get('preprocess_function'),
-                          self._redis_values.get('postprocess_function'),
-                          finished)
-
-        return results
-
-    def preprocess(self, image, keys):
-        """Wrapper for _process_image but can only call with type="pre".
-
-        Args:
-            image (numpy.array): image data
-            keys (list): list of function names to apply to the image
-
-        Returns:
-            numpy.array: pre-processed image data
-        """
-        pre = None
-        for key in keys:
-            x = pre if pre else image
-            pre = self.process(x, key, 'pre')
-        return pre
-
-    def postprocess(self, image, keys):
-        """Wrapper for _process_image but can only call with type="post".
-
-        Args:
-            image (numpy.array): image data
-            keys (list): list of function names to apply to the image
-
-        Returns:
-            numpy.array: post-processed image data
-        """
-        post = None
-        for key in keys:
-            x = post if post else image
-            post = self.process(x, key, 'post')
-        return post
-
-    def save_output(self, image, redis_hash, save_name, output_shape=None):
-        with utils.get_tempdir() as tempdir:
+    def save_output(self, image, save_name):
+        """Save output images into a zip file and upload it."""
+        with tempfile.TemporaryDirectory() as tempdir:
             # Save each result channel as an image file
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
@@ -739,21 +428,10 @@ class TensorFlowServingConsumer(Consumer):
             if not isinstance(image, list):
                 image = [image]
 
-            # Rescale image to original size before sending back to user
             outpaths = []
-            added_batch = False
-            for i, im in enumerate(image):
-                if output_shape:
-                    if im.shape[0] != 1:
-                        added_batch = True
-                        im = np.expand_dims(im, axis=0)  # add batch for resize
-                    self.logger.info('Resizing image of shape %s to %s', im.shape, output_shape)
-                    im = resize(im, output_shape, labeled_image=True)
-                    if added_batch:
-                        im = im[0]
-
+            for img in image:
                 outpaths.extend(utils.save_numpy_array(
-                    im,
+                    img,
                     name=str(name),
                     subdir=subdir, output_dir=tempdir))
 
@@ -762,7 +440,7 @@ class TensorFlowServingConsumer(Consumer):
 
             # Upload the zip file to cloud storage bucket
             cleaned = zip_file.replace(tempdir, '')
-            subdir = os.path.dirname(settings._strip(cleaned))
+            subdir = os.path.dirname(utils.strip_bucket_path(cleaned))
             subdir = subdir if subdir else None
             dest, output_url = self.storage.upload(zip_file, subdir=subdir)
 
@@ -794,12 +472,12 @@ class ZipFileConsumer(Consumer):
         """Extract all image files and upload them to storage and redis"""
         all_hashes = set()
         archive_uuid = uuid.uuid4().hex
-        with utils.get_tempdir() as tempdir:
+        with tempfile.TemporaryDirectory() as tempdir:
             fname = self.storage.download(hvalues.get('input_file_name'), tempdir)
             image_files = utils.get_image_files_from_dir(fname, tempdir)
             for i, imfile in enumerate(image_files):
 
-                clean_imfile = settings._strip(imfile.replace(tempdir, ''))
+                clean_imfile = utils.strip_bucket_path(imfile.replace(tempdir, ''))
                 # Save each result channel as an image file
                 subdir = os.path.join(archive_uuid, os.path.dirname(clean_imfile))
                 dest, _ = self.storage.upload(imfile, subdir=subdir)
@@ -870,7 +548,7 @@ class ZipFileConsumer(Consumer):
 
     def _upload_finished_children(self, finished_children, redis_hash):
         # saved_files = set()
-        with utils.get_tempdir() as tempdir:
+        with tempfile.TemporaryDirectory() as tempdir:
             filename = '{}.zip'.format(uuid.uuid4().hex)
 
             zip_path = os.path.join(tempdir, filename)
@@ -930,13 +608,7 @@ class ZipFileConsumer(Consumer):
                                 len(failed_hashes),
                                 json.dumps(failed_hashes, indent=4))
 
-        # check python2 vs python3
-        if hasattr(urllib, 'parse'):
-            url_encode = urllib.parse.urlencode  # pylint: disable=E1101
-        else:
-            url_encode = urllib.urlencode  # pylint: disable=E1101
-
-        return url_encode(failed_hashes)
+        return urllib.parse.urlencode(failed_hashes)
 
     def _cleanup(self, redis_hash, children, done, failed):
         start = timeit.default_timer()

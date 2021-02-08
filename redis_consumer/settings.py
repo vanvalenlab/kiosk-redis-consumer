@@ -30,19 +30,14 @@ from __future__ import print_function
 
 import os
 
-import grpc
 from decouple import config
 
-from redis_consumer import processing
+import deepcell
 
 
-# remove leading/trailing '/'s from cloud bucket folder names
-def _strip(x):
-    return '/'.join(y for y in x.split('/') if y)
-
-
-# Debug Mode
-DEBUG = config('DEBUG', cast=bool, default=False)
+# Application directories
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DOWNLOAD_DIR = os.path.join(ROOT_DIR, 'download')
 
 # Consumer settings
 INTERVAL = config('INTERVAL', default=10, cast=int)
@@ -67,42 +62,19 @@ TF_MIN_MODEL_SIZE = config('TF_MIN_MODEL_SIZE', default=128, cast=int)
 GRPC_TIMEOUT = config('GRPC_TIMEOUT', default=30, cast=int)
 GRPC_BACKOFF = config('GRPC_BACKOFF', default=3, cast=int)
 
-# Retry-able gRPC status codes
-GRPC_RETRY_STATUSES = {
-    grpc.StatusCode.DEADLINE_EXCEEDED,
-    grpc.StatusCode.RESOURCE_EXHAUSTED,
-    grpc.StatusCode.UNAVAILABLE
-}
-
 # timeout/backoff wait time in seconds
 REDIS_TIMEOUT = config('REDIS_TIMEOUT', default=3, cast=int)
 EMPTY_QUEUE_TIMEOUT = config('EMPTY_QUEUE_TIMEOUT', default=5, cast=int)
 DO_NOTHING_TIMEOUT = config('DO_NOTHING_TIMEOUT', default=0.5, cast=float)
 STORAGE_MAX_BACKOFF = config('STORAGE_MAX_BACKOFF', default=60, cast=float)
 
-# Cloud storage
-CLOUD_PROVIDER = config('CLOUD_PROVIDER', cast=str, default='gke').lower()
-
-# Application directories
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DOWNLOAD_DIR = os.path.join(ROOT_DIR, 'download')
-OUTPUT_DIR = os.path.join(ROOT_DIR, 'output')
-LOG_DIR = os.path.join(ROOT_DIR, 'logs')
-
-for d in (DOWNLOAD_DIR, OUTPUT_DIR, LOG_DIR):
-    try:
-        os.mkdir(d)
-    except OSError:
-        pass
-
 # AWS Credentials
 AWS_REGION = config('AWS_REGION', default='us-east-1')
-AWS_S3_BUCKET = config('AWS_S3_BUCKET', default='default-bucket')
 AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='specify_me')
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='specify_me')
 
-# Google Credentials
-GCLOUD_STORAGE_BUCKET = config('GKE_BUCKET', default='default-bucket')
+# Cloud Storage Bucket
+STORAGE_BUCKET = config('STORAGE_BUCKET', default='s3://default-bucket')
 
 # Pod Meteadta
 HOSTNAME = config('HOSTNAME', default='host-unkonwn')
@@ -117,35 +89,9 @@ EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
 # Configure expiration for cached model metadata
 METADATA_EXPIRE_TIME = config('METADATA_EXPIRE_TIME', default=30, cast=int)
 
-# Pre- and Post-processing settings
-PROCESSING_FUNCTIONS = {
-    'pre': {
-        'normalize': processing.normalize,
-        'histogram_normalization': processing.phase_preprocess,
-        'multiplex_preprocess': processing.multiplex_preprocess,
-        'none': lambda x: x
-    },
-    'post': {
-        'deepcell': processing.pixelwise,  # TODO: this is deprecated.
-        'pixelwise': processing.pixelwise,
-        'watershed': processing.watershed,
-        'retinanet': processing.retinanet_to_label_image,
-        'retinanet-semantic': processing.retinanet_semantic_to_label_image,
-        'deep_watershed': processing.deep_watershed,
-        'multiplex_postprocess_consumer': processing.multiplex_postprocess_consumer,
-        'none': lambda x: x
-    },
-}
-
 # Tracking settings
-TRACKING_SEGMENT_MODEL = config('TRACKING_SEGMENT_MODEL', default='panoptic:3', cast=str)
-TRACKING_POSTPROCESS_FUNCTION = config('TRACKING_POSTPROCESS_FUNCTION',
-                                       default='retinanet', cast=str)
-
 TRACKING_MODEL = config('TRACKING_MODEL', default='TrackingModel:0', cast=str)
-
 DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=False, cast=bool)
-NORMALIZE_TRACKING = config('NORMALIZE_TRACKING', default=True, cast=bool)
 
 # tracking.cell_tracker settings TODO: can we extract from model_metadata?
 MAX_DISTANCE = config('MAX_DISTANCE', default=50, cast=int)
@@ -155,12 +101,11 @@ BIRTH = config('BIRTH', default=0.99, cast=float)
 DEATH = config('DEATH', default=0.99, cast=float)
 NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30, cast=int)
 
-MAX_SCALE = config('MAX_SCALE', default=3, cast=float)
-MIN_SCALE = config('MIN_SCALE', default=1 / MAX_SCALE, cast=float)
-
 # Scale detection settings
 SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:1')
 SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
+MAX_SCALE = config('MAX_SCALE', default=3, cast=float)
+MIN_SCALE = config('MIN_SCALE', default=1 / MAX_SCALE, cast=float)
 
 # Type detection settings
 LABEL_DETECT_MODEL = config('LABEL_DETECT_MODEL', default='LabelDetection:1', cast=str)
@@ -176,14 +121,8 @@ MODEL_CHOICES = {
     2: config('CYTOPLASM_MODEL', default='FluoCytoSegmentation:0', cast=str)
 }
 
-PREPROCESS_CHOICES = {
-    0: config('NUCLEAR_PREPROCESS', default='normalize', cast=str),
-    1: config('PHASE_PREPROCESS', default='histogram_normalization', cast=str),
-    2: config('CYTOPLASM_PREPROCESS', default='histogram_normalization', cast=str)
-}
-
-POSTPROCESS_CHOICES = {
-    0: config('NUCLEAR_POSTPROCESS', default='deep_watershed', cast=str),
-    1: config('PHASE_POSTPROCESS', default='deep_watershed', cast=str),
-    2: config('CYTOPLASM_POSTPROCESS', default='deep_watershed', cast=str)
+APPLICATION_CHOICES = {
+    0: deepcell.applications.NuclearSegmentation,
+    1: deepcell.applications.CytoplasmSegmentation,
+    2: deepcell.applications.CytoplasmSegmentation
 }

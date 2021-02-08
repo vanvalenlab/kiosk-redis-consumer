@@ -5,6 +5,7 @@ logs/
 protos/
 docs/
 build/
+.github/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

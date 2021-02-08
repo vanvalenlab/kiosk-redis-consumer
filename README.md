@@ -17,7 +17,6 @@ Consumers consume Redis events. Each type of Redis event is put into a queue (e.
 Consumers call the `_consume` method to consume each item it finds in the queue.
 This method must be implemented for every consumer.
 
-
 The quickest way to get a custom consumer up and running is to:
 
 1. Add a new file for the consumer: `redis_consumer/consumers/my_new_consumer.py`
@@ -38,28 +37,19 @@ def _consume(self, redis_hash):
                             redis_hash, hvals.get('status'))
         return hvals.get('status')
 
-    # the data to process with the model, required.
-    input_file_name = hvals.get('input_file_name')
+    # Load input image
+    fname = hvals.get('input_file_name')
+    image = self.download_image(fname)
 
     # the model can be passed in as an environment variable,
     # and parsed in settings.py.
-    model_name, model_version = 'CustomModel:1'.split(':')
+    model = 'NuclearSegmentation:1'
 
-    with utils.get_tempdir() as tempdir:
-        # download the image file
-        fname = self.storage.download(input_file_name, tempdir)
-        # load image file as data
-        image = utils.get_image(fname)
+    # Use a custom Application from deepcell.applications
+    app = self.get_grpc_app(model, deepcell.applications.NuclearSegmentation)
 
-    # pre- and post-processing can be used with the BaseConsumer.process,
-    # which uses pre-defined functions in settings.PROCESSING_FUNCTIONS.
-    image = self.preprocess(image, 'normalize')
-
-    # send the data to the model
-    results = self.predict(image, model_name, model_version)
-
-    # post-process model results
-    image = self.postprocess(image, 'deep_watershed')
+    # Run the predictions on the image
+    results = app.predict(image)
 
     # save the results as an image file and upload it to the bucket
     save_name = hvals.get('original_name', fname)
@@ -90,8 +80,7 @@ The consumer is configured using environment variables. Please find a table of a
 | :--- | :--- | :--- |
 | `QUEUE` | **REQUIRED**: The Redis job queue to check for items to consume. | `"predict"` |
 | `CONSUMER_TYPE` | **REQUIRED**: The type of consumer to run, used in `consume-redis-events.py`. | `"image"` |
-| `CLOUD_PROVIDER` | **REQUIRED**: The cloud provider, one of `"aws"` and `"gke"`. | `"gke"` |
-| `GCLOUD_STORAGE_BUCKET` | **REQUIRED**: The name of the storage bucket used to download and upload files. | `"default-bucket"` |
+| `STORAGE_BUCKET` | **REQUIRED**: The name of the storage bucket used to download and upload files. | `"s3://default-bucket"` |
 | `INTERVAL` | How frequently the consumer checks the Redis queue for items, in seconds. | `5` |
 | `REDIS_HOST` | The IP address or hostname of Redis. | `"redis-master"` |
 | `REDIS_PORT` | The port used to connect to Redis. | `6379` |

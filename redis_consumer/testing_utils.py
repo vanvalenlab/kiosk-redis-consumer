@@ -48,10 +48,14 @@ def redis_client():
     yield client
 
 
-def _get_image(img_h=300, img_w=300):
-    bias = np.random.rand(img_w, img_h) * 64
-    variance = np.random.rand(img_w, img_h) * (255 - 64)
-    img = np.random.rand(img_w, img_h) * variance + bias
+def _get_image(img_h=300, img_w=300, channels=None):
+    shape = [img_w, img_h]
+    if channels:
+        shape.append(channels)
+    shape = tuple(shape)
+    bias = np.random.rand(*shape) * 64
+    variance = np.random.rand(*shape) * (255 - 64)
+    img = np.random.rand(*shape) * variance + bias
     return img
 
 
@@ -72,12 +76,14 @@ class DummyStorage(object):
                 img = _get_image()
                 base, ext = os.path.splitext(path)
                 _path = '{}{}{}'.format(base, i, ext)
-                tiff.imsave(os.path.join(dest, _path), img)
-                paths.append(_path)
+                outpath = os.path.join(dest, _path)
+                tiff.imsave(outpath, img)
+                paths.append(outpath)
             return utils.zip_files(paths, dest)
         img = _get_image()
-        tiff.imsave(os.path.join(dest, path), img)
-        return path
+        outpath = os.path.join(dest, path)
+        tiff.imsave(outpath, img)
+        return outpath
 
     def upload(self, zip_path, subdir=None):
         return 'zip_path.zip', 'blob.public_url'
@@ -88,10 +94,16 @@ class DummyStorage(object):
 
 def make_model_metadata_of_size(model_shape=(-1, 256, 256, 2)):
 
+    model_shape = model_shape if isinstance(model_shape, list) else [model_shape]
+
     def get_model_metadata(model_name, model_version):  # pylint: disable=unused-argument
-        return [{
-            'in_tensor_name': 'image',
-            'in_tensor_dtype': 'DT_FLOAT',
-            'in_tensor_shape': ','.join(str(s) for s in model_shape),
-        }]
+        output = []
+
+        for ms in model_shape:
+            output.append({
+                'in_tensor_name': 'image',
+                'in_tensor_dtype': 'DT_FLOAT',
+                'in_tensor_shape': ','.join(str(s) for s in ms),
+            })
+        return output
     return get_model_metadata

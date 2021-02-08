@@ -51,23 +51,29 @@ class StorageException(Exception):
     pass
 
 
-def get_client(cloud_provider):
-    """Returns the Storage Client appropriate for the cloud provider
-    # Arguments:
-        cloud_provider: Indicates which cloud platform (AWS vs GKE)
-    # Returns:
-        storage_client: Client for interacting with the cloud.
+def get_client(bucket):
+    """Get the Storage Client appropriate for the bucket.
+
+    Args:
+        bucket (str): Bucket including
+
+    Returns:
+        ~Storage: Client for interacting with the cloud.
     """
-    cloud_provider = str(cloud_provider).lower()
+    try:
+        protocol, bucket_name = str(bucket).lower().split('://', 1)
+    except ValueError:
+        raise ValueError('Invalid storage bucket name: {}'.format(bucket))
+
     logger = logging.getLogger('storage.get_client')
-    if cloud_provider == 'aws':
-        storage_client = S3Storage(settings.AWS_S3_BUCKET)
-    elif cloud_provider == 'gke':
-        storage_client = GoogleStorage(settings.GCLOUD_STORAGE_BUCKET)
+    if protocol == 's3':
+        storage_client = S3Storage(bucket_name)
+    elif protocol == 'gs':
+        storage_client = GoogleStorage(bucket_name)
     else:
-        errmsg = 'Bad value for CLOUD_PROVIDER: %s'
-        logger.error(errmsg, cloud_provider)
-        raise ValueError(errmsg % cloud_provider)
+        errmsg = 'Unknown STORAGE_BUCKET protocol: %s'
+        logger.error(errmsg, protocol)
+        raise ValueError(errmsg % protocol)
     return storage_client
 
 
@@ -88,6 +94,12 @@ class Storage(object):
         self.output_dir = 'output'
         self.logger = logging.getLogger(str(self.__class__.__name__))
         self.max_backoff = max_backoff
+
+        # try to write the download dir in case it does not exist.
+        try:
+            os.mkdir(self.download_dir)
+        except OSError:
+            pass
 
     def get_backoff(self, attempts):
         """Get backoff time based on previous number of attempts"""

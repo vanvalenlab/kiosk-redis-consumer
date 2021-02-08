@@ -23,10 +23,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Tests for MultiplexConsumer"""
+"""Tests for post-processing functions"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import random
 
 import numpy as np
 
@@ -34,45 +36,72 @@ import pytest
 
 from redis_consumer import consumers
 from redis_consumer import settings
-from redis_consumer.testing_utils import _get_image
+
 from redis_consumer.testing_utils import Bunch
 from redis_consumer.testing_utils import DummyStorage
 from redis_consumer.testing_utils import redis_client
+from redis_consumer.testing_utils import _get_image
 
 
-class TestMultiplexConsumer(object):
+class TestSegmentationConsumer(object):
     # pylint: disable=R0201,W0621
 
-    def test_detect_scale(self, mocker, redis_client):
+    def test_detect_label(self, mocker, redis_client):
         # pylint: disable=W0613
         shape = (1, 256, 256, 1)
-        consumer = consumers.MultiplexConsumer(redis_client, None, 'q')
+        queue = 'q'
+        consumer = consumers.SegmentationConsumer(redis_client, None, queue)
 
-        image = _get_image(shape[1] * 2, shape[2] * 2, shape[3])
-
-        expected_scale = 1  # random.uniform(0.5, 1.5)
-        # model_mpp = random.uniform(0.5, 1.5)
+        expected_label = random.randint(1, 9)
 
         mock_app = Bunch(
-            predict=lambda *x, **y: expected_scale,
-            # model_mpp=model_mpp,
+            predict=lambda *x, **y: expected_label,
             model=Bunch(get_batch_size=lambda *x: 1))
 
         mocker.patch.object(consumer, 'get_grpc_app', lambda *x: mock_app)
 
-        mocker.patch.object(settings, 'SCALE_DETECT_ENABLED', False)
-        scale = consumer.detect_scale(image)
-        assert scale == 1  # model_mpp
+        image = _get_image(shape[1] * 2, shape[2] * 2, shape[3])
 
-        mocker.patch.object(settings, 'SCALE_DETECT_ENABLED', True)
-        scale = consumer.detect_scale(image)
-        assert scale == expected_scale  # * model_mpp
+        mocker.patch.object(settings, 'LABEL_DETECT_ENABLED', False)
+        label = consumer.detect_label(image)
+        assert label == 0
+
+        mocker.patch.object(settings, 'LABEL_DETECT_ENABLED', True)
+        label = consumer.detect_label(image)
+        assert label == expected_label
+
+    def test_get_image_label(self, mocker, redis_client):
+        queue = 'q'
+        stg = DummyStorage()
+        consumer = consumers.SegmentationConsumer(redis_client, stg, queue)
+        image = _get_image(256, 256, 1)
+
+        # test no label provided
+        expected = 1
+        mocker.patch.object(consumer, 'detect_label', lambda *x: expected)
+        label = consumer.get_image_label(None, image, 'some hash')
+        assert label == expected
+
+        # test label provided
+        expected = 2
+        label = consumer.get_image_label(expected, image, 'some hash')
+        assert label == expected
+
+        # test label provided is invalid
+        with pytest.raises(ValueError):
+            label = -1
+            consumer.get_image_label(label, image, 'some hash')
+
+        # test label provided is bad type
+        with pytest.raises(ValueError):
+            label = 'badval'
+            consumer.get_image_label(label, image, 'some hash')
 
     def test__consume_finished_status(self, redis_client):
         queue = 'q'
         storage = DummyStorage()
 
-        consumer = consumers.MultiplexConsumer(redis_client, storage, queue)
+        consumer = consumers.SegmentationConsumer(redis_client, storage, queue)
 
         empty_data = {'input_file_name': 'file.tiff'}
 
@@ -91,14 +120,14 @@ class TestMultiplexConsumer(object):
 
     def test__consume(self, mocker, redis_client):
         # pylint: disable=W0613
-        queue = 'multiplex'
+        queue = 'predict'
         storage = DummyStorage()
 
-        consumer = consumers.MultiplexConsumer(redis_client, storage, queue)
+        consumer = consumers.SegmentationConsumer(redis_client, storage, queue)
 
         empty_data = {'input_file_name': 'file.tiff'}
 
-        output_shape = (1, 256, 256, 2)
+        output_shape = (1, 32, 32, 1)
 
         mock_app = Bunch(
             predict=lambda *x, **y: np.random.randint(1, 5, size=output_shape),
@@ -111,7 +140,8 @@ class TestMultiplexConsumer(object):
 
         mocker.patch.object(consumer, 'get_grpc_app', lambda *x: mock_app)
         mocker.patch.object(consumer, 'get_image_scale', lambda *x: 1)
-        mocker.patch.object(consumer, 'validate_model_input', lambda *x: x[0])
+        mocker.patch.object(consumer, 'get_image_label', lambda *x: 1)
+        mocker.patch.object(consumer, 'validate_model_input', lambda *x: True)
 
         test_hash = 'some hash'
 

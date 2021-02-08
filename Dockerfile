@@ -23,13 +23,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-FROM python:3.6
+FROM python:3.6-slim-buster
 
 WORKDIR /usr/src/app
 
-COPY requirements.txt .
+RUN apt-get update && apt-get install -y \
+    build-essential libglib2.0-0 && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-no-deps.txt ./
+
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --no-deps -r requirements-no-deps.txt
 
 COPY . .
 

@@ -109,18 +109,20 @@ class DummyS3Client(object):
 
 
 def test_get_client():
-    aws = storage.get_client('aws')
-    AWS = storage.get_client('AWS')
+    aws = storage.get_client('s3://bucket')
+    AWS = storage.get_client('S3://anotherbucket')
     assert isinstance(aws, type(AWS))
 
     # TODO: set GCLOUD env vars to test this
     # with pytest.raises(OSError):
-    gke = storage.get_client('gke')
-    GKE = storage.get_client('GKE')
+    gke = storage.get_client('gs://bucket')
+    GKE = storage.get_client('GS://anotherbucket')
     assert isinstance(gke, type(GKE))
 
-    with pytest.raises(ValueError):
-        _ = storage.get_client('bad_value')
+    bad_values = ['s3', 'gs', 's3:/badval', 'gs//badval', 'other://bucket']
+    for bad_value in bad_values:
+        with pytest.raises(ValueError):
+            _ = storage.get_client(bad_value)
 
 
 class TestStorage(object):
@@ -129,26 +131,27 @@ class TestStorage(object):
         max_backoff = 30
         client = storage.Storage('bucket', max_backoff=max_backoff)
         backoff = client.get_backoff(attempts=0)
-        assert 1 < backoff < 2
+        assert 1 < backoff <= 2
 
         backoff = client.get_backoff(attempts=3)
-        assert 8 < backoff < 9
+        assert 8 < backoff <= 9
 
         backoff = client.get_backoff(attempts=5)
         assert backoff == max_backoff
 
-    def test_get_download_path(self, mocker):
+    def test_get_download_path(self, mocker, tmpdir):
+        tmpdir = str(tmpdir)
         mocker.patch('redis_consumer.storage.Storage.get_storage_client',
                      lambda *x: True)
-        with utils.get_tempdir() as tempdir:
-            bucket = 'test-bucket'
-            stg = storage.Storage(bucket, tempdir)
-            filekey = 'upload_dir/key/to.zip'
-            path = stg.get_download_path(filekey, tempdir)
-            path2 = stg.get_download_path(filekey)
-            assert path == path2
-            assert str(path).startswith(tempdir)
-            assert str(path).endswith(filekey.replace('upload_dir/', ''))
+
+        bucket = 'test-bucket'
+        stg = storage.Storage(bucket, tmpdir)
+        filekey = 'upload_dir/key/to.zip'
+        path = stg.get_download_path(filekey, tmpdir)
+        path2 = stg.get_download_path(filekey)
+        assert path == path2
+        assert str(path).startswith(tmpdir)
+        assert str(path).endswith(filekey.replace('upload_dir/', ''))
 
 
 class TestGoogleStorage(object):

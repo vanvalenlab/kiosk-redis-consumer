@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""MultiplexConsumer class for consuming multiplex segmentation jobs."""
+"""SegmentationConsumer class for consuming image segmentation jobs."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -32,41 +32,56 @@ import timeit
 
 import numpy as np
 
-from deepcell.applications import ScaleDetection, MultiplexSegmentation
+from deepcell.applications import LabelDetection
+from deepcell_toolbox.processing import normalize
 
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import settings
 
 
-class MultiplexConsumer(TensorFlowServingConsumer):
+class SegmentationConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
-    def detect_scale(self, image):
-        """Send the image to the SCALE_DETECT_MODEL to detect the relative
-        scale difference from the image to the model's training data.
+    def detect_label(self, image):
+        """Send the image to the LABEL_DETECT_MODEL to detect the type of image
+        data. The model output is mapped with settings.MODEL_CHOICES.
 
         Args:
             image (numpy.array): The image data.
 
         Returns:
-            scale (float): The detected scale, used to rescale data.
+            label (int): The detected label.
         """
         start = timeit.default_timer()
 
-        app = self.get_grpc_app(settings.SCALE_DETECT_MODEL, ScaleDetection)
+        app = self.get_grpc_app(settings.LABEL_DETECT_MODEL, LabelDetection)
 
-        if not settings.SCALE_DETECT_ENABLED:
-            self.logger.debug('Scale detection disabled.')
-            return 1
+        if not settings.LABEL_DETECT_ENABLED:
+            self.logger.debug('Label detection disabled. Label set to 0.')
+            return 0  # Use NuclearSegmentation as default model
 
-        # TODO: What to do with multi-channel data?
-        # detected_scale = app.predict(image[..., 0])
-        detected_scale = 1
+        batch_size = app.model.get_batch_size()
+        detected_label = app.predict(image, batch_size=batch_size)
 
-        self.logger.debug('Scale %s detected in %s seconds',
-                          detected_scale, timeit.default_timer() - start)
+        self.logger.debug('Label %s detected in %s seconds',
+                          detected_label, timeit.default_timer() - start)
 
-        return detected_scale
+        return int(detected_label)
+
+    def get_image_label(self, label, image, redis_hash):
+        """Calculate label of image."""
+        if not label:
+            # Detect scale of image (Default to 1)
+            label = self.detect_label(image)
+            self.logger.debug('Image label detected: %s.', label)
+            self.update_key(redis_hash, {'label': label})
+        else:
+            label = int(label)
+            self.logger.debug('Image label already calculated: %s.', label)
+            if label not in settings.APPLICATION_CHOICES:
+                raise ValueError('Label type {} is not supported'.format(label))
+
+        return label
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
@@ -85,19 +100,12 @@ class MultiplexConsumer(TensorFlowServingConsumer):
             'identity_started': self.name,
         })
 
-        # Get model_name and version
-        model_name, model_version = settings.MULTIPLEX_MODEL.split(':')
-
         _ = timeit.default_timer()
 
         # Load input image
         fname = hvals.get('input_file_name')
         image = self.download_image(fname)
-
-        # squeeze extra dimension that is added by get_image
-        image = np.squeeze(image)
-        # add in the batch dim
-        image = np.expand_dims(image, axis=0)
+        image = np.expand_dims(image, axis=0)  # add a batch dimension
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
@@ -105,16 +113,26 @@ class MultiplexConsumer(TensorFlowServingConsumer):
             'download_time': timeit.default_timer() - _,
         })
 
-        # TODO: implement detect_scale here for multiplex model
+        # Calculate scale of image and rescale
         scale = hvals.get('scale', '')
         scale = self.get_image_scale(scale, image, redis_hash)
+
+        label = hvals.get('label', '')
+        label = self.get_image_label(label, image, redis_hash)
+
+        # Grap appropriate model and application class
+        model = settings.MODEL_CHOICES[label]
+        app_cls = settings.APPLICATION_CHOICES[label]
+
+        model_name, model_version = model.split(':')
 
         # Validate input image
         image = self.validate_model_input(image, model_name, model_version)
 
         # Send data to the model
-        app = self.get_grpc_app(settings.MULTIPLEX_MODEL,
-                                MultiplexSegmentation)
+        self.update_key(redis_hash, {'status': 'predicting'})
+
+        app = self.get_grpc_app(model, app_cls)
 
         results = app.predict(image, batch_size=None,
                               image_mpp=scale * app.model_mpp)

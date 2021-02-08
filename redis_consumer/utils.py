@@ -32,127 +32,23 @@ import io
 import os
 import time
 import timeit
-import contextlib
 import hashlib
 import logging
-import shutil
 import tarfile
-import tempfile
 import zipfile
-import six
-
-import skimage
-from skimage.external import tifffile
 
 import numpy as np
-import keras_preprocessing.image
-import dict_to_protobuf
 import PIL
-
-from redis_consumer.pbs.types_pb2 import DESCRIPTOR
-from redis_consumer.pbs.tensor_pb2 import TensorProto
-from redis_consumer.pbs.tensor_shape_pb2 import TensorShapeProto
-from redis_consumer import settings
+from skimage.external import tifffile
+from tensorflow.keras.preprocessing.image import img_to_array
 
 
 logger = logging.getLogger('redis_consumer.utils')
 
 
-dtype_to_number = {
-    i.name: i.number for i in DESCRIPTOR.enum_types_by_name['DataType'].values
-}
-
-# TODO: build this dynamically
-number_to_dtype_value = {
-    1: 'float_val',
-    2: 'double_val',
-    3: 'int_val',
-    4: 'int_val',
-    5: 'int_val',
-    6: 'int_val',
-    7: 'string_val',
-    8: 'scomplex_val',
-    9: 'int64_val',
-    10: 'bool_val',
-    18: 'dcomplex_val',
-    19: 'half_val',
-    20: 'resource_handle_val'
-}
-
-
-def grpc_response_to_dict(grpc_response):
-    # TODO: 'unicode' object has no attribute 'ListFields'
-    # response_dict = dict_to_protobuf.protobuf_to_dict(grpc_response)
-    # return response_dict
-    grpc_response_dict = dict()
-
-    for k in grpc_response.outputs:
-        shape = [x.size for x in grpc_response.outputs[k].tensor_shape.dim]
-
-        dtype_constant = grpc_response.outputs[k].dtype
-
-        if dtype_constant not in number_to_dtype_value:
-            grpc_response_dict[k] = 'value not found'
-            logger.error('Tensor output data type not supported. '
-                         'Returning empty dict.')
-
-        dt = number_to_dtype_value[dtype_constant]
-        if shape == [1]:
-            grpc_response_dict[k] = eval(
-                'grpc_response.outputs[k].' + dt)[0]
-        else:
-            grpc_response_dict[k] = np.array(
-                eval('grpc_response.outputs[k].' + dt)).reshape(shape)
-
-    return grpc_response_dict
-
-
-def make_tensor_proto(data, dtype):
-    tensor_proto = TensorProto()
-
-    if isinstance(dtype, six.string_types):
-        dtype = dtype_to_number[dtype]
-
-    dim = [{'size': 1}]
-    values = [data]
-
-    if hasattr(data, 'shape'):
-        dim = [{'size': dim} for dim in data.shape]
-        values = list(data.reshape(-1))
-
-    tensor_proto_dict = {
-        'dtype': dtype,
-        'tensor_shape': {
-            'dim': dim
-        },
-        number_to_dtype_value[dtype]: values
-    }
-    dict_to_protobuf.dict_to_protobuf(tensor_proto_dict, tensor_proto)
-
-    return tensor_proto
-
-
-# Workaround for python2 not supporting `with tempfile.TemporaryDirectory() as`
-# These are unnecessary if not supporting python2
-@contextlib.contextmanager
-def cd(newdir, cleanup=lambda: True):
-    prevdir = os.getcwd()
-    os.chdir(os.path.expanduser(newdir))
-    try:
-        yield
-    finally:
-        os.chdir(prevdir)
-        cleanup()
-
-
-@contextlib.contextmanager
-def get_tempdir():
-    dirpath = tempfile.mkdtemp()
-
-    def cleanup():
-        return shutil.rmtree(dirpath)
-    with cd(dirpath, cleanup):
-        yield dirpath
+def strip_bucket_path(path):
+    """Remove leading/trailing '/'s from cloud bucket folder names"""
+    return '/'.join(y for y in path.split('/') if y)
 
 
 def iter_image_archive(zip_path, destination):
@@ -166,9 +62,7 @@ def iter_image_archive(zip_path, destination):
         Iterator of all image paths in extracted archive
     """
     archive = zipfile.ZipFile(zip_path, 'r', allowZip64=True)
-
-    def is_valid(x):
-        return os.path.splitext(x)[1] and '__MACOSX' not in x
+    is_valid = lambda x: os.path.splitext(x)[1] and '__MACOSX' not in x
     for info in archive.infolist():
         extracted = archive.extract(info, path=destination)
         if os.path.isfile(extracted):
@@ -209,52 +103,11 @@ def get_image(filepath):
         # tiff files should not have a channel dim
         img = np.expand_dims(img, axis=-1)
     else:
-        img = keras_preprocessing.image.img_to_array(PIL.Image.open(filepath))
+        img = img_to_array(PIL.Image.open(filepath))
 
     logger.debug('Loaded %s into numpy array with shape %s',
                  filepath, img.shape)
     return img.astype('float32')
-
-
-def pad_image(image, field):
-    """Pad each the input image for proper dimensions when stitiching.
-
-    Args:
-        image: np.array of image data
-        field: receptive field size of model
-
-    Returns:
-        image data padded in the x and y axes
-    """
-    window = (field - 1) // 2
-    # Pad images by the field size in the x and y axes
-    pad_width = []
-    for i in range(len(image.shape)):
-        if i == image.ndim - 3:
-            pad_width.append((window, window))
-        elif i == image.ndim - 2:
-            pad_width.append((window, window))
-        else:
-            pad_width.append((0, 0))
-
-    return np.pad(image, pad_width, mode='reflect')
-
-
-def unpad_image(x, pad_width):
-    """Unpad image padded with the pad_width.
-
-    Args:
-        image (numpy.array): Image to unpad.
-        pad_width (list): List of pads used to pad the image with np.pad.
-
-    Returns:
-        numpy.array: The unpadded image.
-    """
-    slices = []
-    for c in pad_width:
-        e = None if c[1] == 0 else -c[1]
-        slices.append(slice(c[0], e))
-    return x[tuple(slices)]
 
 
 def save_numpy_array(arr, name='', subdir='', output_dir=None):
@@ -368,127 +221,9 @@ def zip_files(files, dest=None, prefix=None):
                 name = f.replace(dest, '')
                 name = name[1:] if name.startswith(os.path.sep) else name
                 zf.write(f, arcname=name)
-        logger.debug('Saved %s files to %s', len(files), filepath)
+        logger.debug('Saved %s files to %s in %s seconds.',
+                     len(files), filepath, timeit.default_timer() - start)
     except Exception as err:
         logger.error('Failed to write zipfile: %s', err)
         raise err
-    logger.debug('Zipped %s files into %s in %s seconds.',
-                 len(files), filepath, timeit.default_timer() - start)
     return filepath
-
-
-def reshape_matrix(X, y, reshape_size=256, is_channels_first=False):
-    """
-    Reshape matrix of dimension 4 to have x and y of size reshape_size.
-    Adds overlapping slices to batches.
-    E.g. reshape_size of 256 yields (1, 1024, 1024, 1) -> (16, 256, 256, 1)
-
-    Args:
-        X: raw 4D image tensor
-        y: label mask of 4D image data
-        reshape_size: size of the square output tensor
-        is_channels_first: default False for channel dimension last
-
-    Returns:
-        reshaped `X` and `y` tensors in shape (`reshape_size`, `reshape_size`)
-    """
-    if X.ndim != 4:
-        raise ValueError('reshape_matrix expects X dim to be 4, got', X.ndim)
-    elif y.ndim != 4:
-        raise ValueError('reshape_matrix expects y dim to be 4, got', y.ndim)
-
-    image_size_x, _ = X.shape[2:] if is_channels_first else X.shape[1:3]
-    rep_number = np.int(np.ceil(np.float(image_size_x) / np.float(reshape_size)))
-    new_batch_size = X.shape[0] * (rep_number) ** 2
-
-    if is_channels_first:
-        new_X_shape = (new_batch_size, X.shape[1], reshape_size, reshape_size)
-        new_y_shape = (new_batch_size, y.shape[1], reshape_size, reshape_size)
-    else:
-        new_X_shape = (new_batch_size, reshape_size, reshape_size, X.shape[3])
-        new_y_shape = (new_batch_size, reshape_size, reshape_size, y.shape[3])
-
-    new_X = np.zeros(new_X_shape, dtype='float32')
-    new_y = np.zeros(new_y_shape, dtype='int32')
-
-    counter = 0
-    for b in range(X.shape[0]):
-        for i in range(rep_number):
-            for j in range(rep_number):
-                if i != rep_number - 1:
-                    x_start, x_end = i * reshape_size, (i + 1) * reshape_size
-                else:
-                    x_start, x_end = -reshape_size, X.shape[2 if is_channels_first else 1]
-
-                if j != rep_number - 1:
-                    y_start, y_end = j * reshape_size, (j + 1) * reshape_size
-                else:
-                    y_start, y_end = -reshape_size, y.shape[3 if is_channels_first else 2]
-
-                if is_channels_first:
-                    new_X[counter] = X[b, :, x_start:x_end, y_start:y_end]
-                    new_y[counter] = y[b, :, x_start:x_end, y_start:y_end]
-                else:
-                    new_X[counter] = X[b, x_start:x_end, y_start:y_end, :]
-                    new_y[counter] = y[b, x_start:x_end, y_start:y_end, :]
-
-                counter += 1
-
-    print('Reshaped feature data from {} to {}'.format(y.shape, new_y.shape))
-    print('Reshaped training data from {} to {}'.format(X.shape, new_X.shape))
-    return new_X, new_y
-
-
-def rescale(image, scale, channel_axis=-1):
-    multichannel = False
-    add_channel = False
-    if scale == 1:
-        return image  # no rescale necessary, short-circuit
-
-    if len(image.shape) != 2:  # we have a channel axis
-        try:
-            image = np.squeeze(image, axis=channel_axis)
-            add_channel = True
-        except:  # pylint: disable=bare-except
-            multichannel = True  # channel axis is not 1
-
-    rescaled_img = skimage.transform.rescale(
-        image, scale,
-        mode='edge',
-        anti_aliasing=False,
-        anti_aliasing_sigma=None,
-        multichannel=multichannel,
-        preserve_range=True,
-        order=0
-    )
-    if add_channel:
-        rescaled_img = np.expand_dims(rescaled_img, axis=channel_axis)
-    logger.debug('Rescaled image from %s to %s', image.shape, rescaled_img.shape)
-    return rescaled_img
-
-
-def _pick_model(label):
-    model = settings.MODEL_CHOICES.get(label)
-    if model is None:
-        logger.error('Label type %s is not supported', label)
-        raise ValueError('Label type {} is not supported'.format(label))
-
-    return model.split(':')
-
-
-def _pick_preprocess(label):
-    func = settings.PREPROCESS_CHOICES.get(label)
-    if func is None:
-        logger.error('Label type %s is not supported', label)
-        raise ValueError('Label type {} is not supported'.format(label))
-
-    return func
-
-
-def _pick_postprocess(label):
-    func = settings.POSTPROCESS_CHOICES.get(label)
-    if func is None:
-        logger.error('Label type %s is not supported', label)
-        raise ValueError('Label type {} is not supported'.format(label))
-
-    return func

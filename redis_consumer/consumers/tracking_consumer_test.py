@@ -37,31 +37,12 @@ import pytest
 import numpy as np
 from skimage.external import tifffile
 
-import redis_consumer
 from redis_consumer import consumers
 from redis_consumer import settings
-from redis_consumer.testing_utils import DummyStorage, redis_client, _get_image
-
-
-class DummyTracker(object):
-    # pylint: disable=R0201,W0613
-    def __init__(self, *_, **__):
-        pass
-
-    def _track_cells(self):
-        return None
-
-    def track_cells(self):
-        return None
-
-    def dump(self, *_, **__):
-        return None
-
-    def postprocess(self, *_, **__):
-        return {
-            'y_tracked': np.zeros((32, 32, 1)),
-            'tracks': []
-        }
+from redis_consumer.testing_utils import Bunch
+from redis_consumer.testing_utils import DummyStorage
+from redis_consumer.testing_utils import redis_client
+from redis_consumer.testing_utils import _get_image
 
 
 class TestTrackingConsumer(object):
@@ -83,16 +64,6 @@ class TestTrackingConsumer(object):
         assert consumer.is_valid_hash('track:1234567890:file.tiff') is True
         assert consumer.is_valid_hash('track:1234567890:file.trk') is True
         assert consumer.is_valid_hash('track:1234567890:file.trks') is True
-
-    def test__update_progress(self, redis_client):
-        queue = 'track'
-        storage = DummyStorage()
-        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
-
-        redis_hash = 'a job hash'
-        progress = random.randint(0, 99)
-        consumer._update_progress(redis_hash, progress)
-        assert int(redis_client.hget(redis_hash, 'progress')) == progress
 
     def test__load_data(self, tmpdir, mocker, redis_client):
         queue = 'track'
@@ -163,28 +134,30 @@ class TestTrackingConsumer(object):
                          lambda *x: range(1, 3))
             consumer._load_data(key, tmpdir, fname)
 
-    def test__get_tracker(self, mocker, redis_client):
-        queue = 'track'
-        storage = DummyStorage()
-
-        shape = (5, 21, 21, 1)
-        raw = np.random.random(shape)
-        segmented = np.random.randint(1, 10, size=shape)
-
-        mocker.patch.object(settings, 'NORMALIZE_TRACKING', True)
-        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
-        tracker = consumer._get_tracker('item1', {}, raw, segmented)
-        assert isinstance(tracker, redis_consumer.tracking.CellTracker)
-
     def test__consume(self, mocker, redis_client):
         queue = 'track'
         storage = DummyStorage()
         test_hash = 0
 
+        dummy_results = {
+            'y_tracked': np.zeros((32, 32, 1)),
+            'tracks': []
+        }
+
+        mock_app = Bunch(
+            predict=lambda *x, **y: dummy_results,
+            track=lambda *x, **y: dummy_results,
+            model_mpp=1,
+            model=Bunch(
+                get_batch_size=lambda *x: 1,
+                input_shape=(1, 32, 32, 1)
+            )
+        )
+
         consumer = consumers.TrackingConsumer(redis_client, storage, queue)
 
-        mocker.patch.object(consumer, '_get_tracker', DummyTracker)
         mocker.patch.object(settings, 'DRIFT_CORRECT_ENABLED', True)
+        mocker.patch.object(consumer, 'get_grpc_app', lambda *x, **y: mock_app)
 
         frames = 3
         dummy_data = {
