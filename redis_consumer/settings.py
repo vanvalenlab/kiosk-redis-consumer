@@ -113,6 +113,7 @@ LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 
 # Multiplex model Settings
 MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MultiplexSegmentation:5', cast=str)
+MULTIPLEX_COMPARTMENT = config('MULTIPLEX_COMPARTMENT', default='whole-cell')
 
 # Set default models based on label type
 MODEL_CHOICES = {

@@ -117,6 +117,7 @@ class MultiplexConsumer(TensorFlowServingConsumer):
                                 MultiplexSegmentation)
 
         results = app.predict(image, batch_size=None,
+                              compartment=settings.MULTIPLEX_COMPARTMENT,
                               image_mpp=scale * app.model_mpp)
 
         # Save the post-processed results to a file
