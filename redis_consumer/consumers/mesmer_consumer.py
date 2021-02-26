@@ -86,7 +86,7 @@ class MesmerConsumer(TensorFlowServingConsumer):
         })
 
         # Get model_name and version
-        model_name, model_version = settings.MULTIPLEX_MODEL.split(':')
+        model_name, model_version = settings.MESMER_MODEL.split(':')
 
         _ = timeit.default_timer()
 
@@ -113,7 +113,7 @@ class MesmerConsumer(TensorFlowServingConsumer):
         image = self.validate_model_input(image, model_name, model_version)
 
         # Send data to the model
-        app = self.get_grpc_app(settings.MULTIPLEX_MODEL,
+        app = self.get_grpc_app(settings.MESMER_MODEL,
                                 MultiplexSegmentation)
 
         results = app.predict(image, batch_size=None,
