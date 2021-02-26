@@ -115,6 +115,7 @@ LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 # deprecated model name, use MESMER_MODEL instead.
 MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MultiplexSegmentation:5', cast=str)
 MESMER_MODEL = config('MESMER_MODEL', default=MULTIPLEX_MODEL, cast=str)
+MESMER_COMPARTMENT = config('MESMER_COMPARTMENT', default='whole-cell')
 
 # Set default models based on label type
 MODEL_CHOICES = {
