@@ -38,7 +38,7 @@ from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import settings
 
 
-class MultiplexConsumer(TensorFlowServingConsumer):
+class MesmerConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
     def detect_scale(self, image):
