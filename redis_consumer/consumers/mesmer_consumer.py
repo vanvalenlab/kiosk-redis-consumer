@@ -116,8 +116,9 @@ class MesmerConsumer(TensorFlowServingConsumer):
         app = self.get_grpc_app(settings.MESMER_MODEL,
                                 MultiplexSegmentation)
 
+        compartment = hvals.get('compartment', settings.MESMER_COMPARTMENT)
         results = app.predict(image, batch_size=None,
-                              compartment=settings.MESMER_COMPARTMENT,
+                              compartment=compartment,
                               image_mpp=scale * app.model_mpp)
 
         # Save the post-processed results to a file
