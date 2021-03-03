@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Tests for MultiplexConsumer"""
+"""Tests for MesmerConsumer"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -40,13 +40,13 @@ from redis_consumer.testing_utils import DummyStorage
 from redis_consumer.testing_utils import redis_client
 
 
-class TestMultiplexConsumer(object):
+class TestMesmerConsumer(object):
     # pylint: disable=R0201,W0621
 
     def test_detect_scale(self, mocker, redis_client):
         # pylint: disable=W0613
         shape = (1, 256, 256, 1)
-        consumer = consumers.MultiplexConsumer(redis_client, None, 'q')
+        consumer = consumers.MesmerConsumer(redis_client, None, 'q')
 
         image = _get_image(shape[1] * 2, shape[2] * 2, shape[3])
 
@@ -72,7 +72,7 @@ class TestMultiplexConsumer(object):
         queue = 'q'
         storage = DummyStorage()
 
-        consumer = consumers.MultiplexConsumer(redis_client, storage, queue)
+        consumer = consumers.MesmerConsumer(redis_client, storage, queue)
 
         empty_data = {'input_file_name': 'file.tiff'}
 
@@ -94,7 +94,7 @@ class TestMultiplexConsumer(object):
         queue = 'multiplex'
         storage = DummyStorage()
 
-        consumer = consumers.MultiplexConsumer(redis_client, storage, queue)
+        consumer = consumers.MesmerConsumer(redis_client, storage, queue)
 
         empty_data = {'input_file_name': 'file.tiff'}
 

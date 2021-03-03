@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""MultiplexConsumer class for consuming multiplex segmentation jobs."""
+"""MesmerConsumer class for consuming Mesmer whole cell segmentation jobs."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -32,13 +32,13 @@ import timeit
 
 import numpy as np
 
-from deepcell.applications import ScaleDetection, MultiplexSegmentation
+from deepcell.applications import ScaleDetection, Mesmer
 
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import settings
 
 
-class MultiplexConsumer(TensorFlowServingConsumer):
+class MesmerConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
     def detect_scale(self, image):
@@ -86,7 +86,7 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         })
 
         # Get model_name and version
-        model_name, model_version = settings.MULTIPLEX_MODEL.split(':')
+        model_name, model_version = settings.MESMER_MODEL.split(':')
 
         _ = timeit.default_timer()
 
@@ -113,10 +113,11 @@ class MultiplexConsumer(TensorFlowServingConsumer):
         image = self.validate_model_input(image, model_name, model_version)
 
         # Send data to the model
-        app = self.get_grpc_app(settings.MULTIPLEX_MODEL,
-                                MultiplexSegmentation)
+        app = self.get_grpc_app(settings.MESMER_MODEL, Mesmer)
 
+        compartment = hvals.get('compartment', settings.MESMER_COMPARTMENT)
         results = app.predict(image, batch_size=None,
+                              compartment=compartment,
                               image_mpp=scale * app.model_mpp)
 
         # Save the post-processed results to a file
