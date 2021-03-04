@@ -28,11 +28,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import logging
 
 import pytest
 
 import numpy as np
+from google.protobuf.json_format import MessageToJson
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework.tensor_pb2 import TensorProto
 from tensorflow_serving.apis.predict_pb2 import PredictResponse
@@ -97,6 +99,38 @@ def test_grpc_response_to_dict():
 
 
 class TestPredictClient(object):
+
+    def test_predict(self, mocker):
+        name = 'test model name'
+        version = 3
+        client = grpc_clients.PredictClient('host', name, version)
+
+        arr = np.random.random((4, 4, 1))
+        tensor_name = 'test_input'
+        tensor_dtype = 'DT_FLOAT'
+
+        # just return the request data
+        mock_retry_grpc = lambda request, _: request
+        mocker.patch.object(client, '_retry_grpc', mock_retry_grpc)
+
+        mocker.patch('redis_consumer.grpc_clients.grpc_response_to_dict',
+                     lambda x: json.loads(MessageToJson(x)))
+
+        req_data = [{
+            'data': arr,
+            'in_tensor_name': tensor_name,
+            'in_tensor_dtype': tensor_dtype,
+        }]
+
+        request_json = client.predict(req_data)
+
+        # response should be json formatted
+        assert isinstance(request_json, dict)
+        # confirm that the request is properly formatted
+        assert request_json['modelSpec']['name'] == name
+        assert request_json['modelSpec']['version'] == str(version)
+        assert tensor_name in request_json['inputs']
+        assert request_json['inputs'][tensor_name]['dtype'] == tensor_dtype
 
     def test_get_model_metadata(self, mocker):
         name = 'test model name'
