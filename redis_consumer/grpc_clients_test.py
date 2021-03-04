@@ -36,6 +36,7 @@ import numpy as np
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework.tensor_pb2 import TensorProto
 from tensorflow_serving.apis.predict_pb2 import PredictResponse
+from tensorflow_serving.apis.get_model_metadata_pb2 import GetModelMetadataResponse
 
 from redis_consumer.testing_utils import _get_image, make_model_metadata_of_size
 
@@ -93,6 +94,25 @@ def test_grpc_response_to_dict():
 
     with pytest.raises(KeyError):
         response_dict = grpc_clients.grpc_response_to_dict(response)
+
+
+class TestPredictClient(object):
+
+    def test_get_model_metadata(self, mocker):
+        name = 'test model name'
+        version = 3
+        client = grpc_clients.PredictClient('host', name, version)
+
+        # just return the request data
+        mock_retry_grpc = lambda request, _: request
+        mocker.patch.object(client, '_retry_grpc', mock_retry_grpc)
+
+        metadata = client.get_model_metadata()
+        # response should be json formatted
+        assert isinstance(metadata, dict)
+        # confirm that the request is properly formatted
+        assert metadata['modelSpec']['name'] == name
+        assert metadata['modelSpec']['version'] == str(version)
 
 
 class TestGrpcModelWrapper(object):
