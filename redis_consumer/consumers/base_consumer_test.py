@@ -302,6 +302,28 @@ class TestTensorFlowServingConsumer(object):
             image[i] = np.ones(random.choice(invalid_input_shapes))
             consumer.validate_model_input(image, 'model', '1')
 
+        # Test optional channels parameter
+        model_input_shape = (-1, 32, 32, 2)
+
+        mocked_metadata = make_model_metadata_of_size(model_input_shape)
+        mocker.patch.object(consumer, 'get_model_metadata', mocked_metadata)
+
+        valid_channels = [[0, 1], [1, 0], [3, 2]]
+        # extra channels in the image (png)
+        image = np.ones((1, 32, 32, 4))
+        for c in valid_channels:
+            consumer.validate_model_input(image, 'model', '1', channels=c)
+
+        # test too few and too many channels
+        invalid_channels = [
+            [3],  # too few channels
+            list(range(image.shape[-1] + 1)), # too many channels
+            [0, 100],  # channel out of range
+        ]
+        for c in invalid_channels:
+            with pytest.raises(ValueError):
+                consumer.validate_model_input(image, 'model', '1', channels=c)
+
     def test__get_predict_client(self, redis_client):
         stg = DummyStorage()
         consumer = consumers.TensorFlowServingConsumer(redis_client, stg, 'q')
