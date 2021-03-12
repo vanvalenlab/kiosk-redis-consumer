@@ -318,7 +318,7 @@ class TestTensorFlowServingConsumer(object):
         # test too few and too many channels
         invalid_channels = [
             [3],  # too few channels
-            list(range(image.shape[-1] + 1)), # too many channels
+            list(range(image.shape[-1] + 1)),  # too many channels
             [0, 100],  # channel out of range
         ]
         for c in invalid_channels:
