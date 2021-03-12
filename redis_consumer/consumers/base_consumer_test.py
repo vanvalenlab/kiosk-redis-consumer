@@ -250,7 +250,7 @@ class TestTensorFlowServingConsumer(object):
         valid_input_shapes = [
             (1, 32, 32, 1),  # exact same shape
             (1, 64, 64, 1),  # bigger
-            (1, 32, 32, 1),  # smaller
+            (1, 16, 16, 1),  # smaller
             (1, 33, 31, 1),  # mixed
         ]
         for shape in valid_input_shapes:
@@ -290,9 +290,10 @@ class TestTensorFlowServingConsumer(object):
             np.testing.assert_array_equal(i, j)
 
         # metadata and image counts do not match
-        with pytest.raises(ValueError):
-            image = [np.ones(s) for s in valid_input_shapes[:count]]
-            consumer.validate_model_input(img, 'model', '1')
+        for c in [count + 1, count - 1]:
+            with pytest.raises(ValueError):
+                image = [np.ones(s) for s in valid_input_shapes[:c]]
+                consumer.validate_model_input(image, 'model', '1')
 
         # correct number of inputs, but one invalid entry
         with pytest.raises(ValueError):
