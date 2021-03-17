@@ -250,7 +250,7 @@ class TensorFlowServingConsumer(Consumer):
             image = utils.get_image(fname)
         return image
 
-    def validate_model_input(self, image, model_name, model_version):
+    def validate_model_input(self, image, model_name, model_version, channels=None):
         """Validate that the input image meets the workflow requirements."""
         model_metadata = self.get_model_metadata(model_name, model_version)
         parse_shape = lambda x: tuple(int(y) for y in x.split(','))
@@ -270,15 +270,30 @@ class TensorFlowServingConsumer(Consumer):
 
         for img, shape in zip(image, shapes):
             rank = len(shape)  # expects a batch dimension
-            channels = shape[-1]
 
             if len(img.shape) != rank:
                 raise ValueError(errtext)
 
-            if img.shape[1] == channels:
+            channel_axis = img.shape[1:].index(min(img.shape[1:])) + 1
+            if channel_axis != rank - 1:
                 img = np.rollaxis(img, 1, rank)
 
-            if img.shape[rank - 1] != channels:
+            if channels:
+                if not all(c < img.shape[rank - 1] for c in channels):
+                    raise ValueError(
+                        'Input only has {} channels but channel {} '
+                        'was declared as an input channel.'.format(
+                            img.shape[rank - 1], max(channels)))
+
+                if len(channels) != shape[-1]:
+                    raise ValueError(
+                        '{} jobs require {} channels but {} were '
+                        'declared as input channels.'.format(
+                            self.queue, shape[-1], len(channels)))
+
+                img = img[..., channels]
+
+            if img.shape[rank - 1] != shape[-1]:
                 raise ValueError(errtext)
 
             validated.append(img)

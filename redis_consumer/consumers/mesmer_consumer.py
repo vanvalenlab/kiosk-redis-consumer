@@ -110,7 +110,13 @@ class MesmerConsumer(TensorFlowServingConsumer):
         scale = self.get_image_scale(scale, image, redis_hash)
 
         # Validate input image
-        image = self.validate_model_input(image, model_name, model_version)
+        if hvals.get('channels'):
+            channels = [int(c) for c in hvals.get('channels').split(',')]
+        else:
+            channels = None
+
+        image = self.validate_model_input(image, model_name, model_version,
+                                          channels=channels)
 
         # Send data to the model
         app = self.get_grpc_app(settings.MESMER_MODEL, Mesmer)

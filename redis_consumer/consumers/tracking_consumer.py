@@ -126,7 +126,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
                 'status': 'new',
                 'created_at': current_timestamp,
                 'updated_at': current_timestamp,
-                'url': upload_file_url
+                'url': upload_file_url,
+                'channels': hvalues.get('channels', ''),
             }
 
             # make a hash for this frame

@@ -250,7 +250,7 @@ class TestTensorFlowServingConsumer(object):
         valid_input_shapes = [
             (1, 32, 32, 1),  # exact same shape
             (1, 64, 64, 1),  # bigger
-            (1, 32, 32, 1),  # smaller
+            (1, 16, 16, 1),  # smaller
             (1, 33, 31, 1),  # mixed
         ]
         for shape in valid_input_shapes:
@@ -290,9 +290,10 @@ class TestTensorFlowServingConsumer(object):
             np.testing.assert_array_equal(i, j)
 
         # metadata and image counts do not match
-        with pytest.raises(ValueError):
-            image = [np.ones(s) for s in valid_input_shapes[:count]]
-            consumer.validate_model_input(img, 'model', '1')
+        for c in [count + 1, count - 1]:
+            with pytest.raises(ValueError):
+                image = [np.ones(s) for s in valid_input_shapes[:c]]
+                consumer.validate_model_input(image, 'model', '1')
 
         # correct number of inputs, but one invalid entry
         with pytest.raises(ValueError):
@@ -301,6 +302,28 @@ class TestTensorFlowServingConsumer(object):
             i = random.randint(0, count - 1)
             image[i] = np.ones(random.choice(invalid_input_shapes))
             consumer.validate_model_input(image, 'model', '1')
+
+        # Test optional channels parameter
+        model_input_shape = (-1, 32, 32, 2)
+
+        mocked_metadata = make_model_metadata_of_size(model_input_shape)
+        mocker.patch.object(consumer, 'get_model_metadata', mocked_metadata)
+
+        valid_channels = [[0, 1], [1, 0], [3, 2]]
+        # extra channels in the image (png)
+        image = np.ones((1, 32, 32, 4))
+        for c in valid_channels:
+            consumer.validate_model_input(image, 'model', '1', channels=c)
+
+        # test too few and too many channels
+        invalid_channels = [
+            [3],  # too few channels
+            list(range(image.shape[-1] + 1)),  # too many channels
+            [0, 100],  # channel out of range
+        ]
+        for c in invalid_channels:
+            with pytest.raises(ValueError):
+                consumer.validate_model_input(image, 'model', '1', channels=c)
 
     def test__get_predict_client(self, redis_client):
         stg = DummyStorage()

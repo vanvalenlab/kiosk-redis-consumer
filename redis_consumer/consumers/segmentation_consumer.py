@@ -107,6 +107,12 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         image = self.download_image(fname)
         image = np.expand_dims(image, axis=0)  # add a batch dimension
 
+        # Validate input image
+        if hvals.get('channels'):
+            channels = [int(c) for c in hvals.get('channels').split(',')]
+        else:
+            channels = None
+
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
             'status': 'pre-processing',
@@ -127,7 +133,8 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         model_name, model_version = model.split(':')
 
         # Validate input image
-        image = self.validate_model_input(image, model_name, model_version)
+        image = self.validate_model_input(image, model_name, model_version,
+                                          channels=channels)
 
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
