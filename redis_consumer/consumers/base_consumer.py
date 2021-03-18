@@ -297,7 +297,7 @@ class TensorFlowServingConsumer(Consumer):
                 raise ValueError(errtext)
 
             if (img.shape[rank - 2] > settings.MAX_IMAGE_WIDTH or
-                img.shape[rank - 3] > settings.MAX_IMAGE_HEIGHT):
+                    img.shape[rank - 3] > settings.MAX_IMAGE_HEIGHT):
                 raise ValueError(
                     'Input image is larger than the maximum '
                     'supported image size of ({}, {}). Got {}.'.format(
