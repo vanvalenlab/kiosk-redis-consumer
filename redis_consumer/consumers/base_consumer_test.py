@@ -272,6 +272,8 @@ class TestTensorFlowServingConsumer(object):
             (1, 32, 32, 32, 1),  # rank too large
             (1, 32, 32, 2),  # wrong channels
             (1, 16, 64, 2),  # wrong channels with mixed shape
+            (1, 32, settings.MAX_IMAGE_WIDTH + 1, 1),  # width too large
+            (1, settings.MAX_IMAGE_HEIGHT + 1, 32, 1),  # height too large
         ]
         for shape in invalid_input_shapes:
             img = np.ones(shape)

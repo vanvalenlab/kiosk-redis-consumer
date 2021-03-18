@@ -296,6 +296,16 @@ class TensorFlowServingConsumer(Consumer):
             if img.shape[rank - 1] != shape[-1]:
                 raise ValueError(errtext)
 
+            if (img.shape[rank - 2] > settings.MAX_IMAGE_WIDTH or
+                img.shape[rank - 3] > settings.MAX_IMAGE_HEIGHT):
+                raise ValueError(
+                    'Input image is larger than the maximum '
+                    'supported image size of ({}, {}). Got {}.'.format(
+                        settings.MAX_IMAGE_WIDTH,
+                        settings.MAX_IMAGE_HEIGHT,
+                        img.shape
+                    ))
+
             validated.append(img)
 
         return validated[0] if len(validated) == 1 else validated
