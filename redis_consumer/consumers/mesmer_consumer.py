@@ -119,6 +119,8 @@ class MesmerConsumer(TensorFlowServingConsumer):
                                           channels=channels)
 
         # Send data to the model
+        self.update_key(redis_hash, {'status': 'predicting'})
+
         app = self.get_grpc_app(settings.MESMER_MODEL, Mesmer)
 
         compartment = hvals.get('compartment', settings.MESMER_COMPARTMENT)
