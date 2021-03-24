@@ -90,8 +90,8 @@ EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
 METADATA_EXPIRE_TIME = config('METADATA_EXPIRE_TIME', default=30, cast=int)
 
 # Tracking settings
-TRACKING_MODEL = config('TRACKING_MODEL', default='TrackingModel:0', cast=str)
-NEIGHBORHOOD_ENCODER = config('NEIGHBORHOOD_ENCODER', default='TrackingModelNE:0', cast=str)
+TRACKING_MODEL = config('TRACKING_MODEL', default='TrackingModelInf:1', cast=str)
+NEIGHBORHOOD_ENCODER = config('NEIGHBORHOOD_ENCODER', default='TrackingModelNE:1', cast=str)
 DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=False, cast=bool)
 
 # tracking.cell_tracker settings TODO: can we extract from model_metadata?
