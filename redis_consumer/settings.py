@@ -91,15 +91,15 @@ METADATA_EXPIRE_TIME = config('METADATA_EXPIRE_TIME', default=30, cast=int)
 
 # Tracking settings
 TRACKING_MODEL = config('TRACKING_MODEL', default='TrackingModel:0', cast=str)
+NEIGHBORHOOD_ENCODER = config('NEIGHBORHOOD_ENCODER', default='TrackingModelNE:0', cast=str)
 DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=False, cast=bool)
 
 # tracking.cell_tracker settings TODO: can we extract from model_metadata?
 MAX_DISTANCE = config('MAX_DISTANCE', default=50, cast=int)
-TRACK_LENGTH = config('TRACK_LENGTH', default=9, cast=int)
+TRACK_LENGTH = config('TRACK_LENGTH', default=5, cast=int)
 DIVISION = config('DIVISION', default=0.9, cast=float)
 BIRTH = config('BIRTH', default=0.99, cast=float)
 DEATH = config('DEATH', default=0.99, cast=float)
-NEIGHBORHOOD_SCALE_SIZE = config('NEIGHBORHOOD_SCALE_SIZE', default=30, cast=int)
 
 # Scale detection settings
 SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:1')

@@ -229,6 +229,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
         # Send data to the model
         app = self.get_grpc_app(settings.TRACKING_MODEL, CellTracking,
+                                encoder_req=True,
+                                encoder=settings.NEIGHBORHOOD_ENCODER,
                                 birth=settings.BIRTH,
                                 death=settings.DEATH,
                                 division=settings.DIVISION,

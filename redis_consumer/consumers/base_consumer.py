@@ -388,7 +388,7 @@ class TensorFlowServingConsumer(Consumer):
             self.logger.error('Malformed metadata: %s', model_metadata)
             raise err
 
-    def get_grpc_app(self, model, application_cls, **kwargs):
+    def get_grpc_app(self, model, application_cls, encoder_req=False, **kwargs):
         """
         Create an application from deepcell.applications
         with a gRPC model wrapper as a model
@@ -397,6 +397,16 @@ class TensorFlowServingConsumer(Consumer):
         model_metadata = self.get_model_metadata(model_name, model_version)
         client = self._get_predict_client(model_name, model_version)
         model_wrapper = GrpcModelWrapper(client, model_metadata)
+
+        if encoder_req:
+            encoder = kwargs['encoder']
+            encoder_name, encoder_version = encoder.split(':')
+            encoder_metadata = self.get_model_metadata(encoder_name, encoder_version)
+            client = self._get_predict_client(encoder_name, encoder_version)
+            encoder_wrapper = GrpcModelWrapper(client, encoder_metadata)
+            del kwargs['encoder']
+            return application_cls(model_wrapper, encoder_wrapper, **kwargs)
+
         return application_cls(model_wrapper, **kwargs)
 
     def detect_scale(self, image):
