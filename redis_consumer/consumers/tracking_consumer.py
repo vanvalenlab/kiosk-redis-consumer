@@ -103,6 +103,11 @@ class TrackingConsumer(TensorFlowServingConsumer):
         remaining_hashes = set()
         frames = {}
 
+        if num_frames > settings.MAX_IMAGE_FRAMES:
+            raise ValueError('This tiff file has {} frames but the maximum '
+                             'number of allowed frames is {}.'.format(
+                                 num_frames, settings.MAX_IMAGE_FRAMES))
+
         self.logger.debug('Got tiffstack shape %s.', tiff_stack.shape)
 
         uid = uuid.uuid4().hex
