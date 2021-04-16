@@ -227,10 +227,13 @@ class TrackingConsumer(TensorFlowServingConsumer):
             self.logger.debug('Drift correction complete in %s seconds.',
                               timeit.default_timer() - t)
 
+
+        # Prep Neighborhood_Encoder
+        neighborhood_encoder = self.get_model_wrapper(settings.NEIGHBORHOOD_ENCODER)
+
         # Send data to the model
         app = self.get_grpc_app(settings.TRACKING_MODEL, CellTracking,
-                                encoder_req=True,
-                                encoder=settings.NEIGHBORHOOD_ENCODER,
+                                neighborhood_encoder=neighborhood_encoder,
                                 birth=settings.BIRTH,
                                 death=settings.DEATH,
                                 division=settings.DIVISION,
