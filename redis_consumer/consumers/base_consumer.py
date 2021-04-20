@@ -389,6 +389,9 @@ class TensorFlowServingConsumer(Consumer):
             raise err
 
     def get_model_wrapper(self, model):
+        """
+        Create a gRPC model wrapper as a model for use with applications
+        """
         model_name, model_version = model.split(':')
         model_metadata = self.get_model_metadata(model_name, model_version)
         client = self._get_predict_client(model_name, model_version)
@@ -396,27 +399,12 @@ class TensorFlowServingConsumer(Consumer):
 
         return model_wrapper
 
-    # def get_grpc_app(self, model, application_cls, encoder_req=False, **kwargs):
     def get_grpc_app(self, model, application_cls, **kwargs):
         """
         Create an application from deepcell.applications
         with a gRPC model wrapper as a model
         """
-        # model_name, model_version = model.split(':')
-        # model_metadata = self.get_model_metadata(model_name, model_version)
-        # client = self._get_predict_client(model_name, model_version)
-        # model_wrapper = GrpcModelWrapper(client, model_metadata)
-
         model_wrapper = self.get_model_wrapper(model)
-
-        # if encoder_req:
-        #     encoder = kwargs['encoder']
-        #     encoder_name, encoder_version = encoder.split(':')
-        #     encoder_metadata = self.get_model_metadata(encoder_name, encoder_version)
-        #     client = self._get_predict_client(encoder_name, encoder_version)
-        #     encoder_wrapper = GrpcModelWrapper(client, encoder_metadata)
-        #     del kwargs['encoder']
-        #     return application_cls(model_wrapper, encoder_wrapper, **kwargs)
 
         return application_cls(model_wrapper, **kwargs)
 

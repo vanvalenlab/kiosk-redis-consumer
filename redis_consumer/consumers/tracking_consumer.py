@@ -237,7 +237,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
                                 birth=settings.BIRTH,
                                 death=settings.DEATH,
                                 division=settings.DIVISION,
-                                track_length=settings.TRACK_LENGTH)
+                                track_length=settings.TRACK_LENGTH,
+                                embedding_axis=1)
 
         self.logger.debug('Tracking...')
         self.update_key(redis_hash, {'status': 'predicting'})

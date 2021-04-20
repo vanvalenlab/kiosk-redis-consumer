@@ -329,6 +329,7 @@ class GrpcModelWrapper(object):
                 'data': data
             })
 
+        self._client.logger.debug('Predicting...')
         prediction = self._client.predict(req_data, settings.GRPC_TIMEOUT)
         results = [prediction[k] for k in sorted(prediction.keys())]
 
@@ -366,8 +367,10 @@ class GrpcModelWrapper(object):
         if not isinstance(tiles, list):
             tiles = [tiles]
 
-        if batch_size is None:
-            batch_size = self.get_batch_size()
+        # if batch_size is None:
+        #     batch_size = self.get_batch_size()
+
+        batch_size = 16
 
         for t in range(0, tiles[0].shape[0], batch_size):
             inputs = [tile[t:t + batch_size] for tile in tiles]

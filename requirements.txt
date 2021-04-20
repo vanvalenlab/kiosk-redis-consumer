@@ -1,6 +1,9 @@
 # deepcell packages
-deepcell-cpu>=0.9.0
-deepcell-tracking==0.3.1
+#deepcell-cpu>=0.9.0
+#deepcell-tracking==0.3.1
+git+https://github.com/vanvalenlab/deepcell-tf@graph_tracking
+git+https://github.com/vanvalenlab/deepcell-tracking@graph_tracking
+
 deepcell-toolbox>=0.9.0
 tensorflow-cpu
 scikit-image>=0.14.5,<0.17.0
