@@ -388,14 +388,14 @@ class TensorFlowServingConsumer(Consumer):
             self.logger.error('Malformed metadata: %s', model_metadata)
             raise err
 
-    def get_model_wrapper(self, model):
+    def get_model_wrapper(self, model, batch_size=None):
         """
         Create a gRPC model wrapper as a model for use with applications
         """
         model_name, model_version = model.split(':')
         model_metadata = self.get_model_metadata(model_name, model_version)
         client = self._get_predict_client(model_name, model_version)
-        model_wrapper = GrpcModelWrapper(client, model_metadata)
+        model_wrapper = GrpcModelWrapper(client, model_metadata, batch_size)
 
         return model_wrapper
 

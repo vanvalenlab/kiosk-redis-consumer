@@ -229,7 +229,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
 
 
         # Prep Neighborhood_Encoder
-        neighborhood_encoder = self.get_model_wrapper(settings.NEIGHBORHOOD_ENCODER)
+        neighborhood_encoder = self.get_model_wrapper(settings.NEIGHBORHOOD_ENCODER,
+                                                      batch_size=64)
 
         # Send data to the model
         app = self.get_grpc_app(settings.TRACKING_MODEL, CellTracking,

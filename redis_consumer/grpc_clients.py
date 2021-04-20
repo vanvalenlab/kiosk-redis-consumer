@@ -282,9 +282,10 @@ class GrpcModelWrapper(object):
     https://github.com/vanvalenlab/deepcell-tf/blob/master/deepcell/applications
     """
 
-    def __init__(self, client, model_metadata):
+    def __init__(self, client, model_metadata, batch_size):
         self._client = client
         self._metadata = model_metadata
+        self._batch_size = batch_size
 
         shapes = [
             tuple([int(x) for x in m['in_tensor_shape'].split(',')])
@@ -354,10 +355,14 @@ class GrpcModelWrapper(object):
                      (shape[rank - 2] / settings.TF_MIN_MODEL_SIZE) * \
                      (shape[rank - 1])
 
+        if ratio < 0:
+            self._client.logger.debug('WARNING: Suboptimal batch_size.')
+            ratio *= 1
+
         batch_size = int(settings.TF_MAX_BATCH_SIZE // ratio)
         return batch_size
 
-    def predict(self, tiles, batch_size=None):
+    def predict(self, tiles):
         # TODO: Can the result size be known beforehand via model metadata?
         results = []
 
@@ -367,13 +372,11 @@ class GrpcModelWrapper(object):
         if not isinstance(tiles, list):
             tiles = [tiles]
 
-        # if batch_size is None:
-        #     batch_size = self.get_batch_size()
+        if self._batch_size is None:
+            self._batch_size = self.get_batch_size()
 
-        batch_size = 16
-
-        for t in range(0, tiles[0].shape[0], batch_size):
-            inputs = [tile[t:t + batch_size] for tile in tiles]
+        for t in range(0, tiles[0].shape[0], self._batch_size):
+            inputs = [tile[t:t + self._batch_size] for tile in tiles]
             inputs = inputs[0] if len(inputs) == 1 else inputs
             output = self.send_grpc(inputs)
 
