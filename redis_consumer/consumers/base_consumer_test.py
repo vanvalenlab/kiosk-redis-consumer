@@ -237,6 +237,43 @@ class TestTensorFlowServingConsumer(object):
         assert isinstance(image, np.ndarray)
         assert not os.path.exists('test.tif')
 
+    def test_detect_dimension_order(self, mocker, redis_client):
+        storage = DummyStorage()
+        consumer = consumers.TensorFlowServingConsumer(redis_client, storage, 'q')
+
+        model_input_shape = (-1, 32, 32, 1)
+
+        mocked_metadata = make_model_metadata_of_size(model_input_shape)
+        mocker.patch.object(consumer, 'get_model_metadata', mocked_metadata)
+
+        input_pairs = [
+            ((1, 32, 32, 1), 'YXC'),  # channels last
+            ((1, 1, 32, 32), 'CYX'),  # channels first
+        ]
+
+        for shape, expected_dim_order in input_pairs:
+            # check channels last
+            img = np.ones(shape)
+            dim_order = consumer.detect_dimension_order(img, 'model', '1')
+            np.testing.assert_array_equal(dim_order, expected_dim_order)
+
+        # Test again for 3D models
+        model_input_shape = (-1, 5, 32, 32, 1)
+
+        mocked_metadata = make_model_metadata_of_size(model_input_shape)
+        mocker.patch.object(consumer, 'get_model_metadata', mocked_metadata)
+
+        input_pairs = [
+            ((1, 10, 32, 32, 1), 'ZYXC'),  # channels last
+            ((1, 1, 10, 32, 32), 'CZYX'),  # channels first
+        ]
+
+        for shape, expected_dim_order in input_pairs:
+            # check channels last
+            img = np.ones(shape)
+            dim_order = consumer.detect_dimension_order(img, 'model', '1')
+            np.testing.assert_array_equal(dim_order, expected_dim_order)
+
     def test_validate_model_input(self, mocker, redis_client):
         storage = DummyStorage()
         consumer = consumers.TensorFlowServingConsumer(redis_client, storage, 'q')
