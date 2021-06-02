@@ -177,6 +177,13 @@ class TestGrpcModelWrapper(object):
             mocker.patch.object(settings, 'TF_MIN_MODEL_SIZE', self.shape[1] * m)
             batch_size = wrapper.get_batch_size()
             assert batch_size == settings.TF_MAX_BATCH_SIZE * m * m
+        
+        # what if the model has no defined size except the channel
+        channels = 3
+        shape = [(-1, -1, -1, -1, channels)]
+        mocker.patch.object(wrapper, 'input_shape', shape)
+        batch_size = wrapper.get_batch_size()
+        assert batch_size == settings.TF_MAX_BATCH_SIZE // channels
 
     def test_send_grpc(self):
         client = DummyPredictClient(1, 2, 3)
