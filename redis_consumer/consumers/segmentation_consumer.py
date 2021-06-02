@@ -132,6 +132,12 @@ class SegmentationConsumer(TensorFlowServingConsumer):
 
         model_name, model_version = model.split(':')
 
+        # detect dimension order and add to redis
+        dim_order = self.detect_dimension_order(image, model_name, model_version)
+        self.update_key(redis_hash, {
+            'dim_order': ','.join(dim_order)
+        })
+
         # Validate input image
         image = self.validate_model_input(image, model_name, model_version,
                                           channels=channels)

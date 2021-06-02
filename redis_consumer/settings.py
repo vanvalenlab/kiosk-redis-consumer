@@ -45,6 +45,7 @@ CONSUMER_TYPE = config('CONSUMER_TYPE', default='image')
 MAX_RETRY = config('MAX_RETRY', default=5, cast=int)
 MAX_IMAGE_HEIGHT = config('MAX_IMAGE_HEIGHT', default=2048, cast=int)
 MAX_IMAGE_WIDTH = config('MAX_IMAGE_WIDTH', default=2048, cast=int)
+MAX_IMAGE_FRAMES = config('MAX_IMAGE_FRAMES', default=60, cast=int)
 
 # Redis client connection
 REDIS_HOST = config('REDIS_HOST', default='redis-master')

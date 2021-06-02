@@ -32,6 +32,7 @@ from __future__ import print_function
 
 import json
 import logging
+import math
 import time
 import timeit
 import six
@@ -350,16 +351,15 @@ class GrpcModelWrapper(object):
 
         ratio = 1
         for shape in input_shape:
-            rank = len(shape)
-            ratio *= (shape[rank - 3] / settings.TF_MIN_MODEL_SIZE) * \
-                     (shape[rank - 2] / settings.TF_MIN_MODEL_SIZE) * \
-                     (shape[rank - 1])
+            # reduce batch size by image dimensions, ignore batch
+            for size in shape[1:-1]:
+                if size > 0:  # ignore None dimensions (-1)
+                    ratio *= size / settings.TF_MIN_MODEL_SIZE
 
-        if ratio < 0:
-            self._client.logger.debug('WARNING: Suboptimal batch_size.')
-            ratio *= 1
+            # reduce by channel
+            ratio *= shape[-1]
 
-        batch_size = int(settings.TF_MAX_BATCH_SIZE // ratio)
+        batch_size = int(settings.TF_MAX_BATCH_SIZE // math.fabs(ratio))
         return batch_size
 
     def predict(self, tiles):

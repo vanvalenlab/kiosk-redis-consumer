@@ -112,6 +112,7 @@ class TestMesmerConsumer(object):
         mocker.patch.object(consumer, 'get_grpc_app', lambda *x, **_: mock_app)
         mocker.patch.object(consumer, 'get_image_scale', lambda *x, **_: 1)
         mocker.patch.object(consumer, 'validate_model_input', lambda *x, **_: x[0])
+        mocker.patch.object(consumer, 'detect_dimension_order', lambda *x, **_: 'YXC')
 
         test_hash = 'some hash'
 

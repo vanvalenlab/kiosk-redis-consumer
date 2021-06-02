@@ -109,6 +109,12 @@ class MesmerConsumer(TensorFlowServingConsumer):
         scale = hvals.get('scale', '')
         scale = self.get_image_scale(scale, image, redis_hash)
 
+        # detect dimension order and add to redis
+        dim_order = self.detect_dimension_order(image, model_name, model_version)
+        self.update_key(redis_hash, {
+            'dim_order': ','.join(dim_order)
+        })
+
         # Validate input image
         if hvals.get('channels'):
             channels = [int(c) for c in hvals.get('channels').split(',')]

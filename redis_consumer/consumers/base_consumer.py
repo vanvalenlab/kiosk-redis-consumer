@@ -250,6 +250,31 @@ class TensorFlowServingConsumer(Consumer):
             image = utils.get_image(fname)
         return image
 
+    def detect_dimension_order(self, image, model_name, model_version):
+        """Detect the dimension ordering of the input image from metadata"""
+        # TODO: there is overlap  with ``validate_model_input``.
+        # Should we combine the logic? metadata gets cached...
+        model_metadata = self.get_model_metadata(model_name, model_version)
+        parse_shape = lambda x: tuple(int(y) for y in x.split(','))
+        shapes = [parse_shape(x['in_tensor_shape']) for x in model_metadata]
+        # cast as image to match with the list of shapes.
+        image = [image] if not isinstance(image, list) else image
+
+        dimension_order = []
+
+        default_order = 'ZYX'
+
+        for img, shape in zip(image, shapes):
+            rank = len(shape)  # expects a batch dimension
+            # subtract 2 to remove the batch and channel axes
+            order = default_order[-(rank - 2):]
+            # detect channel axis
+            channel_axis = img.shape[1:].index(min(img.shape[1:])) + 1
+            # append/prepend C to dimension order string
+            fmt_order = 'C{}' if channel_axis != rank - 1 else '{}C'
+            dimension_order.append(fmt_order.format(order))
+        return dimension_order
+
     def validate_model_input(self, image, model_name, model_version, channels=None):
         """Validate that the input image meets the workflow requirements."""
         model_metadata = self.get_model_metadata(model_name, model_version)
