@@ -421,7 +421,6 @@ class TensorFlowServingConsumer(Consumer):
         model_metadata = self.get_model_metadata(model_name, model_version)
         client = self._get_predict_client(model_name, model_version)
         model_wrapper = GrpcModelWrapper(client, model_metadata, batch_size)
-
         return model_wrapper
 
     def get_grpc_app(self, model, application_cls, **kwargs):
@@ -430,7 +429,6 @@ class TensorFlowServingConsumer(Consumer):
         with a gRPC model wrapper as a model
         """
         model_wrapper = self.get_model_wrapper(model)
-
         return application_cls(model_wrapper, **kwargs)
 
     def detect_scale(self, image):
