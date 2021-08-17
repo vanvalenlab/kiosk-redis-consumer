@@ -144,20 +144,25 @@ class TestTrackingConsumer(object):
             'tracks': []
         }
 
+        mock_model = Bunch(
+            get_batch_size=lambda *x: 1,
+            input_shape=(1, 32, 32, 1)
+        )
         mock_app = Bunch(
             predict=lambda *x, **y: dummy_results,
             track=lambda *x, **y: dummy_results,
             model_mpp=1,
-            model=Bunch(
-                get_batch_size=lambda *x: 1,
-                input_shape=(1, 32, 32, 1)
-            )
+            model=mock_model,
         )
 
         consumer = consumers.TrackingConsumer(redis_client, storage, queue)
 
         mocker.patch.object(settings, 'DRIFT_CORRECT_ENABLED', True)
-        mocker.patch.object(consumer, 'get_grpc_app', lambda *x, **y: mock_app)
+        mocker.patch.object(consumer, 'get_grpc_app',
+                            lambda *x, **y: mock_app)
+        # mock get_model_wrapper for neighborhood encoder
+        mocker.patch.object(consumer, 'get_model_wrapper',
+                            lambda *x, **y: mock_model)
 
         frames = 3
         dummy_data = {
