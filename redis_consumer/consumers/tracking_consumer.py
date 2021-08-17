@@ -232,7 +232,6 @@ class TrackingConsumer(TensorFlowServingConsumer):
             self.logger.debug('Drift correction complete in %s seconds.',
                               timeit.default_timer() - t)
 
-
         # Prep Neighborhood_Encoder
         neighborhood_encoder = self.get_model_wrapper(settings.NEIGHBORHOOD_ENCODER,
                                                       batch_size=64)
