@@ -1,5 +1,5 @@
 # deepcell packages
-deepcell-cpu~=0.10.0rc3
+deepcell-cpu~=0.10.0
 deepcell-toolbox~=0.10.2
 deepcell-tracking~=0.4.5
 tensorflow-cpu
