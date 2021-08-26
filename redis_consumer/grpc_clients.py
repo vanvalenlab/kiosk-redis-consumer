@@ -283,9 +283,10 @@ class GrpcModelWrapper(object):
     https://github.com/vanvalenlab/deepcell-tf/blob/master/deepcell/applications
     """
 
-    def __init__(self, client, model_metadata):
+    def __init__(self, client, model_metadata, batch_size=None):
         self._client = client
         self._metadata = model_metadata
+        self._batch_size = batch_size
 
         shapes = [
             tuple([int(x) for x in m['in_tensor_shape'].split(',')])
@@ -330,6 +331,7 @@ class GrpcModelWrapper(object):
                 'data': data
             })
 
+        self._client.logger.debug('Predicting...')
         prediction = self._client.predict(req_data, settings.GRPC_TIMEOUT)
         results = [prediction[k] for k in sorted(prediction.keys())]
 
@@ -369,6 +371,9 @@ class GrpcModelWrapper(object):
 
         if not isinstance(tiles, list):
             tiles = [tiles]
+
+        if batch_size is None:
+            batch_size = self._batch_size
 
         if batch_size is None:
             batch_size = self.get_batch_size()
