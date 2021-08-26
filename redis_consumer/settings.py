@@ -97,7 +97,7 @@ DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=False, cast=bool
 
 # tracking.cell_tracker settings TODO: can we extract from model_metadata?
 MAX_DISTANCE = config('MAX_DISTANCE', default=50, cast=int)
-TRACK_LENGTH = config('TRACK_LENGTH', default=5, cast=int)
+TRACK_LENGTH = config('TRACK_LENGTH', default=8, cast=int)
 DIVISION = config('DIVISION', default=0.9, cast=float)
 BIRTH = config('BIRTH', default=0.99, cast=float)
 DEATH = config('DEATH', default=0.99, cast=float)
