@@ -36,7 +36,6 @@ from google.cloud.exceptions import TooManyRequests
 import pytest
 
 from redis_consumer import storage
-from redis_consumer import utils
 
 
 def throw_critical_error(*_, **__):

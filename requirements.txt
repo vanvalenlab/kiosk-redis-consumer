@@ -1,7 +1,7 @@
 # deepcell packages
-deepcell-cpu~=0.10.0
+deepcell-cpu~=0.11.0
 deepcell-toolbox~=0.10.2
-deepcell-tracking~=0.4.5
+deepcell-tracking~=0.5.2
 tensorflow-cpu
 scikit-image>=0.14.5,<0.17.0
 numpy>=1.16.6

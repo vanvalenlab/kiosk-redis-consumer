@@ -28,13 +28,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-import timeit
-
 import os
 import logging
 import random
 import socket
+import time
+import timeit
 import urllib3
 
 import boto3
