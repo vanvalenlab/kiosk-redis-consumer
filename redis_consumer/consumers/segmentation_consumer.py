@@ -33,7 +33,6 @@ import timeit
 import numpy as np
 
 from deepcell.applications import LabelDetection
-from deepcell_toolbox.processing import normalize
 
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import settings
