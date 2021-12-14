@@ -94,14 +94,14 @@ class TestTrackingConsumer(object):
             consumer._load_data(key, tmpdir, fname)
 
         # test successful workflow
-        def hget_successful_status(rhash, key):
+        def hget_successful_status(_, key):
             data = {
                 'status': consumer.final_status,
                 'output_file_name': '{}.zip'.format(random.randint(0, 100))
             }
             return data.get(key)
 
-        def hget_failed_status(key):
+        def hget_failed_status(_, key):
             data = {
                 'status': consumer.failed_status,
             }
