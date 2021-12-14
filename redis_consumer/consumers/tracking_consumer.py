@@ -35,8 +35,8 @@ import time
 import timeit
 import uuid
 
-from skimage.external import tifffile
 import numpy as np
+import tifffile
 
 from deepcell_toolbox.processing import correct_drift
 

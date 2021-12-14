@@ -37,7 +37,7 @@ import pytest
 
 import numpy as np
 from tensorflow.keras.preprocessing.image import array_to_img
-from skimage.external import tifffile as tiff
+import tifffile
 
 from redis_consumer.testing_utils import _get_image
 
@@ -48,7 +48,7 @@ def _write_image(filepath, img_w=300, img_h=300):
     imarray = _get_image(img_h, img_w, 1)
     _, ext = os.path.splitext(filepath.lower())
     if ext in {'.tif', '.tiff'}:
-        tiff.imsave(filepath, imarray[..., 0])
+        tifffile.imsave(filepath, imarray[..., 0])
     else:
         img = array_to_img(imarray, scale=False, data_format='channels_last')
         img.save(filepath)
