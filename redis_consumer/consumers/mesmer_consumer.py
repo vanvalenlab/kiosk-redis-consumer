@@ -95,7 +95,7 @@ class MesmerConsumer(TensorFlowServingConsumer):
         image = self.download_image(fname)
 
         # squeeze extra dimension that is added by get_image
-        # image = np.squeeze(image)
+        image = np.squeeze(image)
         # add in the batch dim
         image = np.expand_dims(image, axis=0)
 
