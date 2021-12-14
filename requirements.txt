@@ -2,7 +2,7 @@
 deepcell-cpu~=0.11.0
 deepcell-toolbox~=0.10.2
 deepcell-tracking~=0.5.2
-tensorflow-cpu
+tensorflow-cpu~=2.5.2
 tifffile>=2020.9.3
 numpy>=1.16.6
 

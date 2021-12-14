@@ -1,3 +1,3 @@
 # tensorflow-serving-api installs tensorflow so install
 # with --no-deps to prevent overwriting tensorflow-cpu
-tensorflow-serving-api==2.3.0
+tensorflow-serving-api~=2.5.3
