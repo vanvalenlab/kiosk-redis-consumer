@@ -35,8 +35,8 @@ import time
 import timeit
 import uuid
 
-from skimage.external import tifffile
 import numpy as np
+import skimage.io
 
 from deepcell_toolbox.processing import correct_drift
 
@@ -88,10 +88,10 @@ class TrackingConsumer(TensorFlowServingConsumer):
             raise ValueError('_load_data takes in only .tiff, .trk, or .trks')
 
         # push a key per frame and let ImageFileConsumers segment
-        raw = utils.get_image(os.path.join(subdir, fname))
+        tiff_stack = utils.get_image(os.path.join(subdir, fname))
 
         # remove the last dimensions added by `get_image`
-        tiff_stack = np.squeeze(raw, -1)
+        # tiff_stack = np.squeeze(tiff_stack, -1)
         if len(tiff_stack.shape) != 3:
             raise ValueError('This tiff file has shape {}, which is not 3 '
                              'dimensions. Tracking can only be done on images '
@@ -118,7 +118,8 @@ class TrackingConsumer(TensorFlowServingConsumer):
                 segment_fname = '{}-{}-tracking-frame-{}.tif'.format(
                     uid, hvalues.get('original_name'), i)
                 segment_local_path = os.path.join(tempdir, segment_fname)
-                tifffile.imsave(segment_local_path, img)
+                skimage.io.imsave(segment_local_path, img,
+                                  check_contrast=False)
                 upload_file_name, upload_file_url = self.storage.upload(
                     segment_local_path)
 
@@ -198,7 +199,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
         # Not a problem in tests, only with application based results.
         # Issue with batch dimension from outputs?
         y = y[:, 0] if y.shape[1] == 1 else y
-        return {'X': np.expand_dims(tiff_stack, axis=-1), 'y': y}
+        return {'X': tiff_stack, 'y': y}
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()

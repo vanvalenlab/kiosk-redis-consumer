@@ -31,7 +31,7 @@ from __future__ import print_function
 import os
 
 import numpy as np
-from skimage.external import tifffile as tiff
+import skimage.io
 
 import pytest
 import fakeredis
@@ -49,14 +49,14 @@ def redis_client():
 
 
 def _get_image(img_h=300, img_w=300, channels=None):
-    shape = [img_w, img_h]
+    shape = [img_h, img_w]
     if channels:
         shape.append(channels)
     shape = tuple(shape)
     bias = np.random.rand(*shape) * 64
     variance = np.random.rand(*shape) * (255 - 64)
     img = np.random.rand(*shape) * variance + bias
-    return img
+    return img.astype('float32')
 
 
 class Bunch(object):
@@ -68,21 +68,24 @@ class DummyStorage(object):
     # pylint: disable=W0613,R0201
     def __init__(self, num=3):
         self.num = num
+        self.extensions = ['.png', '.jpg', '.tiff']
 
     def download(self, path, dest):
         if path.lower().endswith('.zip'):
             paths = []
+            num_exts = len(self.extensions)
             for i in range(self.num):
                 img = _get_image()
-                base, ext = os.path.splitext(path)
+                base, _ = os.path.splitext(path)
+                ext = self.extensions[i % num_exts]
                 _path = '{}{}{}'.format(base, i, ext)
                 outpath = os.path.join(dest, _path)
-                tiff.imsave(outpath, img)
+                skimage.io.imsave(outpath, img, check_contrast=False)
                 paths.append(outpath)
             return utils.zip_files(paths, dest)
         img = _get_image()
         outpath = os.path.join(dest, path)
-        tiff.imsave(outpath, img)
+        skimage.io.imsave(outpath, img, check_contrast=False)
         return outpath
 
     def upload(self, zip_path, subdir=None):

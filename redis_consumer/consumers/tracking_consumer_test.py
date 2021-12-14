@@ -35,7 +35,7 @@ import string
 import pytest
 
 import numpy as np
-from skimage.external import tifffile
+import skimage.io
 
 from redis_consumer import consumers
 from redis_consumer import settings
@@ -43,6 +43,7 @@ from redis_consumer.testing_utils import Bunch
 from redis_consumer.testing_utils import DummyStorage
 from redis_consumer.testing_utils import redis_client
 from redis_consumer.testing_utils import _get_image
+from redis_consumer import utils
 
 
 class TestTrackingConsumer(object):
@@ -88,22 +89,32 @@ class TestTrackingConsumer(object):
         # test bad ndim for tiffstack
         fname = 'test.tiff'
         filepath = os.path.join(tmpdir, fname)
-        tifffile.imsave(filepath, _get_image())
+        skimage.io.imsave(filepath, _get_image(), check_contrast=False)
         with pytest.raises(ValueError):
             consumer._load_data(key, tmpdir, fname)
 
         # test successful workflow
-        def hget_successful_status(*_):
-            return consumer.final_status
+        def hget_successful_status(rhash, key):
+            data = {
+                'status': consumer.final_status,
+                'output_file_name': '{}.zip'.format(random.randint(0, 100))
+            }
+            return data.get(key)
 
-        def hget_failed_status(*_):
-            return consumer.failed_status
+        def hget_failed_status(key):
+            data = {
+                'status': consumer.failed_status,
+            }
+            return data.get(key)
+
+        imw = random.randint(20, 40)
+        imh = random.randint(20, 40)
 
         def write_child_tiff(*_, **__):
             letters = string.ascii_lowercase
-            name = ''.join(random.choice(letters) for i in range(12))
+            name = ''.join(random.choice(letters) for _ in range(12))
             path = os.path.join(tmpdir, '{}.tiff'.format(name))
-            tifffile.imsave(path, _get_image(21, 21))
+            skimage.io.imsave(path, _get_image(imh, imw), check_contrast=False)
             return [path]
 
         mocker.patch.object(settings, 'INTERVAL', 0)
@@ -115,7 +126,10 @@ class TestTrackingConsumer(object):
             mocker.patch.object(settings, 'SCALE_DETECT_ENABLED', label_detect)
             mocker.patch.object(settings, 'LABEL_DETECT_ENABLED', label_detect)
 
-            tifffile.imsave(filepath, np.random.random((3, 21, 21)))
+            key = 'tiffstack test - detect:{}'.format(label_detect)
+            img = np.random.random((3, imh, imw)).astype('float32')
+            skimage.io.imsave(filepath, img, check_contrast=False)
+            _ = utils.get_image(filepath)
             results = consumer._load_data(key, tmpdir, fname)
             X, y = results.get('X'), results.get('y')
             assert isinstance(X, np.ndarray)

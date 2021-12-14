@@ -29,6 +29,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import random
 import tarfile
 import tempfile
 import zipfile
@@ -36,8 +37,7 @@ import zipfile
 import pytest
 
 import numpy as np
-from tensorflow.keras.preprocessing.image import array_to_img
-from skimage.external import tifffile as tiff
+from skimage.io import imsave
 
 from redis_consumer.testing_utils import _get_image
 
@@ -46,12 +46,7 @@ from redis_consumer import utils
 
 def _write_image(filepath, img_w=300, img_h=300):
     imarray = _get_image(img_h, img_w, 1)
-    _, ext = os.path.splitext(filepath.lower())
-    if ext in {'.tif', '.tiff'}:
-        tiff.imsave(filepath, imarray[..., 0])
-    else:
-        img = array_to_img(imarray, scale=False, data_format='channels_last')
-        img.save(filepath)
+    imsave(filepath, imarray, check_contrast=False)
 
 
 def _write_trks(filepath, X_mean=10, y_mean=5,
@@ -116,17 +111,14 @@ def test_get_image_files_from_dir(tmpdir):
 def test_get_image(tmpdir):
     tmpdir = str(tmpdir)
     # test tiff files
-    test_img_path = os.path.join(tmpdir, 'phase.tif')
-    _write_image(test_img_path, 300, 300)
-    test_img = utils.get_image(test_img_path)
-    print(test_img.shape)
-    np.testing.assert_equal(test_img.shape, (300, 300, 1))
-    # test png files
-    test_img_path = os.path.join(tmpdir, 'feature_0.png')
-    _write_image(test_img_path, 400, 400)
-    test_img = utils.get_image(test_img_path)
-    # assert test_img.shape == 0
-    np.testing.assert_equal(test_img.shape, (400, 400, 1))
+    exts = ['png', 'jpg', 'tiff', 'tif']
+    for ext in exts:
+        width = random.randint(200, 401)
+        height = random.randint(200, 401)
+        test_img_path = os.path.join(tmpdir, 'test.{}'.format(ext))
+        _write_image(test_img_path, width, height)
+        test_img = utils.get_image(test_img_path)
+        np.testing.assert_equal(test_img.shape, (height, width, 1))
 
 
 def test_save_numpy_array(tmpdir):

@@ -39,7 +39,7 @@ import zipfile
 
 import numpy as np
 import PIL
-from skimage.external import tifffile
+import skimage.io
 from tensorflow.keras.preprocessing.image import img_to_array
 
 
@@ -98,13 +98,7 @@ def get_image(filepath):
         img: numpy array of image data
     """
     logger.debug('Loading %s into numpy array', filepath)
-    if os.path.splitext(filepath)[-1].lower() in {'.tif', '.tiff'}:
-        img = tifffile.TiffFile(filepath).asarray()
-        # tiff files should not have a channel dim
-        img = np.expand_dims(img, axis=-1)
-    else:
-        img = img_to_array(PIL.Image.open(filepath))
-
+    img = img_to_array(PIL.Image.open(filepath))
     logger.debug('Loaded %s into numpy array with shape %s',
                  filepath, img.shape)
     return img.astype('float32')
@@ -150,7 +144,7 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
             if not os.path.isdir(os.path.dirname(path)):
                 os.makedirs(os.path.dirname(path))
 
-            tifffile.imsave(path, img)
+            skimage.io.imsave(path, img, check_contrast=False)
             logger.debug('Saved channel %s to %s', channel, path)
             out_paths.append(path)
         except Exception as err:  # pylint: disable=broad-except

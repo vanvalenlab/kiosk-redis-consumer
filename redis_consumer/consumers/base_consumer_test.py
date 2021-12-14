@@ -34,6 +34,7 @@ import random
 import time
 
 import numpy as np
+import skimage.io
 
 import pytest
 
@@ -229,9 +230,31 @@ class TestTensorFlowServingConsumer(object):
         assert consumer.is_valid_hash('predict:1234567890:file.tiff') is True
         assert consumer.is_valid_hash('predict:1234567890:file.png') is True
 
-    def test_download_image(self, redis_client):
+    def test__verify_image_size(self, redis_client, mocker, tmpdir):
+        max_h = 32
+        max_w = 33
+        mocker.patch.object(settings, 'MAX_IMAGE_HEIGHT', max_h)
+        mocker.patch.object(settings, 'MAX_IMAGE_WIDTH', max_w)
+
         storage = DummyStorage()
         consumer = consumers.TensorFlowServingConsumer(redis_client, storage, 'q')
+
+        for ext in ['png', 'jpg', 'tiff', 'tif']:
+            img_path = os.path.join(tmpdir, 'img.{}'.format(ext))
+            img = _get_image(max_h, max_w)
+            skimage.io.imsave(img_path, img, check_contrast=False)
+            consumer._verify_image_size(img_path)
+
+        img_path = os.path.join(tmpdir, 'img.tiff')
+        img = _get_image(max_h + 1, max_w + 1, 1)
+        skimage.io.imsave(img_path, img, check_contrast=False)
+        with pytest.raises(ValueError):
+            consumer._verify_image_size(img_path)
+
+    def test_download_image(self, redis_client, mocker):
+        storage = DummyStorage()
+        consumer = consumers.TensorFlowServingConsumer(redis_client, storage, 'q')
+        mocker.patch.object(consumer, '_verify_image_size', lambda *x, **_: None)
 
         image = consumer.download_image('test.tif')
         assert isinstance(image, np.ndarray)

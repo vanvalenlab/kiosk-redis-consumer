@@ -41,6 +41,7 @@ import uuid
 import zipfile
 
 import numpy as np
+import PIL.Image
 import pytz
 
 from deepcell.applications import ScaleDetection
@@ -243,10 +244,26 @@ class TensorFlowServingConsumer(Consumer):
         fname = str(self.redis.hget(redis_hash, 'input_file_name'))
         return not fname.lower().endswith('.zip')
 
+    def _verify_image_size(self, image_path):
+        """Use PIL.Image.open to verify the image is not too large."""
+        # TODO: frames/channels can get mixed up.
+        # this only validates x and y to resolve
+        with PIL.Image.open(image_path) as im:
+            if (im.height > settings.MAX_IMAGE_HEIGHT or
+                im.width > settings.MAX_IMAGE_WIDTH):
+                raise ValueError(
+                    'Input image is larger than the maximum '
+                    'supported image size of ({}, {}). Got {}.'.format(
+                        settings.MAX_IMAGE_WIDTH,
+                        settings.MAX_IMAGE_HEIGHT,
+                        im.size))
+
     def download_image(self, image_path):
         """Download file from bucket and load it as an image"""
         with tempfile.TemporaryDirectory() as tempdir:
             fname = self.storage.download(image_path, tempdir)
+            # now that it is downloaded, check image size
+            self._verify_image_size(fname)
             image = utils.get_image(fname)
         return image
 
