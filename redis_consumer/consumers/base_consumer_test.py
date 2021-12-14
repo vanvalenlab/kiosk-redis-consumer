@@ -254,7 +254,6 @@ class TestTensorFlowServingConsumer(object):
     def test_download_image(self, redis_client, mocker):
         storage = DummyStorage()
         consumer = consumers.TensorFlowServingConsumer(redis_client, storage, 'q')
-        mocker.patch.object(consumer, '_verify_image_size', lambda *x, **_: None)
 
         image = consumer.download_image('test.tif')
         assert isinstance(image, np.ndarray)
