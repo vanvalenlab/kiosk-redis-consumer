@@ -35,7 +35,7 @@ import string
 import pytest
 
 import numpy as np
-import skimage.io
+import tifffile
 
 from redis_consumer import consumers
 from redis_consumer import settings
@@ -89,7 +89,7 @@ class TestTrackingConsumer(object):
         # test bad ndim for tiffstack
         fname = 'test.tiff'
         filepath = os.path.join(tmpdir, fname)
-        skimage.io.imsave(filepath, _get_image(), check_contrast=False)
+        tifffile.imsave(filepath, _get_image())
         with pytest.raises(ValueError):
             consumer._load_data(key, tmpdir, fname)
 
@@ -114,7 +114,7 @@ class TestTrackingConsumer(object):
             letters = string.ascii_lowercase
             name = ''.join(random.choice(letters) for _ in range(12))
             path = os.path.join(tmpdir, '{}.tiff'.format(name))
-            skimage.io.imsave(path, _get_image(imh, imw), check_contrast=False)
+            tifffile.imsave(path, _get_image(imh, imw))
             return [path]
 
         mocker.patch.object(settings, 'INTERVAL', 0)
@@ -128,7 +128,7 @@ class TestTrackingConsumer(object):
 
             key = 'tiffstack test - detect:{}'.format(label_detect)
             img = np.random.random((3, imh, imw)).astype('float32')
-            skimage.io.imsave(filepath, img, check_contrast=False)
+            tifffile.imsave(filepath, img)
             _ = utils.get_image(filepath)
             results = consumer._load_data(key, tmpdir, fname)
             X, y = results.get('X'), results.get('y')

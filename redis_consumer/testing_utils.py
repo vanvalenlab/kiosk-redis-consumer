@@ -31,7 +31,7 @@ from __future__ import print_function
 import os
 
 import numpy as np
-import skimage.io
+import tifffile
 
 import pytest
 import fakeredis
@@ -80,12 +80,12 @@ class DummyStorage(object):
                 ext = self.extensions[i % num_exts]
                 _path = '{}{}{}'.format(base, i, ext)
                 outpath = os.path.join(dest, _path)
-                skimage.io.imsave(outpath, img, check_contrast=False)
+                tifffile.imsave(outpath, img)
                 paths.append(outpath)
             return utils.zip_files(paths, dest)
         img = _get_image()
         outpath = os.path.join(dest, path)
-        skimage.io.imsave(outpath, img, check_contrast=False)
+        tifffile.imsave(outpath, img)
         return outpath
 
     def upload(self, zip_path, subdir=None):

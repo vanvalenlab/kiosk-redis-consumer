@@ -34,7 +34,7 @@ import random
 import time
 
 import numpy as np
-import skimage.io
+import tifffile
 
 import pytest
 
@@ -242,12 +242,12 @@ class TestTensorFlowServingConsumer(object):
         for ext in ['png', 'jpg', 'tiff', 'tif']:
             img_path = os.path.join(tmpdir, 'img.{}'.format(ext))
             img = _get_image(max_h, max_w)
-            skimage.io.imsave(img_path, img, check_contrast=False)
+            tifffile.imsave(img_path, img)
             consumer._verify_image_size(img_path)
 
         img_path = os.path.join(tmpdir, 'img.tiff')
         img = _get_image(max_h + 1, max_w + 1, 1)
-        skimage.io.imsave(img_path, img, check_contrast=False)
+        tifffile.imsave(img_path, img)
         with pytest.raises(ValueError):
             consumer._verify_image_size(img_path)
 

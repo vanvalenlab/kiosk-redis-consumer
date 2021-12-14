@@ -37,7 +37,8 @@ import zipfile
 import pytest
 
 import numpy as np
-from skimage.io import imsave
+from tensorflow.keras.preprocessing.image import array_to_img
+import tifffile
 
 from redis_consumer.testing_utils import _get_image
 
@@ -46,7 +47,12 @@ from redis_consumer import utils
 
 def _write_image(filepath, img_w=300, img_h=300):
     imarray = _get_image(img_h, img_w, 1)
-    imsave(filepath, imarray, check_contrast=False)
+    _, ext = os.path.splitext(filepath.lower())
+    if ext in {'.tif', '.tiff'}:
+        tifffile.imsave(filepath, imarray[..., 0])
+    else:
+        img = array_to_img(imarray, scale=False, data_format='channels_last')
+        img.save(filepath)
 
 
 def _write_trks(filepath, X_mean=10, y_mean=5,

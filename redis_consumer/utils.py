@@ -39,7 +39,7 @@ import zipfile
 
 import numpy as np
 import PIL
-import skimage.io
+import tifffile
 from tensorflow.keras.preprocessing.image import img_to_array
 
 
@@ -144,7 +144,7 @@ def save_numpy_array(arr, name='', subdir='', output_dir=None):
             if not os.path.isdir(os.path.dirname(path)):
                 os.makedirs(os.path.dirname(path))
 
-            skimage.io.imsave(path, img, check_contrast=False)
+            tifffile.imsave(path, img, check_contrast=False)
             logger.debug('Saved channel %s to %s', channel, path)
             out_paths.append(path)
         except Exception as err:  # pylint: disable=broad-except

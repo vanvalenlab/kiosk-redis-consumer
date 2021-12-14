@@ -36,7 +36,7 @@ import timeit
 import uuid
 
 import numpy as np
-import skimage.io
+import tifffile
 
 from deepcell_toolbox.processing import correct_drift
 
@@ -118,8 +118,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
                 segment_fname = '{}-{}-tracking-frame-{}.tif'.format(
                     uid, hvalues.get('original_name'), i)
                 segment_local_path = os.path.join(tempdir, segment_fname)
-                skimage.io.imsave(segment_local_path, img,
-                                  check_contrast=False)
+                tifffile.imsave(segment_local_path, img)
                 upload_file_name, upload_file_url = self.storage.upload(
                     segment_local_path)
 
