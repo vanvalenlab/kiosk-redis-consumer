@@ -88,10 +88,10 @@ class TrackingConsumer(TensorFlowServingConsumer):
             raise ValueError('_load_data takes in only .tiff, .trk, or .trks')
 
         # push a key per frame and let ImageFileConsumers segment
-        tiff_stack = utils.get_image(os.path.join(subdir, fname))
+        raw = utils.get_image(os.path.join(subdir, fname))
 
         # remove the last dimensions added by `get_image`
-        tiff_stack = np.squeeze(tiff_stack, -1)
+        tiff_stack = np.squeeze(raw, -1)
         if len(tiff_stack.shape) != 3:
             raise ValueError('This tiff file has shape {}, which is not 3 '
                              'dimensions. Tracking can only be done on images '
@@ -198,7 +198,7 @@ class TrackingConsumer(TensorFlowServingConsumer):
         # Not a problem in tests, only with application based results.
         # Issue with batch dimension from outputs?
         y = y[:, 0] if y.shape[1] == 1 else y
-        return {'X': tiff_stack, 'y': y}
+        return {'X': np.expand_dims(tiff_stack, axis=-1), 'y': y}
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
