@@ -35,7 +35,7 @@ import string
 import pytest
 
 import numpy as np
-from skimage.external import tifffile
+import tifffile
 
 from redis_consumer import consumers
 from redis_consumer import settings

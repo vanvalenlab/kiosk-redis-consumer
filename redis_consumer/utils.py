@@ -39,7 +39,7 @@ import zipfile
 
 import numpy as np
 import PIL
-from skimage.external import tifffile
+import tifffile
 from tensorflow.keras.preprocessing.image import img_to_array
 
 
