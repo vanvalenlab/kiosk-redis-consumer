@@ -250,7 +250,7 @@ class TensorFlowServingConsumer(Consumer):
         # this only validates x and y to resolve
         with PIL.Image.open(image_path) as im:
             if (im.height > settings.MAX_IMAGE_HEIGHT or
-                im.width > settings.MAX_IMAGE_WIDTH):
+                    im.width > settings.MAX_IMAGE_WIDTH):
                 raise ValueError(
                     'Input image is larger than the maximum '
                     'supported image size of ({}, {}). Got {}.'.format(
