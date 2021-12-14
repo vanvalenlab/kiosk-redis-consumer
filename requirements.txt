@@ -4,6 +4,7 @@ deepcell-toolbox~=0.10.2
 deepcell-tracking~=0.5.2
 tensorflow-cpu
 scikit-image>=0.14.5,<0.17.0
+tifffile==2021.11.2
 numpy>=1.16.6
 
 # tensorflow-serving-apis and gRPC dependencies
