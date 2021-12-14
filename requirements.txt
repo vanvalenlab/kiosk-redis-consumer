@@ -8,12 +8,12 @@ numpy>=1.16.6
 
 # tensorflow-serving-apis and gRPC dependencies
 grpcio>=1.0,<2
-dict-to-protobuf==0.0.3.9
+dict-to-protobuf~=0.0.3.10
 protobuf>=3.6.0
 
 # misc storage and redis clients
 boto3>=1.9.195,<2
 google-cloud-storage>=1.16.1,<2
-python-decouple>=3.1,<4
-redis==3.4.1
-pytz==2019.1
+python-decouple~=3.1
+redis~=4.0.0
+pytz>=2021.3
