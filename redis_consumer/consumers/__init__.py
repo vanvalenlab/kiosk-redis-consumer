@@ -51,7 +51,7 @@ CONSUMERS = {
 }
 
 
-# Backwards compatibility for MultiplexConsumer
+# Backwards compatibility aliases
 MultiplexConsumer = MesmerConsumer
 TrackingConsumer = CalibanConsumer
 
