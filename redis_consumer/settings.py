@@ -94,7 +94,6 @@ METADATA_EXPIRE_TIME = config('METADATA_EXPIRE_TIME', default=30, cast=int)
 TRACKING_MODEL = config('TRACKING_MODEL', default='TrackingModelInf:4', cast=str)
 CALIBAN_MODEL = config('CALIBAN_MODEL', default=TRACKING_MODEL, cast=str)
 NEIGHBORHOOD_ENCODER = config('NEIGHBORHOOD_ENCODER', default='TrackingModelNE:2', cast=str)
-DRIFT_CORRECT_ENABLED = config('DRIFT_CORRECT_ENABLED', default=False, cast=bool)
 
 # tracking.cell_tracker settings TODO: can we extract from model_metadata?
 MAX_DISTANCE = config('MAX_DISTANCE', default=50, cast=int)

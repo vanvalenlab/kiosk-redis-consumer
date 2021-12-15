@@ -38,8 +38,6 @@ import uuid
 import numpy as np
 import tifffile
 
-from deepcell_toolbox.processing import correct_drift
-
 from deepcell.applications import CellTracking
 
 from redis_consumer.consumers import TensorFlowServingConsumer
@@ -224,13 +222,6 @@ class CalibanConsumer(TensorFlowServingConsumer):
         self.logger.debug('Got contents tracking file contents.')
         self.logger.debug('X shape: %s', data['X'].shape)
         self.logger.debug('y shape: %s', data['y'].shape)
-
-        # Correct for drift if enabled
-        if settings.DRIFT_CORRECT_ENABLED:
-            t = timeit.default_timer()
-            data['X'], data['y'] = correct_drift(data['X'], data['y'])
-            self.logger.debug('Drift correction complete in %s seconds.',
-                              timeit.default_timer() - t)
 
         # Prep Neighborhood_Encoder
         neighborhood_encoder = self.get_model_wrapper(settings.NEIGHBORHOOD_ENCODER,

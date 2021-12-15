@@ -157,7 +157,6 @@ class TestCalibanConsumer(object):
 
         consumer = consumers.CalibanConsumer(redis_client, storage, queue)
 
-        mocker.patch.object(settings, 'DRIFT_CORRECT_ENABLED', True)
         mocker.patch.object(consumer, 'get_grpc_app',
                             lambda *x, **y: mock_app)
         # mock get_model_wrapper for neighborhood encoder
