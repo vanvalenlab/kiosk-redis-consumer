@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""TrackingConsumer class for consuming cell tracking jobs."""
+"""CalibanConsumer class for consuming cell tracking jobs."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -47,7 +47,7 @@ from redis_consumer import utils
 from redis_consumer import settings
 
 
-class TrackingConsumer(TensorFlowServingConsumer):
+class CalibanConsumer(TensorFlowServingConsumer):
     """Consumes some unspecified file format, tracks the images,
        and uploads the results
     """

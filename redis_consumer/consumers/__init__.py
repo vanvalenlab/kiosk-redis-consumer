@@ -34,7 +34,7 @@ from redis_consumer.consumers.base_consumer import ZipFileConsumer
 
 # Custom Workflow consumers
 from redis_consumer.consumers.segmentation_consumer import SegmentationConsumer
-from redis_consumer.consumers.tracking_consumer import TrackingConsumer
+from redis_consumer.consumers.caliban_consumer import CalibanConsumer
 from redis_consumer.consumers.mesmer_consumer import MesmerConsumer
 # TODO: Import future custom Consumer classes.
 
@@ -43,15 +43,17 @@ CONSUMERS = {
     'image': SegmentationConsumer,  # deprecated, use "segmentation" instead.
     'segmentation': SegmentationConsumer,
     'zip': ZipFileConsumer,
-    'tracking': TrackingConsumer,
+    'tracking': CalibanConsumer,  # deprecated, use "caliban" instead.
     'multiplex': MesmerConsumer,  # deprecated, use "mesmer" instead.
     'mesmer': MesmerConsumer,
+    'caliban': CalibanConsumer,
     # TODO: Add future custom Consumer classes here.
 }
 
 
 # Backwards compatibility for MultiplexConsumer
 MultiplexConsumer = MesmerConsumer
+TrackingConsumer = CalibanConsumer
 
 
 del absolute_import
