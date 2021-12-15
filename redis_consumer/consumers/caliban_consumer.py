@@ -237,7 +237,7 @@ class CalibanConsumer(TensorFlowServingConsumer):
                                                       batch_size=64)
 
         # Send data to the model
-        app = self.get_grpc_app(settings.TRACKING_MODEL, CellTracking,
+        app = self.get_grpc_app(settings.CALIBAN_MODEL, CellTracking,
                                 neighborhood_encoder=neighborhood_encoder,
                                 birth=settings.BIRTH,
                                 death=settings.DEATH,
