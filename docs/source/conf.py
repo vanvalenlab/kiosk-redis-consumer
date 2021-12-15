@@ -200,8 +200,7 @@ epub_exclude_files = ['search.html']
 
 
 # -- Extension configuration -------------------------------------------------
-autodoc_mock_imports = ["skimage",
-                        "cv2",
+autodoc_mock_imports = ["cv2",
                         "keras_retinanet",
                         "keras_preprocessing",
                         "deepcell_tracking",
