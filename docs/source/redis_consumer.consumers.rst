@@ -10,19 +10,28 @@ redis_consumer.consumers.base_consumer module
     :show-inheritance:
     :private-members:
 
-redis_consumer.consumers.image_consumer module
-----------------------------------------------
+redis_consumer.consumers.segmentation_consumer module
+-----------------------------------------------------
 
-.. automodule:: redis_consumer.consumers.image_consumer
+.. automodule:: redis_consumer.consumers.segmentation_consumer
     :members:
     :undoc-members:
     :show-inheritance:
     :private-members:
 
-redis_consumer.consumers.tracking_consumer module
+redis_consumer.consumers.mesmer_consumer module
+-----------------------------------------------
+
+.. automodule:: redis_consumer.consumers.mesmer_consumer
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :private-members:
+
+redis_consumer.consumers.caliban_consumer module
 -------------------------------------------------
 
-.. automodule:: redis_consumer.consumers.tracking_consumer
+.. automodule:: redis_consumer.consumers.caliban_consumer
     :members:
     :undoc-members:
     :show-inheritance:

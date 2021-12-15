@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""TrackingConsumer class for consuming cell tracking jobs."""
+"""CalibanConsumer class for consuming cell tracking jobs."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -38,8 +38,6 @@ import uuid
 import numpy as np
 import tifffile
 
-from deepcell_toolbox.processing import correct_drift
-
 from deepcell.applications import CellTracking
 
 from redis_consumer.consumers import TensorFlowServingConsumer
@@ -47,7 +45,7 @@ from redis_consumer import utils
 from redis_consumer import settings
 
 
-class TrackingConsumer(TensorFlowServingConsumer):
+class CalibanConsumer(TensorFlowServingConsumer):
     """Consumes some unspecified file format, tracks the images,
        and uploads the results
     """
@@ -225,19 +223,12 @@ class TrackingConsumer(TensorFlowServingConsumer):
         self.logger.debug('X shape: %s', data['X'].shape)
         self.logger.debug('y shape: %s', data['y'].shape)
 
-        # Correct for drift if enabled
-        if settings.DRIFT_CORRECT_ENABLED:
-            t = timeit.default_timer()
-            data['X'], data['y'] = correct_drift(data['X'], data['y'])
-            self.logger.debug('Drift correction complete in %s seconds.',
-                              timeit.default_timer() - t)
-
         # Prep Neighborhood_Encoder
         neighborhood_encoder = self.get_model_wrapper(settings.NEIGHBORHOOD_ENCODER,
                                                       batch_size=64)
 
         # Send data to the model
-        app = self.get_grpc_app(settings.TRACKING_MODEL, CellTracking,
+        app = self.get_grpc_app(settings.CALIBAN_MODEL, CellTracking,
                                 neighborhood_encoder=neighborhood_encoder,
                                 birth=settings.BIRTH,
                                 death=settings.DEATH,

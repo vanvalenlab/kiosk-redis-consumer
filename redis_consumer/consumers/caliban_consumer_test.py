@@ -46,12 +46,12 @@ from redis_consumer.testing_utils import _get_image
 from redis_consumer import utils
 
 
-class TestTrackingConsumer(object):
+class TestCalibanConsumer(object):
     # pylint: disable=R0201,W0621
     def test_is_valid_hash(self, mocker, redis_client):
         queue = 'track'
         storage = DummyStorage()
-        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
+        consumer = consumers.CalibanConsumer(redis_client, storage, queue)
 
         mocker.patch.object(redis_client, 'hget', lambda x, y: x.split(':')[-1])
 
@@ -69,7 +69,7 @@ class TestTrackingConsumer(object):
     def test__load_data(self, tmpdir, mocker, redis_client):
         queue = 'track'
         storage = DummyStorage()
-        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
+        consumer = consumers.CalibanConsumer(redis_client, storage, queue)
         tmpdir = str(tmpdir)
         exp = random.randint(0, 99)
 
@@ -169,9 +169,8 @@ class TestTrackingConsumer(object):
             model=mock_model,
         )
 
-        consumer = consumers.TrackingConsumer(redis_client, storage, queue)
+        consumer = consumers.CalibanConsumer(redis_client, storage, queue)
 
-        mocker.patch.object(settings, 'DRIFT_CORRECT_ENABLED', True)
         mocker.patch.object(consumer, 'get_grpc_app',
                             lambda *x, **y: mock_app)
         # mock get_model_wrapper for neighborhood encoder
