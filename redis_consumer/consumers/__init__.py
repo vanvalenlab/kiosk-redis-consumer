@@ -36,6 +36,7 @@ from redis_consumer.consumers.base_consumer import ZipFileConsumer
 from redis_consumer.consumers.segmentation_consumer import SegmentationConsumer
 from redis_consumer.consumers.caliban_consumer import CalibanConsumer
 from redis_consumer.consumers.mesmer_consumer import MesmerConsumer
+from redis_consumer.consumers.polaris_consumer import PolarisConsumer
 # TODO: Import future custom Consumer classes.
 
 
@@ -47,6 +48,7 @@ CONSUMERS = {
     'multiplex': MesmerConsumer,  # deprecated, use "mesmer" instead.
     'mesmer': MesmerConsumer,
     'caliban': CalibanConsumer,
+    'polaris': PolarisConsumer,
     # TODO: Add future custom Consumer classes here.
 }
 

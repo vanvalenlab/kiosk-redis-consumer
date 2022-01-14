@@ -41,6 +41,56 @@ from redis_consumer import settings
 class PolarisConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
+    def save_output(self, coords, image, save_name):
+        """Save output images into a zip file and upload it."""
+        with tempfile.TemporaryDirectory() as tempdir:
+            # Save each result channel as an image file
+            subdir = os.path.dirname(save_name.replace(tempdir, ''))
+            name = os.path.splitext(os.path.basename(save_name))[0]
+
+            if not isinstance(coords, list):
+                coords = [coords]
+
+            outpaths = []
+            for i in range(len(coords)):
+                # Save image with plotted spot locations
+                img_name = '{}.tif'.format(i)
+                if name:
+                    img_name = '{}_{}'.format(name, img_name)
+
+                img_path = os.path.join(output_dir, subdir, img_name)
+
+                fig = plt.figure()
+                plt.ion()
+                plt.imshow(image[i])
+                plt.scatter(coords[i][:,1], coords[0][:,0], edgecolors='r', facecolors='None')
+                plt.xticks([])
+                plt.yticks([])
+                plt.close(fig)
+                plt.savefig(img_path)
+
+                # Save coordiates
+                coords_name = '{}.txt'.format(i)
+                if name:
+                    coords_name = '{}_{}'.format(name, coords_name)
+
+                coords_path = os.path.join(output_dir, subdir, coords_name)
+                
+                np.savetxt(coords_path, coords[i])
+
+                outpaths.extend([img_path, coords_path])
+
+            # Save each prediction image as zip file
+            zip_file = utils.zip_files(outpaths, tempdir)
+
+            # Upload the zip file to cloud storage bucket
+            cleaned = zip_file.replace(tempdir, '')
+            subdir = os.path.dirname(utils.strip_bucket_path(cleaned))
+            subdir = subdir if subdir else None
+            dest, output_url = self.storage.upload(zip_file, subdir=subdir)
+
+        return dest, output_url
+
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
@@ -110,8 +160,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
         self.update_key(redis_hash, {'status': 'saving-results'})
 
         save_name = hvals.get('original_name', fname)
-        #TODO override save_output
-        dest, output_url = self.save_output(results, save_name)
+        dest, output_url = self.save_output(results, image, save_name)
 
         # Update redis with the final results
         end = timeit.default_timer()
