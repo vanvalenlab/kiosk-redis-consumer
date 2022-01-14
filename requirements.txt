@@ -6,7 +6,7 @@ tensorflow-cpu~=2.5.2
 tifffile>=2020.9.3
 numpy>=1.16.6
 
-git+git://github.com/vanvalenlab/deepcell-spots@master
+git+git://github.com/vanvalenlab/deepcell-spots@postcode_dependency
 
 # tensorflow-serving-apis and gRPC dependencies
 grpcio>=1.0,<2

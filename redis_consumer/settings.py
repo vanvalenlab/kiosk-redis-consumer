@@ -118,6 +118,9 @@ MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MultiplexSegmentation:5', c
 MESMER_MODEL = config('MESMER_MODEL', default=MULTIPLEX_MODEL, cast=str)
 MESMER_COMPARTMENT = config('MESMER_COMPARTMENT', default='whole-cell')
 
+# Polaris model Settings
+POLARIS_MODEL = config('POLARIS_MODEL', default='SpotDetection:4', cast=str)
+
 # Set default models based on label type
 MODEL_CHOICES = {
     0: config('NUCLEAR_MODEL', default='NuclearSegmentation:0', cast=str),
