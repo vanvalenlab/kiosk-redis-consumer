@@ -28,14 +28,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
 import timeit
 
+import matplotlib.pyplot as plt
 import numpy as np
 
 from deepcell_spots.applications import Polaris
 
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import settings
+from redis_consumer import utils
 
 
 class PolarisConsumer(TensorFlowServingConsumer):
@@ -58,7 +62,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
                 if name:
                     img_name = '{}_{}'.format(name, img_name)
 
-                img_path = os.path.join(output_dir, subdir, img_name)
+                img_path = os.path.join(tempdir, subdir, img_name)
 
                 fig = plt.figure()
                 plt.ion()
@@ -70,13 +74,13 @@ class PolarisConsumer(TensorFlowServingConsumer):
                 plt.savefig(img_path)
 
                 # Save coordiates
-                coords_name = '{}.txt'.format(i)
+                coords_name = '{}.npy'.format(i)
                 if name:
                     coords_name = '{}_{}'.format(name, coords_name)
 
-                coords_path = os.path.join(output_dir, subdir, coords_name)
+                coords_path = os.path.join(tempdir, subdir, coords_name)
                 
-                np.savetxt(coords_path, coords[i])
+                np.save(coords_path, coords[i])
 
                 outpaths.extend([img_path, coords_path])
 
