@@ -52,8 +52,6 @@ class PolarisConsumer(TensorFlowServingConsumer):
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
 
-            if not isinstance(coords, list):
-                coords = [coords]
 
             outpaths = []
             for i in range(len(coords)):
@@ -65,12 +63,11 @@ class PolarisConsumer(TensorFlowServingConsumer):
                 img_path = os.path.join(tempdir, subdir, img_name)
 
                 fig = plt.figure()
-                plt.ion()
-                plt.imshow(image[i])
+                plt.ioff()
+                plt.imshow(image[i], cmap='gray')
                 plt.scatter(coords[i][:,1], coords[0][:,0], edgecolors='r', facecolors='None')
                 plt.xticks([])
                 plt.yticks([])
-                plt.close(fig)
                 plt.savefig(img_path)
 
                 # Save coordiates
@@ -83,6 +80,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
                 np.save(coords_path, coords[i])
 
                 outpaths.extend([img_path, coords_path])
+                # outpaths.extend([coords_path])
 
             # Save each prediction image as zip file
             zip_file = utils.zip_files(outpaths, tempdir)
@@ -123,8 +121,8 @@ class PolarisConsumer(TensorFlowServingConsumer):
 
         # squeeze extra dimension that is added by get_image
         image = np.squeeze(image)
-        # add in the batch dim
-        image = np.expand_dims(image, axis=0)
+        # add in the batch and channel dims
+        image = np.expand_dims(image, axis=[0,-1])
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
@@ -157,7 +155,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
         # with new batching update in deepcell.applications,
         # app.predict() cannot handle a batch_size of None.
         batch_size = app.model.get_batch_size()
-        results = app.predict(image, batch_size=batch_size)
+        results = app.predict(image, batch_size=batch_size, threshold=0.99)
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
