@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""PolarisConsumer class for consuming Polaris whole cell segmentation jobs."""
+"""PolarisConsumer class for consuming Polaris spot detection jobs."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -46,7 +46,8 @@ class PolarisConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
     def save_output(self, coords, image, save_name):
-        """Save output images into a zip file and upload it."""
+        """Save output in a zip file and upload it. Output includes predicted spot locations
+        plotted on original image as a .tiff file and coordinate spot locations as .npy file"""
         with tempfile.TemporaryDirectory() as tempdir:
             # Save each result channel as an image file
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
@@ -120,8 +121,8 @@ class PolarisConsumer(TensorFlowServingConsumer):
 
         # squeeze extra dimension that is added by get_image
         image = np.squeeze(image)
-        # add in the batch and channel dims
-        image = np.expand_dims(image, axis=[0, -1])
+        # add in the batch dims
+        image = np.expand_dims(image, axis=[0])
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
