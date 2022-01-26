@@ -130,6 +130,10 @@ class PolarisConsumer(TensorFlowServingConsumer):
                 image = np.rollaxis(image, 2, 0)
             # add in the channel dim
             image = np.expand_dims(image, axis=[-1])
+        else:
+            raise ValueError('Image with {} shape was uploaded, but Polaris only '
+                             'supports multi-batch or multi-channel images.'.format(
+                                 np.shape(image))
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
