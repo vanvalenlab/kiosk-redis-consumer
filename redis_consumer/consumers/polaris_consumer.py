@@ -162,7 +162,8 @@ class PolarisConsumer(TensorFlowServingConsumer):
         # with new batching update in deepcell.applications,
         # app.predict() cannot handle a batch_size of None.
         batch_size = app.model.get_batch_size()
-        results = app.predict(image, batch_size=batch_size, threshold=0.99,
+        threshold = hvals.get('threshold', settings.POLARIS_THRESHOLD)
+        results = app.predict(image, batch_size=batch_size, threshold=threshold,
                               clip=False)
 
         # Save the post-processed results to a file
