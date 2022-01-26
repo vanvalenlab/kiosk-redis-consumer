@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""PolarisConsumer class for consuming Polaris spot detection jobs."""
+"""PolarisConsumer class for consuming SpotDetection jobs."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -35,7 +35,7 @@ import timeit
 import matplotlib.pyplot as plt
 import numpy as np
 
-from deepcell_spots.applications import Polaris
+from deepcell_spots.applications import SpotDetection
 
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import settings
@@ -65,7 +65,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
                 fig = plt.figure()
                 plt.ioff()
                 plt.imshow(image[i], cmap='gray')
-                plt.scatter(coords[i][:, 1], coords[0][:, 0], edgecolors='r', facecolors='None')
+                plt.scatter(coords[i][:, 1], coords[i][:, 0], edgecolors='r', facecolors='None')
                 plt.xticks([])
                 plt.yticks([])
                 plt.savefig(img_path)
@@ -121,8 +121,15 @@ class PolarisConsumer(TensorFlowServingConsumer):
 
         # squeeze extra dimension that is added by get_image
         image = np.squeeze(image)
-        # add in the batch dims
-        image = np.expand_dims(image, axis=[0])
+        if image.ndim == 2:
+            # add in the batch and channel dims
+            image = np.expand_dims(image, axis=[0, -1])
+        elif image.ndim == 3:
+            # check if batch first or last
+            if np.shape(image)[2] < np.shape(image)[1]:
+                image = np.rollaxis(image, 2, 0) 
+            # add in the channel dim
+            image = np.expand_dims(image, axis=[-1])
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
@@ -150,12 +157,13 @@ class PolarisConsumer(TensorFlowServingConsumer):
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
 
-        app = self.get_grpc_app(settings.POLARIS_MODEL, Polaris)
+        app = self.get_grpc_app(settings.POLARIS_MODEL, SpotDetection)
 
         # with new batching update in deepcell.applications,
         # app.predict() cannot handle a batch_size of None.
         batch_size = app.model.get_batch_size()
-        results = app.predict(image, batch_size=batch_size, threshold=0.99)
+        results = app.predict(image, batch_size=batch_size, threshold=0.99,
+                              clip=False)
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
