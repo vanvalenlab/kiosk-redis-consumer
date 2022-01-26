@@ -166,8 +166,9 @@ class PolarisConsumer(TensorFlowServingConsumer):
         # app.predict() cannot handle a batch_size of None.
         batch_size = app.model.get_batch_size()
         threshold = hvals.get('threshold', settings.POLARIS_THRESHOLD)
+        clip = hvals.get('clip', settings.POLARIS_CLIP)
         results = app.predict(image, batch_size=batch_size, threshold=threshold,
-                              clip=False)
+                              clip=clip)
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
