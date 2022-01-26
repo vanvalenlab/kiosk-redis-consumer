@@ -127,7 +127,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
         elif image.ndim == 3:
             # check if batch first or last
             if np.shape(image)[2] < np.shape(image)[1]:
-                image = np.rollaxis(image, 2, 0) 
+                image = np.rollaxis(image, 2, 0)
             # add in the channel dim
             image = np.expand_dims(image, axis=[-1])
 
