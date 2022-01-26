@@ -137,7 +137,6 @@ class PolarisConsumer(TensorFlowServingConsumer):
             'download_time': timeit.default_timer() - _,
         })
 
-        scale = 1
 
         # detect dimension order and add to redis
         dim_order = self.detect_dimension_order(image, model_name, model_version)
