@@ -133,7 +133,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
         else:
             raise ValueError('Image with {} shape was uploaded, but Polaris only '
                              'supports multi-batch or multi-channel images.'.format(
-                                 np.shape(image))
+                                 np.shape(image)))
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
