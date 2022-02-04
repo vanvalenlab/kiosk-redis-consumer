@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""PolarisConsumer class for consuming SpotDetection jobs."""
+"""PolarisConsumer class for consuming Polaris jobs."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -35,7 +35,7 @@ import timeit
 import matplotlib.pyplot as plt
 import numpy as np
 
-from deepcell_spots.applications import SpotDetection
+from deepcell_spots.applications import Polaris
 
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import settings
@@ -65,7 +65,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
                 fig = plt.figure()
                 plt.ioff()
                 plt.imshow(image[i], cmap='gray')
-                plt.scatter(coords[i][:, 1], coords[i][:, 0], edgecolors='r', facecolors='None')
+                plt.scatter(coords[i][:, 1], coords[i][:, 0], c='m', s=6)
                 plt.xticks([])
                 plt.yticks([])
                 plt.savefig(img_path)
@@ -121,19 +121,22 @@ class PolarisConsumer(TensorFlowServingConsumer):
 
         # squeeze extra dimension that is added by get_image
         image = np.squeeze(image)
-        if image.ndim == 2:
-            # add in the batch and channel dims
-            image = np.expand_dims(image, axis=[0, -1])
-        elif image.ndim == 3:
-            # check if batch first or last
-            if np.shape(image)[2] < np.shape(image)[1]:
-                image = np.rollaxis(image, 2, 0)
-            # add in the channel dim
-            image = np.expand_dims(image, axis=[-1])
-        else:
-            raise ValueError('Image with {} shape was uploaded, but Polaris only '
-                             'supports multi-batch or multi-channel images.'.format(
-                                 np.shape(image)))
+        # add in the batch dim
+        image = np.expand_dims(image, axis=0)
+
+        # if image.ndim == 2:
+        #     # add in the batch and channel dims
+        #     image = np.expand_dims(image, axis=[0, -1])
+        # elif image.ndim == 3:
+        #     # check if batch first or last
+        #     if np.shape(image)[2] < np.shape(image)[1]:
+        #         image = np.rollaxis(image, 2, 0)
+        #     # add in the channel dim
+        #     image = np.expand_dims(image, axis=[-1])
+        # else:
+        #     raise ValueError('Image with {} shape was uploaded, but Polaris only '
+        #                      'supports multi-batch or multi-channel images.'.format(
+        #                          np.shape(image)))
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
@@ -159,14 +162,26 @@ class PolarisConsumer(TensorFlowServingConsumer):
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
 
-        app = self.get_grpc_app(settings.POLARIS_MODEL, SpotDetection)
+        segmentation_type = hvals.get('segmentationType')
+        app = self.get_grpc_app(settings.POLARIS_MODEL,
+                                Polaris,
+                                segmentation_type=segmentation_type)
 
         # with new batching update in deepcell.applications,
         # app.predict() cannot handle a batch_size of None.
         batch_size = app.model.get_batch_size()
         threshold = hvals.get('threshold', settings.POLARIS_THRESHOLD)
         clip = hvals.get('clip', settings.POLARIS_CLIP)
-        results = app.predict(image, batch_size=batch_size, threshold=threshold,
+
+        spots_image = image[..., 0]
+        if np.shape(image)[3] > 1:
+            segmentation_image = image[..., 1:]
+        else:
+            segmentation_image = None
+        results = app.predict(spots_image=spots_image,
+                              segmentation_image=segmentation_image,
+                              batch_size=batch_size,
+                              threshold=threshold,
                               clip=clip)
 
         # Save the post-processed results to a file
