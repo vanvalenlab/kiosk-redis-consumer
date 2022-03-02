@@ -110,8 +110,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
             'identity_started': self.name,
         })
 
-        # Get model_name and version
-        model_name, model_version = settings.POLARIS_MODEL.split(':')
+        segmentation_type = hvals.get('segmentation_type')
 
         _ = timeit.default_timer()
 
@@ -124,65 +123,67 @@ class PolarisConsumer(TensorFlowServingConsumer):
         # add in the batch dim
         image = np.expand_dims(image, axis=0)
 
-        # if image.ndim == 2:
-        #     # add in the batch and channel dims
-        #     image = np.expand_dims(image, axis=[0, -1])
-        # elif image.ndim == 3:
-        #     # check if batch first or last
-        #     if np.shape(image)[2] < np.shape(image)[1]:
-        #         image = np.rollaxis(image, 2, 0)
-        #     # add in the channel dim
-        #     image = np.expand_dims(image, axis=[-1])
-        # else:
-        #     raise ValueError('Image with {} shape was uploaded, but Polaris only '
-        #                      'supports multi-batch or multi-channel images.'.format(
-        #                          np.shape(image)))
-
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
             'status': 'pre-processing',
             'download_time': timeit.default_timer() - _,
         })
 
+        # Get model_name and version
+        spots_model_name, spots_model_version = settings.POLARIS_MODEL.split(':')
+
         # detect dimension order and add to redis
-        dim_order = self.detect_dimension_order(image, model_name, model_version)
+        dim_order = self.detect_dimension_order(image, spots_model_name, spots_model_version)
         self.update_key(redis_hash, {
             'dim_order': ','.join(dim_order)
         })
 
-        # Validate input image
-        if hvals.get('channels'):
-            channels = [int(c) for c in hvals.get('channels').split(',')]
-        else:
-            channels = None
+        spots_image = self.validate_model_input(image[..., 0:1],
+                                                spots_model_name,
+                                                spots_model_version)
 
-        image = self.validate_model_input(image, model_name, model_version,
-                                          channels=channels)
+        if segmentation_type == 'tissue':
+            compartment = 'mesmer'
+            seg_model_name, seg_model_version = settings.MESMER_MODEL.split(':')
+            segmentation_model = self.get_model_wrapper(settings.MESMER_MODEL,
+                                                        batch_size=1)
+
+            seg_image = self.validate_model_input(image[..., 1:],
+                                                  seg_model_name,
+                                                  seg_model_version)
+
+        elif segmentation_type == 'cell culture':
+            channels = hvals.get('channels').split(',')
+            if channels[1] == '':
+                compartment = 'cytoplasm'
+                seg_model_name, seg_model_version = settings.MODEL_CHOICES[2].split(':')
+                segmentation_model = self.get_model_wrapper(settings.MODEL_CHOICES[2],
+                                                            batch_size=1)
+            elif channels[2] == '':
+                compartment = 'nucleus'
+                seg_model_name, seg_model_version = settings.MODEL_CHOICES[0].split(':')
+                segmentation_model = self.get_model_wrapper(settings.MODEL_CHOICES[0],
+                                                            batch_size=1)
+
+            seg_image = self.validate_model_input(image[..., 1:2],
+                                                  seg_model_name,
+                                                  seg_model_version)
+
+        else:
+            compartment = 'no segmentation'
+            segmentation_model = None
 
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
 
-        segmentation_type = hvals.get('segmentationType')
-        app = self.get_grpc_app(settings.POLARIS_MODEL,
-                                Polaris,
-                                segmentation_type=segmentation_type)
+        app = self.get_grpc_app(settings.POLARIS_MODEL, Polaris)
 
         # with new batching update in deepcell.applications,
         # app.predict() cannot handle a batch_size of None.
-        batch_size = app.model.get_batch_size()
         threshold = hvals.get('threshold', settings.POLARIS_THRESHOLD)
         clip = hvals.get('clip', settings.POLARIS_CLIP)
-
-        spots_image = image[..., 0]
-        if np.shape(image)[3] > 1:
-            segmentation_image = image[..., 1:]
-        else:
-            segmentation_image = None
-        results = app.predict(spots_image=spots_image,
-                              segmentation_image=segmentation_image,
-                              batch_size=batch_size,
-                              threshold=threshold,
-                              clip=clip)
+        results = app.predict(spots_image=spots_image, segmentation_image=seg_image,
+                              batch_size=4, threshold=threshold, clip=clip)
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
