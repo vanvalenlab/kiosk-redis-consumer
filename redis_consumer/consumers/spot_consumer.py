@@ -42,7 +42,7 @@ from redis_consumer import settings
 from redis_consumer import utils
 
 
-class SpotDetectionConsumer(TensorFlowServingConsumer):
+class SpotConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
     def save_output(self, coords, image, save_name):
@@ -65,7 +65,7 @@ class SpotDetectionConsumer(TensorFlowServingConsumer):
                 fig = plt.figure()
                 plt.ioff()
                 plt.imshow(image[i], cmap='gray')
-                plt.scatter(coords[i][:, 1], coords[i][:, 0], edgecolors='r', facecolors='None')
+                plt.scatter(coords[i][:, 1], coords[i][:, 0], c='m', s=6)
                 plt.xticks([])
                 plt.yticks([])
                 plt.savefig(img_path)
