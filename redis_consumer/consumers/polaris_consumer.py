@@ -169,11 +169,11 @@ class PolarisConsumer(TensorFlowServingConsumer):
                         pred_files = list(utils.iter_image_archive(
                             pred_zip, tempdir))
 
-                        if 'spot_detection' in h:
+                        if 'spot' in h:
                             # handle spot detection results
                             for i,file in enumerate(pred_files):
                                 if file.endswith('.npy'):
-                                    spots_pred = utils.get_image(pred_files[i])
+                                    spots_pred = np.load(pred_files[i])
                                     coords.append(spots_pred)
                         else:
                             # handle segmentation results
@@ -208,18 +208,25 @@ class PolarisConsumer(TensorFlowServingConsumer):
             res = self._analyze_images(redis_hash, tempdir, fname)
 
         self.logger.debug('Finished spot detection and segmentation.')
-        self.logger.debug('Coords shape: %s', data['coords'].shape)
-        self.logger.debug('Segmentation result shape: %s', data['segmentation'].shape)
+        self.logger.debug('Coords shape: %s', np.shape(res['coords']))
+        self.logger.debug('Segmentation result shape: %s', np.shape(res['segmentation']))
 
         # Assign spots to cells
-        coords = res['coords']
-        labeled_im = res['segmentation']
+        coords = np.array(res['coords'])
+        labeled_im = np.squeeze(np.array(res['segmentation']), axis=0)
+        fname = hvals.get('input_file_name')
+        image = self.download_image(fname)
+        channels = hvals.get('channels').split(',')
+        spots_image = image[..., int(channels[0])]
+
         save_name = hvals.get('original_name', fname)
 
         with tempfile.TemporaryDirectory() as tempdir:
             # Save each result channel as an image file
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
+
+            outpaths = []
             for i in range(len(coords)):
                 # Save image with plotted spot locations
                 img_name = '{}.tif'.format(i)
@@ -229,22 +236,23 @@ class PolarisConsumer(TensorFlowServingConsumer):
 
                 fig,ax = plt.subplots(1, 2, figsize=(16,8))
                 plt.ioff()
-                ax[0].imshow(image[i], cmap='gray')
+                ax[0].imshow(spots_image[i], cmap='gray')
                 ax[0].scatter(coords[i][:, 1], coords[i][:, 0], c='m', s=6)
                 ax[1].imshow(labeled_im[i,:,:,0], cmap='jet')
-                for i in range(len(ax)):
-                    ax[i].set_xticks([])
-                    ax[i].set_yticks([])
+                
+                for ii in range(len(ax)):
+                    ax[ii].set_xticks([])
+                    ax[ii].set_yticks([])
                 plt.savefig(img_path)
 
                 # Save coordinates
-                spot_dict = match_spots_to_cells(labeled_im[i:i+1], coords[i])
+                spot_dict = match_spots_to_cells(np.expand_dims(labeled_im[i], axis=0), coords[i])
+                
                 csv_name = '{}.csv'.format(i)
                 if name:
                     csv_name = '{}_{}'.format(name, csv_name)
                 csv_path = os.path.join(tempdir, subdir, csv_name)
                 csv_header = ['x', 'y', 'cellID']
-
                 with open(csv_path, 'w', newline='') as csv_file:
                     writer = csv.writer(csv_file, delimiter=',')
                     writer.writerow(csv_header)
@@ -270,7 +278,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
         self.update_key(redis_hash, {
             'status': self.final_status,
             'output_url': output_url,
-            'upload_time': end - _,
+            'upload_time': end, # - _
             'output_file_name': dest,
             'total_jobs': 1,
             'total_time': end - start,
