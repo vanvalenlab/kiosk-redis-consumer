@@ -217,7 +217,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
         fname = hvals.get('input_file_name')
         image = self.download_image(fname)
         channels = hvals.get('channels').split(',')
-        spots_image = image[..., int(channels[0])]
+        spots_image = image[..., int(channels[0]),:]
 
         save_name = hvals.get('original_name', fname)
 
@@ -234,10 +234,10 @@ class PolarisConsumer(TensorFlowServingConsumer):
                     img_name = '{}_{}'.format(name, img_name)
                 img_path = os.path.join(tempdir, subdir, img_name)
 
-                fig,ax = plt.subplots(1, 2, figsize=(16,8))
+                fig,ax = plt.subplots(1, 2, figsize=(20,10))
                 plt.ioff()
-                ax[0].imshow(spots_image[i], cmap='gray')
-                ax[0].scatter(coords[i][:, 1], coords[i][:, 0], c='m', s=6)
+                ax[0].imshow(spots_image, cmap='gray')
+                ax[0].scatter(coords[i][:, 1], coords[i][:, 0], c='m', s=4)
                 ax[1].imshow(labeled_im[i,:,:,0], cmap='jet')
                 
                 for ii in range(len(ax)):
