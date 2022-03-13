@@ -65,7 +65,7 @@ class SpotConsumer(TensorFlowServingConsumer):
                 fig = plt.figure()
                 plt.ioff()
                 plt.imshow(image[i], cmap='gray')
-                plt.scatter(coords[i][:, 1], coords[i][:, 0], c='m', s=6)
+                plt.scatter(coords[i][:, 1], coords[i][:, 0], c='m', s=4)
                 plt.xticks([])
                 plt.yticks([])
                 plt.savefig(img_path)
