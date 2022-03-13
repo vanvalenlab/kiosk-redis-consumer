@@ -50,7 +50,7 @@ CONSUMERS = {
     'mesmer': MesmerConsumer,
     'caliban': CalibanConsumer,
     'polaris': PolarisConsumer,
-    'spot_detection':SpotConsumer,
+    'spot': SpotConsumer,
     # TODO: Add future custom Consumer classes here.
 }
 
