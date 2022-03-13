@@ -46,8 +46,9 @@ from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import settings
 from redis_consumer import utils
 
+
 class PolarisConsumer(TensorFlowServingConsumer):
-    """Consumes multichannnel image files for singleplex FISH analysis, adds single 
+    """Consumes multichannnel image files for singleplex FISH analysis, adds single
     channel images to spot detection and segmentation queues, and uploads the results
     """
 
@@ -68,7 +69,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
         self.logger.debug('Image shape: {}'.format(image.shape))
         # prepare hvals for this images's hash
         current_timestamp = self.get_current_timestamp()
-        channel_str = '0,1' if queue=='mesmer' else '0'
+        channel_str = '0,1' if queue == 'mesmer' else '0'
         image_hvals = {
             'identity_upload': self.name,
             'input_file_name': upload_file_name,
@@ -109,8 +110,12 @@ class PolarisConsumer(TensorFlowServingConsumer):
         self.logger.debug('Got tiffstack shape %s.', tiff_stack.shape)
 
         # get segmentation type and channel order
-        channels = hvals.get('channels').split(',')
-        self.logger.debug('Channels: {}'.format(hvals.get('channels')))
+        if hvals.get('channels'):
+            channels = hvals.get('channels').split(',')
+        else:
+            channels = ['0']
+
+        self.logger.debug('Channels: {}'.format(channels))
         segmentation_type = hvals.get('segmentation_type')
 
         remaining_hashes = set()
@@ -128,19 +133,24 @@ class PolarisConsumer(TensorFlowServingConsumer):
             if channels[1]:
                 # add channel 1 ind of tiff stack to segmentation queue
                 cyto_image = tiff_stack[..., int(channels[1])]
-                cyto_hash = self._add_images(hvals, uid, cyto_image, queue='segmentation', label='2')
+                cyto_hash = self._add_images(hvals, uid, cyto_image,
+                                             queue='segmentation', label='2')
                 remaining_hashes.add(cyto_hash)
 
             if channels[2]:
                 # add channel 2 ind of tiff stack to nuclear queue
                 nuc_image = tiff_stack[..., int(channels[2])]
-                nuc_hash = self._add_images(hvals, uid, nuc_image, queue='segmentation', label='0')
+                nuc_hash = self._add_images(hvals, uid, nuc_image,
+                                            queue='segmentation', label='0')
                 remaining_hashes.add(nuc_hash)
 
         elif segmentation_type == 'tissue':
             # add ims 1 and 2 to mesmer queue
-            mesmer_image = np.concat((tiff_stack[..., int(channels[1])], 
-                                      tiff_stack[..., int(channels[2])]), axis=-1)
+            cyto_image = tiff_stack[..., int(channels[1])]
+            cyto_image = np.expand_dims(cyto_image, axis=-1)
+            nuc_image = tiff_stack[..., int(channels[2])]
+            nuc_image = np.expand_dims(nuc_image, axis=-1)
+            mesmer_image = np.concatenate((nuc_image, cyto_image), axis=-1)
             mesmer_hash = self._add_images(hvals, uid, mesmer_image, queue='mesmer')
             remaining_hashes.add(mesmer_hash)
 
@@ -171,7 +181,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
 
                         if 'spot' in h:
                             # handle spot detection results
-                            for i,file in enumerate(pred_files):
+                            for i, file in enumerate(pred_files):
                                 if file.endswith('.npy'):
                                     spots_pred = np.load(pred_files[i])
                                     coords.append(spots_pred)
@@ -187,6 +197,136 @@ class PolarisConsumer(TensorFlowServingConsumer):
             time.sleep(settings.INTERVAL)
 
         return {'coords': np.array(coords), 'segmentation': segmentation_results}
+
+    def save_output(self, res, hvals):
+        """Save output in a zip file and upload it. Output includes predicted spot locations
+        plotted on original image as a .tiff file and coordinate spot locations and assigned
+        cells as a .csv file
+        """
+        # Assign spots to cells
+        coords = np.array(res['coords'])
+        if hvals.get('segmentation_type') == 'cell culture':
+            labeled_im = np.squeeze(np.array(res['segmentation']), axis=0)
+        else:
+            labeled_im = np.array(res['segmentation'])[0]
+        fname = hvals.get('input_file_name')
+        image = self.download_image(fname)
+        channels = hvals.get('channels').split(',')
+        spots_image = image[..., int(channels[0]), :]
+
+        save_name = hvals.get('original_name', fname)
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            # Save each result channel as an image file
+            subdir = os.path.dirname(save_name.replace(tempdir, ''))
+            name = os.path.splitext(os.path.basename(save_name))[0]
+
+            outpaths = []
+            for i in range(len(coords)):
+                # Save image with plotted spot locations
+                img_name = '{}.tif'.format(i)
+                if name:
+                    img_name = '{}_{}'.format(name, img_name)
+                img_path = os.path.join(tempdir, subdir, img_name)
+
+                fig, ax = plt.subplots(1, 2, figsize=(20, 10))
+                plt.ioff()
+                ax[0].imshow(spots_image, cmap='gray')
+                ax[0].scatter(coords[i][:, 1], coords[i][:, 0], c='m', s=4)
+                ax[1].imshow(labeled_im[i, :, :, 0], cmap='jet')
+
+                for ii in range(len(ax)):
+                    ax[ii].set_xticks([])
+                    ax[ii].set_yticks([])
+                plt.savefig(img_path)
+
+                # Save coordinates
+                spot_dict = match_spots_to_cells(np.expand_dims(labeled_im[i], axis=0), coords[i])
+
+                csv_name = '{}.csv'.format(i)
+                if name:
+                    csv_name = '{}_{}'.format(name, csv_name)
+                csv_path = os.path.join(tempdir, subdir, csv_name)
+                csv_header = ['x', 'y', 'cellID']
+                with open(csv_path, 'w', newline='') as csv_file:
+                    writer = csv.writer(csv_file, delimiter=',')
+                    writer.writerow(csv_header)
+                    for key in spot_dict.keys():
+                        cell_coords = spot_dict[key]
+                        for ii in range(len(cell_coords)):
+                            loc = cell_coords[ii]
+                            writer.writerow([loc[0], loc[1], key])
+
+                outpaths.extend([img_path, csv_path])
+
+            # Save each prediction image as zip file
+            zip_file = utils.zip_files(outpaths, tempdir)
+
+            # Upload the zip file to cloud storage bucket
+            cleaned = zip_file.replace(tempdir, '')
+            subdir = os.path.dirname(utils.strip_bucket_path(cleaned))
+            subdir = subdir if subdir else None
+            dest, output_url = self.storage.upload(zip_file, subdir=subdir)
+
+        return(dest, output_url)
+
+    def save_coords(self, res, hvals):
+        """Save output in a zip file and upload it. Output includes predicted spot locations
+        plotted on original image as a .tiff file and coordinate spot locations as a .csv file
+        """
+        # Assign spots to cells
+        coords = np.array(res['coords'])
+        fname = hvals.get('input_file_name')
+        image = self.download_image(fname)
+        spots_image = image[..., 0, :]
+
+        save_name = hvals.get('original_name', fname)
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            # Save each result channel as an image file
+            subdir = os.path.dirname(save_name.replace(tempdir, ''))
+            name = os.path.splitext(os.path.basename(save_name))[0]
+
+            outpaths = []
+            for i in range(len(coords)):
+                # Save image with plotted spot locations
+                img_name = '{}.tif'.format(i)
+                if name:
+                    img_name = '{}_{}'.format(name, img_name)
+                img_path = os.path.join(tempdir, subdir, img_name)
+
+                fig = plt.figure(figsize=(10, 10))
+                plt.ioff()
+                plt.imshow(spots_image, cmap='gray')
+                plt.scatter(coords[i][:, 1], coords[i][:, 0], c='m', s=4)
+                plt.xticks([])
+                plt.yticks([])
+                plt.savefig(img_path)
+
+                csv_name = '{}.csv'.format(i)
+                if name:
+                    csv_name = '{}_{}'.format(name, csv_name)
+                csv_path = os.path.join(tempdir, subdir, csv_name)
+                csv_header = ['x', 'y']
+                with open(csv_path, 'w', newline='') as csv_file:
+                    writer = csv.writer(csv_file, delimiter=',')
+                    writer.writerow(csv_header)
+                    for ii in range(len(coords[i])):
+                        loc = coords[i][ii]
+                        writer.writerow([loc[0], loc[1]])
+
+                outpaths.extend([img_path, csv_path])
+
+            # Save each prediction image as zip file
+            zip_file = utils.zip_files(outpaths, tempdir)
+
+            # Upload the zip file to cloud storage bucket
+            cleaned = zip_file.replace(tempdir, '')
+            subdir = os.path.dirname(utils.strip_bucket_path(cleaned))
+            subdir = subdir if subdir else None
+            dest, output_url = self.storage.upload(zip_file, subdir=subdir)
+
+        return(dest, output_url)
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
@@ -211,74 +351,17 @@ class PolarisConsumer(TensorFlowServingConsumer):
         self.logger.debug('Coords shape: %s', np.shape(res['coords']))
         self.logger.debug('Segmentation result shape: %s', np.shape(res['segmentation']))
 
-        # Assign spots to cells
-        coords = np.array(res['coords'])
-        labeled_im = np.squeeze(np.array(res['segmentation']), axis=0)
-        fname = hvals.get('input_file_name')
-        image = self.download_image(fname)
-        channels = hvals.get('channels').split(',')
-        spots_image = image[..., int(channels[0]),:]
-
-        save_name = hvals.get('original_name', fname)
-
-        with tempfile.TemporaryDirectory() as tempdir:
-            # Save each result channel as an image file
-            subdir = os.path.dirname(save_name.replace(tempdir, ''))
-            name = os.path.splitext(os.path.basename(save_name))[0]
-
-            outpaths = []
-            for i in range(len(coords)):
-                # Save image with plotted spot locations
-                img_name = '{}.tif'.format(i)
-                if name:
-                    img_name = '{}_{}'.format(name, img_name)
-                img_path = os.path.join(tempdir, subdir, img_name)
-
-                fig,ax = plt.subplots(1, 2, figsize=(20,10))
-                plt.ioff()
-                ax[0].imshow(spots_image, cmap='gray')
-                ax[0].scatter(coords[i][:, 1], coords[i][:, 0], c='m', s=4)
-                ax[1].imshow(labeled_im[i,:,:,0], cmap='jet')
-                
-                for ii in range(len(ax)):
-                    ax[ii].set_xticks([])
-                    ax[ii].set_yticks([])
-                plt.savefig(img_path)
-
-                # Save coordinates
-                spot_dict = match_spots_to_cells(np.expand_dims(labeled_im[i], axis=0), coords[i])
-                
-                csv_name = '{}.csv'.format(i)
-                if name:
-                    csv_name = '{}_{}'.format(name, csv_name)
-                csv_path = os.path.join(tempdir, subdir, csv_name)
-                csv_header = ['x', 'y', 'cellID']
-                with open(csv_path, 'w', newline='') as csv_file:
-                    writer = csv.writer(csv_file, delimiter=',')
-                    writer.writerow(csv_header)
-                    for key in spot_dict.keys():
-                        cell_coords = spot_dict[key]
-                        for i in range(len(cell_coords)):
-                            loc = cell_coords[i]
-                            writer.writerow([loc[0], loc[1], key])
-
-                outpaths.extend([img_path, csv_path])
-
-            # Save each prediction image as zip file
-            zip_file = utils.zip_files(outpaths, tempdir)
-        
-            # Upload the zip file to cloud storage bucket
-            cleaned = zip_file.replace(tempdir, '')
-            subdir = os.path.dirname(utils.strip_bucket_path(cleaned))
-            subdir = subdir if subdir else None
-            dest, output_url = self.storage.upload(zip_file, subdir=subdir)
+        if hvals.get('segmentation_type') == 'none':
+            dest, output_url = self.save_coords(res, hvals)
+        else:
+            dest, output_url = self.save_output(res, hvals)
 
         # Update redis with the final results
         end = timeit.default_timer()
         self.update_key(redis_hash, {
             'status': self.final_status,
             'output_url': output_url,
-            'upload_time': end, # - _
+            'upload_time': end,  # - _
             'output_file_name': dest,
             'total_jobs': 1,
             'total_time': end - start,
