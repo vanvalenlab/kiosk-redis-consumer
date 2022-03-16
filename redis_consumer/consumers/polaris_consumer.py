@@ -79,7 +79,8 @@ class PolarisConsumer(TensorFlowServingConsumer):
             'updated_at': current_timestamp,
             'url': upload_file_url,
             'channels': channel_str,
-            'label': label
+            'label': label,
+            'scale': 0.2
             }
 
         # make a hash for this frame
@@ -129,33 +130,35 @@ class PolarisConsumer(TensorFlowServingConsumer):
         remaining_hashes.add(spots_hash)
 
         self.logger.debug('Starting segmentation')
+        self.logger.debug('Channels: {}'.format(channels))
         if segmentation_type == 'cell culture':
             if channels[1]:
-                # add channel 1 ind of tiff stack to segmentation queue
-                cyto_image = tiff_stack[..., int(channels[1])]
-                cyto_hash = self._add_images(hvals, uid, cyto_image,
-                                             queue='segmentation', label='2')
-                remaining_hashes.add(cyto_hash)
-
-            if channels[2]:
-                # add channel 2 ind of tiff stack to nuclear queue
-                nuc_image = tiff_stack[..., int(channels[2])]
+                # add channel 1 ind of tiff stack to nuclear queue
+                nuc_image = tiff_stack[..., int(channels[1])]
                 nuc_hash = self._add_images(hvals, uid, nuc_image,
                                             queue='segmentation', label='0')
                 remaining_hashes.add(nuc_hash)
 
+            if channels[2]:
+                # add channel 2 ind of tiff stack to segmentation queue
+                cyto_image = tiff_stack[..., int(channels[2])]
+                cyto_hash = self._add_images(hvals, uid, cyto_image,
+                                             queue='segmentation', label='2')
+                remaining_hashes.add(cyto_hash)
+
         elif segmentation_type == 'tissue':
             # add ims 1 and 2 to mesmer queue
-            cyto_image = tiff_stack[..., int(channels[1])]
-            cyto_image = np.expand_dims(cyto_image, axis=-1)
-            nuc_image = tiff_stack[..., int(channels[2])]
+            nuc_image = tiff_stack[..., int(channels[1])]
             nuc_image = np.expand_dims(nuc_image, axis=-1)
+            cyto_image = tiff_stack[..., int(channels[2])]
+            cyto_image = np.expand_dims(cyto_image, axis=-1)
             mesmer_image = np.concatenate((nuc_image, cyto_image), axis=-1)
             mesmer_hash = self._add_images(hvals, uid, mesmer_image, queue='mesmer')
             remaining_hashes.add(mesmer_hash)
 
         coords = []
         segmentation_results = []
+        segmentation_dict = {}
         while remaining_hashes:
             finished_hashes = set()
             for h in remaining_hashes:
@@ -185,16 +188,43 @@ class PolarisConsumer(TensorFlowServingConsumer):
                                 if file.endswith('.npy'):
                                     spots_pred = np.load(pred_files[i])
                                     coords.append(spots_pred)
-                        else:
-                            # handle segmentation results
+                        elif 'mesmer' in h:
+                            # handle tissue segmentation results
+                            segmentation_stack = []
                             for i, file in enumerate(pred_files):
-                                seg_pred = utils.get_image(pred_files[i])
-                                segmentation_results.append(seg_pred)
+                                seg_pred = utils.get_image(file) # (1,x,y,1)
+                                seg_pred = np.squeeze(seg_pred) # (x,y)
+                                segmentation_stack.append(seg_pred)
+                            segmentation_stack = np.array(segmentation_stack) # (c,x,y)
+                            segmentation_stack = np.moveaxis(segmentation_stack, 0, 2) # (x,y,c)
+                            segmentation_results.append(segmentation_stack)
+                        else:
+                            # handle cell culture segmentation results
+                            segmentation_stack = []
+                            for i, file in enumerate(pred_files):
+                                seg_pred = utils.get_image(file) # (1,x,y,1)
+                                seg_pred = np.squeeze(seg_pred) # (x,y)
+                                segmentation_stack.append(seg_pred)
+                            segmentation_stack = np.array(segmentation_stack) # (c,x,y)
+                            segmentation_stack = np.moveaxis(segmentation_stack, 0, 2) # (x,y,c)
+                            segmentation_uid = os.path.split(file)[1][:10]
+                            if segmentation_uid in segmentation_dict.keys():
+                                self.logger.debug('got here')
+                                segmentation_dict[segmentation_uid].append(segmentation_stack)
+                            else:
+                                segmentation_dict[segmentation_uid] = [segmentation_stack]
 
                         finished_hashes.add(h)
 
             remaining_hashes -= finished_hashes
             time.sleep(settings.INTERVAL)
+
+        if segmentation_type == 'cell culture':
+            for key in segmentation_dict.keys():
+                labeled_im = np.array(segmentation_dict[key]) # (b,x,y,c)
+                labeled_im = np.squeeze(labeled_im, -1)
+                labeled_im = np.moveaxis(labeled_im, 0, 2)
+                segmentation_results.append(labeled_im)
 
         return {'coords': np.array(coords), 'segmentation': segmentation_results}
 
@@ -205,15 +235,8 @@ class PolarisConsumer(TensorFlowServingConsumer):
         """
         # Assign spots to cells
         coords = np.array(res['coords'])
-        if hvals.get('segmentation_type') == 'cell culture':
-            labeled_im = np.squeeze(np.array(res['segmentation']), axis=0)
-        else:
-            labeled_im = np.array(res['segmentation'])[0]
+        labeled_im = np.array(res['segmentation'])
         fname = hvals.get('input_file_name')
-        image = self.download_image(fname)
-        channels = hvals.get('channels').split(',')
-        spots_image = image[..., int(channels[0]), :]
-
         save_name = hvals.get('original_name', fname)
 
         with tempfile.TemporaryDirectory() as tempdir:
@@ -223,26 +246,16 @@ class PolarisConsumer(TensorFlowServingConsumer):
 
             outpaths = []
             for i in range(len(coords)):
-                # Save image with plotted spot locations
-                img_name = '{}.tif'.format(i)
-                if name:
-                    img_name = '{}_{}'.format(name, img_name)
-                img_path = os.path.join(tempdir, subdir, img_name)
+                # Save labeled image
+                outpaths.extend(utils.save_numpy_array(
+                    labeled_im[i],
+                    name=str(name),
+                    subdir=subdir, output_dir=tempdir))
 
-                fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-                plt.ioff()
-                ax[0].imshow(spots_image, cmap='gray')
-                ax[0].scatter(coords[i][:, 1], coords[i][:, 0], c='m', s=4)
-                ax[1].imshow(labeled_im[i, :, :, 0], cmap='jet')
-
-                for ii in range(len(ax)):
-                    ax[ii].set_xticks([])
-                    ax[ii].set_yticks([])
-                plt.savefig(img_path)
-
-                # Save coordinates
-                spot_dict = match_spots_to_cells(np.expand_dims(labeled_im[i], axis=0), coords[i])
-
+                # Assign spots to cells
+                spot_dict = match_spots_to_cells(np.expand_dims(labeled_im[i,...,0], axis=[0,-1]),
+                                                 coords[i])
+                # Save spot locations and assignments in .csv file
                 csv_name = '{}.csv'.format(i)
                 if name:
                     csv_name = '{}_{}'.format(name, csv_name)
@@ -257,7 +270,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
                             loc = cell_coords[ii]
                             writer.writerow([loc[0], loc[1], key])
 
-                outpaths.extend([img_path, csv_path])
+                outpaths.extend([csv_path])
 
             # Save each prediction image as zip file
             zip_file = utils.zip_files(outpaths, tempdir)
@@ -277,9 +290,6 @@ class PolarisConsumer(TensorFlowServingConsumer):
         # Assign spots to cells
         coords = np.array(res['coords'])
         fname = hvals.get('input_file_name')
-        image = self.download_image(fname)
-        spots_image = image[..., 0, :]
-
         save_name = hvals.get('original_name', fname)
 
         with tempfile.TemporaryDirectory() as tempdir:
@@ -290,18 +300,6 @@ class PolarisConsumer(TensorFlowServingConsumer):
             outpaths = []
             for i in range(len(coords)):
                 # Save image with plotted spot locations
-                img_name = '{}.tif'.format(i)
-                if name:
-                    img_name = '{}_{}'.format(name, img_name)
-                img_path = os.path.join(tempdir, subdir, img_name)
-
-                fig = plt.figure(figsize=(10, 10))
-                plt.ioff()
-                plt.imshow(spots_image, cmap='gray')
-                plt.scatter(coords[i][:, 1], coords[i][:, 0], c='m', s=4)
-                plt.xticks([])
-                plt.yticks([])
-                plt.savefig(img_path)
 
                 csv_name = '{}.csv'.format(i)
                 if name:
@@ -315,7 +313,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
                         loc = coords[i][ii]
                         writer.writerow([loc[0], loc[1]])
 
-                outpaths.extend([img_path, csv_path])
+                outpaths.extend([csv_path])
 
             # Save each prediction image as zip file
             zip_file = utils.zip_files(outpaths, tempdir)
@@ -343,8 +341,12 @@ class PolarisConsumer(TensorFlowServingConsumer):
         })
 
         with tempfile.TemporaryDirectory() as tempdir:
+            # Pre-process data before sending to the model
             fname = self.storage.download(hvals.get('input_file_name'),
                                           tempdir)
+            self.update_key(redis_hash, {
+                'status': 'predicting'
+            })
             res = self._analyze_images(redis_hash, tempdir, fname)
 
         self.logger.debug('Finished spot detection and segmentation.')
