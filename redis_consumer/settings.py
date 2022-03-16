@@ -105,7 +105,7 @@ DEATH = config('DEATH', default=0.99, cast=float)
 # Scale detection settings
 SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:1')
 SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
-MAX_SCALE = config('MAX_SCALE', default=3, cast=float)
+MAX_SCALE = config('MAX_SCALE', default=10, cast=float)
 MIN_SCALE = config('MIN_SCALE', default=1 / MAX_SCALE, cast=float)
 
 # Type detection settings
