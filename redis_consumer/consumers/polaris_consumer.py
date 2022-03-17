@@ -80,8 +80,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
             'url': upload_file_url,
             'channels': channel_str,
             'label': label,
-            'scale': 0.2
-            }
+            'scale': 0.2}
 
         # make a hash for this frame
         image_hash = '{prefix}:{file}:{hash}'.format(
