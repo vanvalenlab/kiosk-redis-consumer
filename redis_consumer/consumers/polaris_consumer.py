@@ -192,21 +192,21 @@ class PolarisConsumer(TensorFlowServingConsumer):
                             # handle tissue segmentation results
                             segmentation_stack = []
                             for i, file in enumerate(pred_files):
-                                seg_pred = utils.get_image(file) # (1,x,y,1)
-                                seg_pred = np.squeeze(seg_pred) # (x,y)
+                                seg_pred = utils.get_image(file)
+                                seg_pred = np.squeeze(seg_pred)
                                 segmentation_stack.append(seg_pred)
-                            segmentation_stack = np.array(segmentation_stack) # (c,x,y)
-                            segmentation_stack = np.moveaxis(segmentation_stack, 0, 2) # (x,y,c)
+                            segmentation_stack = np.array(segmentation_stack)
+                            segmentation_stack = np.moveaxis(segmentation_stack, 0, 2)
                             segmentation_results.append(segmentation_stack)
                         else:
                             # handle cell culture segmentation results
                             segmentation_stack = []
                             for i, file in enumerate(pred_files):
-                                seg_pred = utils.get_image(file) # (1,x,y,1)
-                                seg_pred = np.squeeze(seg_pred) # (x,y)
+                                seg_pred = utils.get_image(file)
+                                seg_pred = np.squeeze(seg_pred)
                                 segmentation_stack.append(seg_pred)
-                            segmentation_stack = np.array(segmentation_stack) # (c,x,y)
-                            segmentation_stack = np.moveaxis(segmentation_stack, 0, 2) # (x,y,c)
+                            segmentation_stack = np.array(segmentation_stack)
+                            segmentation_stack = np.moveaxis(segmentation_stack, 0, 2)
                             segmentation_uid = os.path.split(file)[1][:10]
                             if segmentation_uid in segmentation_dict.keys():
                                 self.logger.debug('got here')
@@ -221,7 +221,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
 
         if segmentation_type == 'cell culture':
             for key in segmentation_dict.keys():
-                labeled_im = np.array(segmentation_dict[key]) # (b,x,y,c)
+                labeled_im = np.array(segmentation_dict[key])
                 labeled_im = np.squeeze(labeled_im, -1)
                 labeled_im = np.moveaxis(labeled_im, 0, 2)
                 segmentation_results.append(labeled_im)
@@ -253,7 +253,8 @@ class PolarisConsumer(TensorFlowServingConsumer):
                     subdir=subdir, output_dir=tempdir))
 
                 # Assign spots to cells
-                spot_dict = match_spots_to_cells(np.expand_dims(labeled_im[i,...,0], axis=[0,-1]),
+                spot_dict = match_spots_to_cells(np.expand_dims(labeled_im[i, ..., 0],
+                                                                axis=[0, -1]),
                                                  coords[i])
                 # Save spot locations and assignments in .csv file
                 csv_name = '{}.csv'.format(i)
