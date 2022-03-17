@@ -66,7 +66,7 @@ class TestPolarisConsumer(object):
 
     def test__consume(self, mocker, redis_client):
         # pylint: disable=W0613
-        queue = 'multiplex'
+        queue = 'polaris'
         storage = DummyStorage()
 
         consumer = consumers.PolarisConsumer(redis_client, storage, queue)
