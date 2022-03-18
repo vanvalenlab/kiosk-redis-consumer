@@ -68,12 +68,10 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         if len(np.shape(image)) == 3:
             image = np.expand_dims(image, axis=-1)  # add a channel dimension
 
-        self.logger.debug('Image shape 1: {}'.format(np.shape(image)))
         rank = 4  # (b,x,y,c)
         channel_axis = image.shape[1:].index(min(image.shape[1:])) + 1
         if channel_axis != rank - 1:
             image = np.rollaxis(image, 1, rank)
-        self.logger.debug('Image shape 2: {}'.format(np.shape(image)))
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
@@ -90,9 +88,8 @@ class SegmentationConsumer(TensorFlowServingConsumer):
             channels = hvals.get('channels').split(',')
         else:
             channels = None
-        self.logger.debug('Channels: {}'.format(channels))
 
-        if channels[0]:
+        if channels and channels[0]:
             nuc_image = image[..., int(channels[0])]
             nuc_image = np.expand_dims(nuc_image, axis=-1)
             # Grap appropriate model and application class
@@ -120,7 +117,7 @@ class SegmentationConsumer(TensorFlowServingConsumer):
             nuc_results = app.predict(nuc_image, batch_size=batch_size,
                                       image_mpp=scale * app.model_mpp)
 
-        if channels[1]:
+        if channels and channels[1]:
             cyto_image = image[..., int(channels[1])]
             cyto_image = np.expand_dims(cyto_image, axis=-1)
             # Grap appropriate model and application class
