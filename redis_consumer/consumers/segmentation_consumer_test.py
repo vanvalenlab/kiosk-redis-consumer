@@ -46,57 +46,6 @@ from redis_consumer.testing_utils import _get_image
 class TestSegmentationConsumer(object):
     # pylint: disable=R0201,W0621
 
-    def test_detect_label(self, mocker, redis_client):
-        # pylint: disable=W0613
-        shape = (1, 256, 256, 1)
-        queue = 'q'
-        consumer = consumers.SegmentationConsumer(redis_client, None, queue)
-
-        expected_label = random.randint(1, 9)
-
-        mock_app = Bunch(
-            predict=lambda *x, **y: expected_label,
-            model=Bunch(get_batch_size=lambda *x: 1))
-
-        mocker.patch.object(consumer, 'get_grpc_app', lambda *x: mock_app)
-
-        image = _get_image(shape[1] * 2, shape[2] * 2, shape[3])
-
-        mocker.patch.object(settings, 'LABEL_DETECT_ENABLED', False)
-        label = consumer.detect_label(image)
-        assert label == 0
-
-        mocker.patch.object(settings, 'LABEL_DETECT_ENABLED', True)
-        label = consumer.detect_label(image)
-        assert label == expected_label
-
-    def test_get_image_label(self, mocker, redis_client):
-        queue = 'q'
-        stg = DummyStorage()
-        consumer = consumers.SegmentationConsumer(redis_client, stg, queue)
-        image = _get_image(256, 256, 1)
-
-        # test no label provided
-        expected = 1
-        mocker.patch.object(consumer, 'detect_label', lambda *x: expected)
-        label = consumer.get_image_label(None, image, 'some hash')
-        assert label == expected
-
-        # test label provided
-        expected = 2
-        label = consumer.get_image_label(expected, image, 'some hash')
-        assert label == expected
-
-        # test label provided is invalid
-        with pytest.raises(ValueError):
-            label = -1
-            consumer.get_image_label(label, image, 'some hash')
-
-        # test label provided is bad type
-        with pytest.raises(ValueError):
-            label = 'badval'
-            consumer.get_image_label(label, image, 'some hash')
-
     def test__consume_finished_status(self, redis_client):
         queue = 'q'
         storage = DummyStorage()
@@ -140,7 +89,6 @@ class TestSegmentationConsumer(object):
 
         mocker.patch.object(consumer, 'get_grpc_app', lambda *x, **_: mock_app)
         mocker.patch.object(consumer, 'get_image_scale', lambda *x, **_: 1)
-        mocker.patch.object(consumer, 'get_image_label', lambda *x, **_: 1)
         mocker.patch.object(consumer, 'validate_model_input', lambda *x, **_: True)
         mocker.patch.object(consumer, 'detect_dimension_order', lambda *x, **_: 'YXC')
 
