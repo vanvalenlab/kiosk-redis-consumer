@@ -84,12 +84,9 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         scale = self.get_image_scale(scale, image, redis_hash)
 
         # Validate input image
-        if hvals.get('channels'):
-            channels = hvals.get('channels').split(',')
-        else:
-            channels = None
+        channels = hvals.get('channels').split(',')
 
-        if channels and channels[0]:
+        if channels[0]:
             nuc_image = image[..., int(channels[0])]
             nuc_image = np.expand_dims(nuc_image, axis=-1)
             # Grap appropriate model and application class
@@ -117,7 +114,7 @@ class SegmentationConsumer(TensorFlowServingConsumer):
             nuc_results = app.predict(nuc_image, batch_size=batch_size,
                                       image_mpp=scale * app.model_mpp)
 
-        if channels and channels[1]:
+        if channels[1]:
             cyto_image = image[..., int(channels[1])]
             cyto_image = np.expand_dims(cyto_image, axis=-1)
             # Grap appropriate model and application class
