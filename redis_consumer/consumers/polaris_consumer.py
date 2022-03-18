@@ -52,7 +52,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
     channel images to spot detection and segmentation queues, and uploads the results
     """
 
-    def _add_images(self, hvals, uid, image, queue, label=''):
+    def _add_images(self, hvals, uid, image, queue, channels=''):
         """
         Uploads image to a temporary directory and adds it to the redis queue
         for analysis.
@@ -69,7 +69,6 @@ class PolarisConsumer(TensorFlowServingConsumer):
         self.logger.debug('Image shape: {}'.format(image.shape))
         # prepare hvals for this images's hash
         current_timestamp = self.get_current_timestamp()
-        channel_str = '0,1' if queue == 'mesmer' else '0'
         image_hvals = {
             'identity_upload': self.name,
             'input_file_name': upload_file_name,
@@ -78,9 +77,8 @@ class PolarisConsumer(TensorFlowServingConsumer):
             'created_at': current_timestamp,
             'updated_at': current_timestamp,
             'url': upload_file_url,
-            'channels': channel_str,
-            'label': label,
-            'scale': 0.2}
+            'channels': channels,
+            'scale': 0.1667}
 
         # make a hash for this frame
         image_hash = '{prefix}:{file}:{hash}'.format(
@@ -135,14 +133,14 @@ class PolarisConsumer(TensorFlowServingConsumer):
                 # add channel 1 ind of tiff stack to nuclear queue
                 nuc_image = tiff_stack[..., int(channels[1])]
                 nuc_hash = self._add_images(hvals, uid, nuc_image,
-                                            queue='segmentation', label='0')
+                                            queue='segmentation', channels='0,')
                 remaining_hashes.add(nuc_hash)
 
             if channels[2]:
                 # add channel 2 ind of tiff stack to segmentation queue
                 cyto_image = tiff_stack[..., int(channels[2])]
                 cyto_hash = self._add_images(hvals, uid, cyto_image,
-                                             queue='segmentation', label='2')
+                                             queue='segmentation', channels=',0')
                 remaining_hashes.add(cyto_hash)
 
         elif segmentation_type == 'tissue':
@@ -268,7 +266,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
                         cell_coords = spot_dict[key]
                         for ii in range(len(cell_coords)):
                             loc = cell_coords[ii]
-                            writer.writerow([loc[0], loc[1], key])
+                            writer.writerow([loc[1], loc[0], key])
 
                 outpaths.extend([csv_path])
 
@@ -311,7 +309,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
                     writer.writerow(csv_header)
                     for ii in range(len(coords[i])):
                         loc = coords[i][ii]
-                        writer.writerow([loc[0], loc[1]])
+                        writer.writerow([loc[1], loc[0]])
 
                 outpaths.extend([csv_path])
 
