@@ -110,7 +110,7 @@ class SegmentationConsumer(TensorFlowServingConsumer):
             app = self.get_grpc_app(model, app_cls)
             # with new batching update in deepcell.applications,
             # app.predict() cannot handle a batch_size of None.
-            batch_size = max(32, app.model.get_batch_size())  # TODO: raise max batch size
+            batch_size = min(32, app.model.get_batch_size())  # TODO: raise max batch size
             nuc_results = app.predict(nuc_image, batch_size=batch_size,
                                       image_mpp=scale * app.model_mpp)
 
@@ -118,8 +118,8 @@ class SegmentationConsumer(TensorFlowServingConsumer):
             cyto_image = image[..., int(channels[1])]
             cyto_image = np.expand_dims(cyto_image, axis=-1)
             # Grap appropriate model and application class
-            model = settings.MODEL_CHOICES[2]
-            app_cls = settings.APPLICATION_CHOICES[2]
+            model = settings.MODEL_CHOICES[1]
+            app_cls = settings.APPLICATION_CHOICES[1]
 
             model_name, model_version = model.split(':')
 
@@ -138,7 +138,7 @@ class SegmentationConsumer(TensorFlowServingConsumer):
             app = self.get_grpc_app(model, app_cls)
             # with new batching update in deepcell.applications,
             # app.predict() cannot handle a batch_size of None.
-            batch_size = max(32, app.model.get_batch_size())  # TODO: raise max batch size
+            batch_size = min(32, app.model.get_batch_size())  # TODO: raise max batch size
             cyto_results = app.predict(cyto_image, batch_size=batch_size,
                                        image_mpp=scale * app.model_mpp)
 
