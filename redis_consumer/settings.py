@@ -125,13 +125,11 @@ POLARIS_CLIP = config('POLARIS_CLIP', default=False, cast=bool)
 
 # Set default models based on label type
 MODEL_CHOICES = {
-    0: config('NUCLEAR_MODEL', default='NuclearSegmentation:0', cast=str),
-    1: config('PHASE_MODEL', default='PhaseCytoSegmentation:0', cast=str),
-    2: config('CYTOPLASM_MODEL', default='FluoCytoSegmentation:0', cast=str)
+    0: config('NUCLEAR_MODEL', default='NuclearSegmentation:5', cast=str),
+    1: config('CYTOPLASM_MODEL', default='CytoplasmSegmentation:4', cast=str)
 }
 
 APPLICATION_CHOICES = {
     0: deepcell.applications.NuclearSegmentation,
-    1: deepcell.applications.CytoplasmSegmentation,
-    2: deepcell.applications.CytoplasmSegmentation
+    1: deepcell.applications.CytoplasmSegmentation
 }
