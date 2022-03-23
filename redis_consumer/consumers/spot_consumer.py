@@ -164,8 +164,10 @@ class SpotConsumer(TensorFlowServingConsumer):
         # with new batching update in deepcell.applications,
         # app.predict() cannot handle a batch_size of None.
         batch_size = app.model.get_batch_size()
-        threshold = hvals.get('threshold', settings.POLARIS_THRESHOLD)
-        clip = hvals.get('clip', settings.POLARIS_CLIP)
+        threshold = settings.POLARIS_THRESHOLD
+        clip = settings.POLARIS_CLIP
+        self.logger.debug('Threshold: {}'.format(threshold))
+        self.logger.debug('Clip: {}'.format(clip))
         results = app.predict(image, batch_size=batch_size, threshold=threshold,
                               clip=clip)
 
