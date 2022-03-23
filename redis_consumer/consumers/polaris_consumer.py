@@ -78,7 +78,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
             'updated_at': current_timestamp,
             'url': upload_file_url,
             'channels': channels,
-            'scale': 0.1667}
+            'scale': 0.38}
 
         # make a hash for this frame
         image_hash = '{prefix}:{file}:{hash}'.format(
@@ -103,7 +103,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
         raw = utils.get_image(os.path.join(subdir, fname))
 
         # remove the last dimensions added by `get_image`
-        tiff_stack = np.squeeze(raw, -1)
+        tiff_stack = np.squeeze(raw)
 
         self.logger.debug('Got tiffstack shape %s.', tiff_stack.shape)
 
@@ -250,9 +250,14 @@ class PolarisConsumer(TensorFlowServingConsumer):
                     subdir=subdir, output_dir=tempdir))
 
                 # Assign spots to cells
-                spot_dict = match_spots_to_cells(np.expand_dims(labeled_im[i, ..., 0],
-                                                                axis=[0, -1]),
-                                                 coords[i])
+                if np.shape(labeled_im)[3] == 2:
+                    spot_dict = match_spots_to_cells(np.expand_dims(labeled_im[i, ..., 1],
+                                                                    axis=[0, -1]),
+                                                     coords[i])
+                else:
+                    spot_dict = match_spots_to_cells(np.expand_dims(labeled_im[i, ..., 0],
+                                                                    axis=[0, -1]),
+                                                     coords[i])
                 # Save spot locations and assignments in .csv file
                 csv_name = '{}.csv'.format(i)
                 if name:
