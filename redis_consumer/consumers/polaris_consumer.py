@@ -249,29 +249,26 @@ class PolarisConsumer(TensorFlowServingConsumer):
                     name=str(name),
                     subdir=subdir, output_dir=tempdir))
 
-                # Assign spots to cells
-                if np.shape(labeled_im)[3] == 2:
-                    spot_dict = match_spots_to_cells(np.expand_dims(labeled_im[i, ..., 1],
-                                                                    axis=[0, -1]),
-                                                     coords[i])
-                else:
-                    spot_dict = match_spots_to_cells(np.expand_dims(labeled_im[i, ..., 0],
-                                                                    axis=[0, -1]),
-                                                     coords[i])
                 # Save spot locations and assignments in .csv file
                 csv_name = '{}.csv'.format(i)
                 if name:
                     csv_name = '{}_{}'.format(name, csv_name)
                 csv_path = os.path.join(tempdir, subdir, csv_name)
-                csv_header = ['x', 'y', 'cellID']
+                if np.shape(labeled_im)[3] == 2:
+                    csv_header = ['x', 'y', 'cellID0', 'cellID1']
+                else:
+                    csv_header = ['x', 'y', 'cellID0']
                 with open(csv_path, 'w', newline='') as csv_file:
                     writer = csv.writer(csv_file, delimiter=',')
                     writer.writerow(csv_header)
-                    for key in spot_dict.keys():
-                        cell_coords = spot_dict[key]
-                        for ii in range(len(cell_coords)):
-                            loc = cell_coords[ii]
-                            writer.writerow([loc[1], loc[0], key])
+                    for ii in range(len(coords[i])):
+                        loc = coords[i][ii]
+                        assignment0 = labeled_im[i, int(loc[0]), int(loc[1]), 0]
+                        if np.shape(labeled_im)[3] == 2:
+                            assignment1 = labeled_im[i, int(loc[0]), int(loc[1]), 1]
+                            writer.writerow([loc[1], loc[0], int(assignment0), int(assignment1)])
+                        else:
+                            writer.writerow([loc[1], loc[0], int(assignment0)])
 
                 outpaths.extend([csv_path])
 
