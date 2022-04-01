@@ -41,47 +41,6 @@ from redis_consumer import settings
 class SegmentationConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
-    def detect_label(self, image):
-        """Send the image to the LABEL_DETECT_MODEL to detect the type of image
-        data. The model output is mapped with settings.MODEL_CHOICES.
-
-        Args:
-            image (numpy.array): The image data.
-
-        Returns:
-            label (int): The detected label.
-        """
-        start = timeit.default_timer()
-
-        app = self.get_grpc_app(settings.LABEL_DETECT_MODEL, LabelDetection)
-
-        if not settings.LABEL_DETECT_ENABLED:
-            self.logger.debug('Label detection disabled. Label set to 0.')
-            return 0  # Use NuclearSegmentation as default model
-
-        batch_size = app.model.get_batch_size()
-        detected_label = app.predict(image, batch_size=batch_size)
-
-        self.logger.debug('Label %s detected in %s seconds',
-                          detected_label, timeit.default_timer() - start)
-
-        return int(detected_label)
-
-    def get_image_label(self, label, image, redis_hash):
-        """Calculate label of image."""
-        if not label:
-            # Detect scale of image (Default to 1)
-            label = self.detect_label(image)
-            self.logger.debug('Image label detected: %s.', label)
-            self.update_key(redis_hash, {'label': label})
-        else:
-            label = int(label)
-            self.logger.debug('Image label already calculated: %s.', label)
-            if label not in settings.APPLICATION_CHOICES:
-                raise ValueError('Label type {} is not supported'.format(label))
-
-        return label
-
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
@@ -104,13 +63,15 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         # Load input image
         fname = hvals.get('input_file_name')
         image = self.download_image(fname)
+        image = np.squeeze(image)
         image = np.expand_dims(image, axis=0)  # add a batch dimension
+        if len(np.shape(image)) == 3:
+            image = np.expand_dims(image, axis=-1)  # add a channel dimension
 
-        # Validate input image
-        if hvals.get('channels'):
-            channels = [int(c) for c in hvals.get('channels').split(',')]
-        else:
-            channels = None
+        rank = 4  # (b,x,y,c)
+        channel_axis = image.shape[1:].index(min(image.shape[1:])) + 1
+        if channel_axis != rank - 1:
+            image = np.rollaxis(image, 1, rank)
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
@@ -122,34 +83,71 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         scale = hvals.get('scale', '')
         scale = self.get_image_scale(scale, image, redis_hash)
 
-        label = hvals.get('label', '')
-        label = self.get_image_label(label, image, redis_hash)
-
-        # Grap appropriate model and application class
-        model = settings.MODEL_CHOICES[label]
-        app_cls = settings.APPLICATION_CHOICES[label]
-
-        model_name, model_version = model.split(':')
-
-        # detect dimension order and add to redis
-        dim_order = self.detect_dimension_order(image, model_name, model_version)
-        self.update_key(redis_hash, {
-            'dim_order': ','.join(dim_order)
-        })
-
         # Validate input image
-        image = self.validate_model_input(image, model_name, model_version,
-                                          channels=channels)
+        channels = hvals.get('channels').split(',')
 
-        # Send data to the model
-        self.update_key(redis_hash, {'status': 'predicting'})
+        if channels[0]:
+            nuc_image = image[..., int(channels[0])]
+            nuc_image = np.expand_dims(nuc_image, axis=-1)
+            # Grap appropriate model and application class
+            model = settings.MODEL_CHOICES[0]
+            app_cls = settings.APPLICATION_CHOICES[0]
 
-        app = self.get_grpc_app(model, app_cls)
-        # with new batching update in deepcell.applications,
-        # app.predict() cannot handle a batch_size of None.
-        batch_size = app.model.get_batch_size()
-        results = app.predict(image, batch_size=batch_size,
-                              image_mpp=scale * app.model_mpp)
+            model_name, model_version = model.split(':')
+
+            # detect dimension order and add to redis
+            dim_order = self.detect_dimension_order(nuc_image, model_name, model_version)
+            self.update_key(redis_hash, {
+                'dim_order': ','.join(dim_order)
+            })
+
+            # Validate input image
+            nuc_image = self.validate_model_input(nuc_image, model_name, model_version)
+
+            # Send data to the model
+            self.update_key(redis_hash, {'status': 'predicting'})
+
+            app = self.get_grpc_app(model, app_cls)
+            # with new batching update in deepcell.applications,
+            # app.predict() cannot handle a batch_size of None.
+            batch_size = min(32, app.model.get_batch_size())  # TODO: raise max batch size
+            nuc_results = app.predict(nuc_image, batch_size=batch_size,
+                                      image_mpp=scale * app.model_mpp)
+
+        if channels[1]:
+            cyto_image = image[..., int(channels[1])]
+            cyto_image = np.expand_dims(cyto_image, axis=-1)
+            # Grap appropriate model and application class
+            model = settings.MODEL_CHOICES[1]
+            app_cls = settings.APPLICATION_CHOICES[1]
+
+            model_name, model_version = model.split(':')
+
+            # detect dimension order and add to redis
+            dim_order = self.detect_dimension_order(cyto_image, model_name, model_version)
+            self.update_key(redis_hash, {
+                'dim_order': ','.join(dim_order)
+            })
+
+            # Validate input image
+            cyto_image = self.validate_model_input(cyto_image, model_name, model_version)
+
+            # Send data to the model
+            self.update_key(redis_hash, {'status': 'predicting'})
+
+            app = self.get_grpc_app(model, app_cls)
+            # with new batching update in deepcell.applications,
+            # app.predict() cannot handle a batch_size of None.
+            batch_size = min(32, app.model.get_batch_size())  # TODO: raise max batch size
+            cyto_results = app.predict(cyto_image, batch_size=batch_size,
+                                       image_mpp=scale * app.model_mpp)
+
+        if channels[0] and channels[1]:
+            results = np.concatenate((nuc_results, cyto_results), axis=-1)
+        elif channels[0]:
+            results = nuc_results
+        elif channels[1]:
+            results = cyto_results
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()

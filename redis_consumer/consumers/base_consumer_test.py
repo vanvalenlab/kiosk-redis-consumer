@@ -471,12 +471,12 @@ class TestTensorFlowServingConsumer(object):
 
         # test scale provided is too large
         with pytest.raises(ValueError):
-            scale = settings.MAX_SCALE + 0.1
+            scale = settings.MAX_SCALE + 0.05
             consumer.get_image_scale(scale, image, 'some hash')
 
         # test scale provided is too small
         with pytest.raises(ValueError):
-            scale = settings.MIN_SCALE - 0.1
+            scale = settings.MIN_SCALE - 0.05
             consumer.get_image_scale(scale, image, 'some hash')
 
     def test_get_grpc_app(self, mocker, redis_client):

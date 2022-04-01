@@ -105,7 +105,7 @@ DEATH = config('DEATH', default=0.99, cast=float)
 # Scale detection settings
 SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:1')
 SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
-MAX_SCALE = config('MAX_SCALE', default=3, cast=float)
+MAX_SCALE = config('MAX_SCALE', default=10, cast=float)
 MIN_SCALE = config('MIN_SCALE', default=1 / MAX_SCALE, cast=float)
 
 # Type detection settings
@@ -125,13 +125,11 @@ POLARIS_CLIP = config('POLARIS_CLIP', default=False, cast=bool)
 
 # Set default models based on label type
 MODEL_CHOICES = {
-    0: config('NUCLEAR_MODEL', default='NuclearSegmentation:0', cast=str),
-    1: config('PHASE_MODEL', default='PhaseCytoSegmentation:0', cast=str),
-    2: config('CYTOPLASM_MODEL', default='FluoCytoSegmentation:0', cast=str)
+    0: config('NUCLEAR_MODEL', default='NuclearSegmentation:5', cast=str),
+    1: config('CYTOPLASM_MODEL', default='CytoplasmSegmentation:4', cast=str)
 }
 
 APPLICATION_CHOICES = {
     0: deepcell.applications.NuclearSegmentation,
-    1: deepcell.applications.CytoplasmSegmentation,
-    2: deepcell.applications.CytoplasmSegmentation
+    1: deepcell.applications.CytoplasmSegmentation
 }
