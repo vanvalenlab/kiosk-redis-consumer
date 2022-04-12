@@ -27,6 +27,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from cProfile import label
 
 import numpy as np
 
@@ -63,6 +64,9 @@ class TestPolarisConsumer(object):
                                                             test_hvals.get('original_name'),
                                                             queue)
 
+        result = redis_client.hget(test_im_hash, 'status')
+        assert result == 'new'
+
     def test__consume_finished_status(self, redis_client):
         queue = 'q'
         storage = DummyStorage()
@@ -84,35 +88,22 @@ class TestPolarisConsumer(object):
             assert result == status
             test_hash += 1
 
-    # def test__consume(self, mocker, redis_client):
-    #     # pylint: disable=W0613
-    #     queue = 'polaris'
-    #     storage = DummyStorage()
+    def test__consume(self, mocker, redis_client):
+        # pylint: disable=W0613
+        queue = 'polaris'
+        storage = DummyStorage()
 
-    #     consumer = consumers.PolarisConsumer(redis_client, storage, queue)
+        consumer = consumers.PolarisConsumer(redis_client, storage, queue)
+        empty_data = {'input_file_name': 'file.tiff'}
 
-    #     empty_data = {'input_file_name': 'file.tiff'}
+        mocker.patch.object(consumer,
+                            '_analyze_images',
+                            lambda *x, **_: {'coords': np.random.randint(size=(1, 10, 2)),
+                                             'segmentation': np.random.random(size=(1, 32, 32, 1))})
+        test_hash = 'some hash'
 
-    #     output_shape = (1, 256, 256, 2)
-
-    #     mock_app = Bunch(
-    #         predict=lambda *x, **y: np.random.randint(1, 5, size=output_shape),
-    #         model_mpp=1,
-    #         model=Bunch(
-    #             get_batch_size=lambda *x: 1,
-    #             input_shape=(1, 32, 32, 1)
-    #         )
-    #     )
-
-    #     mocker.patch.object(consumer, 'get_grpc_app', lambda *x, **_: mock_app)
-    #     mocker.patch.object(consumer, 'get_image_scale', lambda *x, **_: 1)
-    #     mocker.patch.object(consumer, 'validate_model_input', lambda *x, **_: x[0])
-    #     mocker.patch.object(consumer, 'detect_dimension_order', lambda *x, **_: 'YXC')
-
-    #     test_hash = 'some hash'
-
-    #     redis_client.hmset(test_hash, empty_data)
-    #     result = consumer._consume(test_hash)
-    #     assert result == consumer.final_status
-    #     result = redis_client.hget(test_hash, 'status')
-    #     assert result == consumer.final_status
+        redis_client.hmset(test_hash, empty_data)
+        result = consumer._consume(test_hash)
+        assert result == consumer.final_status
+        result = redis_client.hget(test_hash, 'status')
+        assert result == consumer.final_status
