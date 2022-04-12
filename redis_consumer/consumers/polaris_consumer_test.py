@@ -84,7 +84,8 @@ class TestPolarisConsumer(object):
                             np.random.random(size=input_size))
 
             empty_data = {'input_file_name': 'file.tiff',
-                          'segmentation_type': 'cell culture'}
+                          'segmentation_type': 'cell culture',
+                          'channels': '0,1,2'}
             redis_client.hmset(test_hash, empty_data)
             res = consumer._analyze_images(test_hash, tempdir, fname)
         assert np.shape(res['segmentation']) == input_size
