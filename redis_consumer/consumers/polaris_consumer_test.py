@@ -33,6 +33,7 @@ import numpy as np
 
 import os
 import pytest
+import string
 import tempfile
 import tifffile
 import uuid
@@ -81,8 +82,8 @@ class TestPolarisConsumer(object):
         filepath = os.path.join(tmpdir, fname)
         input_size = (1, 32, 32, 1)
         empty_data = {'input_file_name': 'file.tiff',
-                        'segmentation_type': 'none',
-                        'channels': '0,,'}
+                      'segmentation_type': 'none',
+                      'channels': '0,,'}
 
         # test successful workflow
         def hget_successful_status(*_):
