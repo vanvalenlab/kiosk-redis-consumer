@@ -97,7 +97,8 @@ class TestPolarisConsumer(object):
 
         # consume with segmentation and spot detection
         empty_data = {'input_file_name': 'file.tiff',
-                      'channels': '0,1,2'}
+                      'channels': '0,1,2',
+                      'segmentation_type': 'cell culture'}
         mocker.patch.object(consumer,
                             '_analyze_images',
                             lambda *x, **_: {'coords': np.random.randint(32, size=(1, 10, 2)),
@@ -113,7 +114,8 @@ class TestPolarisConsumer(object):
 
         # consume with spot detection only
         empty_data = {'input_file_name': 'file.tiff',
-                      'channels': '0,,'}
+                      'channels': '0,,',
+                      'segmentation_type': 'none'}
         mocker.patch.object(consumer,
                             '_analyze_images',
                             lambda *x, **_: {'coords': np.random.randint(32, size=(1, 10, 2)),
