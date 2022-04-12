@@ -111,6 +111,32 @@ class TestPolarisConsumer(object):
 
         assert isinstance(coords, np.ndarray)
         assert isinstance(segmentation, list)
+
+        # Cell culture segmentation
+        test_hash = 'test hash'
+        empty_data = {'input_file_name': 'file.tiff',
+                      'segmentation_type': 'cell culture',
+                      'channels': '0,1,2'}
+        redis_client.hmset(test_hash, empty_data)
+        results = consumer._analyze_images(test_hash, tmpdir, fname)
+        coords, segmentation = results.get('coords'), results.get('segmentation')
+
+        assert isinstance(coords, np.ndarray)
+        assert isinstance(segmentation, list)
+        assert np.shape(segmentation)[1] == input_size[1]
+        assert np.shape(segmentation)[2] == input_size[2]
+
+        # Tissue segmentation
+        test_hash = 'test hash'
+        empty_data = {'input_file_name': 'file.tiff',
+                      'segmentation_type': 'tissue',
+                      'channels': '0,1,2'}
+        redis_client.hmset(test_hash, empty_data)
+        results = consumer._analyze_images(test_hash, tmpdir, fname)
+        coords, segmentation = results.get('coords'), results.get('segmentation')
+
+        assert isinstance(coords, np.ndarray)
+        assert isinstance(segmentation, list)
         assert np.shape(segmentation)[1] == input_size[1]
         assert np.shape(segmentation)[2] == input_size[2]
 
