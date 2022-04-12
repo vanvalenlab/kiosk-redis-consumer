@@ -31,6 +31,7 @@ from __future__ import print_function
 import numpy as np
 
 import pytest
+import uuid
 
 from redis_consumer import consumers
 from redis_consumer import settings
@@ -42,6 +43,24 @@ from redis_consumer.testing_utils import redis_client
 
 class TestPolarisConsumer(object):
     # pylint: disable=R0201,W0621
+
+    def test__add_images(self, redis_client):
+        queue = 'polaris'
+        storage = DummyStorage()
+        consumer = consumers.PolarisConsumer(redis_client, storage, queue)
+
+        test_im = np.random.random(size=(1,32,32,1))
+        test_im_name = 'test_im'
+
+        test_hvals = {'original_name': test_im_name}
+        uid = uuid.uuid4().hex
+
+        test_im_hash = consumer._add_images(test_hvals, uid, test_im, queue)
+        split_hash = test_im_hash.split(":")
+
+        assert split_hash[0] == queue
+        assert split_hash[1] == '{}-{}-{}-image.tif'.format(
+                uid, hvals.get('original_name'), queue)
 
     def test__consume_finished_status(self, redis_client):
         queue = 'q'
