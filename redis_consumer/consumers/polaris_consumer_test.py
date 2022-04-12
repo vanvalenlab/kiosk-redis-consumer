@@ -100,7 +100,7 @@ class TestPolarisConsumer(object):
         mocker.patch('redis_consumer.utils.iter_image_archive',
                      write_child_tiff)
 
-        tifffile.imsave(filepath, np.random.random(input_size)
+        tifffile.imsave(filepath, np.random.random(input_size))
         results = consumer._analyze_images(test_hash, tmpdir, fname)
         coords, segmentation = results.get('coords'), results.get('segmentation')
 
