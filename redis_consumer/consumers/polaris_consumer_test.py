@@ -74,18 +74,18 @@ class TestPolarisConsumer(object):
         storage = DummyStorage()
         consumer = consumers.PolarisConsumer(redis_client, storage, queue)
 
-        test_hash = 'test hash'
-        tempdir = tempfile.TemporaryDirectory()
-        fname = 'file.tiff'
-        input_size = (1, 32, 32, 1)
-        _ = utils.save_numpy_array(np.random.random(size=input_size),
-                                   name=fname,
-                                   subdir='', output_dir=tempdir)
+        with tempfile.TemporaryDirectory as tempdir:
+            test_hash = 'test hash'
+            fname = 'file.tiff'
+            input_size = (1, 32, 32, 1)
+            _ = utils.save_numpy_array(np.random.random(size=input_size),
+                                       name=fname,
+                                       subdir='', output_dir=tempdir)
 
-        empty_data = {'input_file_name': 'file.tiff',
-                      'segmentation_type': 'cell culture'}
-        redis_client.hmset(test_hash, empty_data)
-        res = consumer._analyze_images(test_hash, tempdir, fname)
+            empty_data = {'input_file_name': 'file.tiff',
+                          'segmentation_type': 'cell culture'}
+            redis_client.hmset(test_hash, empty_data)
+            res = consumer._analyze_images(test_hash, tempdir, fname)
         assert np.shape(res['segmentation':]) == input_size
 
     def test__consume_finished_status(self, redis_client):
