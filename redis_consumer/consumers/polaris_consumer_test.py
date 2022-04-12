@@ -74,7 +74,7 @@ class TestPolarisConsumer(object):
         storage = DummyStorage()
         consumer = consumers.PolarisConsumer(redis_client, storage, queue)
 
-        with tempfile.TemporaryDirectory as tempdir:
+        with tempfile.TemporaryDirectory() as tempdir:
             test_hash = 'test hash'
             fname = 'file.tiff'
             input_size = (1, 32, 32, 1)
