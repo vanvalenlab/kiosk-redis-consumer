@@ -71,21 +71,21 @@ class TestPolarisConsumer(object):
         result = redis_client.hget(test_im_hash, 'status')
         assert result == 'new'
 
-    def test__analyze_images(self, redis_client):
+    def test__analyze_images(self, mocker, redis_client):
         queue = 'polaris'
         storage = DummyStorage()
         consumer = consumers.PolarisConsumer(redis_client, storage, queue)
+        mocker.patch('redis_consumer.utils.get_image',
+                     lambda *x, **_: np.random.random(size=(1, 32, 32, 1)))
 
         with tempfile.TemporaryDirectory() as tempdir:
             test_hash = 'test hash'
             fname = 'file.tiff'
             input_size = (1, 32, 32, 1)
-            tifffile.imsave(os.path.join(tempdir, fname),
-                            np.random.random(size=input_size))
 
             empty_data = {'input_file_name': 'file.tiff',
-                          'segmentation_type': 'cell culture',
-                          'channels': '0,1,2'}
+                          'segmentation_type': 'none',
+                          'channels': '0,,'}
             redis_client.hmset(test_hash, empty_data)
             res = consumer._analyze_images(test_hash, tempdir, fname)
         assert np.shape(res['segmentation']) == input_size
