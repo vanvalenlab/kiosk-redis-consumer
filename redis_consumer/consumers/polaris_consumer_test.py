@@ -78,13 +78,9 @@ class TestPolarisConsumer(object):
         storage = DummyStorage()
         consumer = consumers.PolarisConsumer(redis_client, storage, queue)
 
-        test_hash = 'test hash'
         fname = 'file.tiff'
         filepath = os.path.join(tmpdir, fname)
         input_size = (1, 32, 32, 1)
-        empty_data = {'input_file_name': 'file.tiff',
-                      'segmentation_type': 'none',
-                      'channels': '0,,'}
 
         # test successful workflow
         def hget_successful_status(*_):
@@ -103,12 +99,20 @@ class TestPolarisConsumer(object):
                      write_child_tiff)
 
         tifffile.imsave(filepath, np.random.random(input_size))
+
+        # No segmentation
+        test_hash = 'test hash'
+        empty_data = {'input_file_name': 'file.tiff',
+                      'segmentation_type': 'none',
+                      'channels': '0,,'}
+        redis_client.hmset(test_hash, empty_data)
         results = consumer._analyze_images(test_hash, tmpdir, fname)
         coords, segmentation = results.get('coords'), results.get('segmentation')
 
         assert isinstance(coords, np.ndarray)
-        assert isinstance(segmentation, np.ndarray)
-        assert np.shape(segmentation) == input_size
+        assert isinstance(segmentation, list)
+        assert np.shape(segmentation)[1] == input_size[1]
+        assert np.shape(segmentation)[2] == input_size[2]
 
     def test__consume_finished_status(self, redis_client):
         queue = 'q'
