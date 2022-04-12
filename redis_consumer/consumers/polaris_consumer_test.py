@@ -31,8 +31,10 @@ from cProfile import label
 
 import numpy as np
 
+import os
 import pytest
 import tempfile
+import tifffile
 import uuid
 
 from redis_consumer import consumers
@@ -78,15 +80,14 @@ class TestPolarisConsumer(object):
             test_hash = 'test hash'
             fname = 'file.tiff'
             input_size = (1, 32, 32, 1)
-            _ = utils.save_numpy_array(np.random.random(size=input_size),
-                                       name=fname,
-                                       subdir='', output_dir=tempdir)
+            tifffile.imsave(os.path.join(tempdir, fname),
+                            np.random.random(size=input_size))
 
             empty_data = {'input_file_name': 'file.tiff',
                           'segmentation_type': 'cell culture'}
             redis_client.hmset(test_hash, empty_data)
             res = consumer._analyze_images(test_hash, tempdir, fname)
-        assert np.shape(res['segmentation':]) == input_size
+        assert np.shape(res['segmentation']) == input_size
 
     def test__consume_finished_status(self, redis_client):
         queue = 'q'
