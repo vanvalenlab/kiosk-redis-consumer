@@ -94,14 +94,31 @@ class TestPolarisConsumer(object):
         storage = DummyStorage()
 
         consumer = consumers.PolarisConsumer(redis_client, storage, queue)
-        empty_data = {'input_file_name': 'file.tiff'}
 
+        # consume with segmentation and spot detection
+        empty_data = {'input_file_name': 'file.tiff',
+                      'channels': '0,1,2'}
         mocker.patch.object(consumer,
                             '_analyze_images',
                             lambda *x, **_: {'coords': np.random.randint(32, size=(1, 10, 2)),
-                                             'segmentation': np.random.random(size=(1, 32, 32, 1))})
+                                             'segmentation': np.random.random(size=(1, 32, 32, 1))
+                                             }
+                            )
         test_hash = 'some hash'
+        redis_client.hmset(test_hash, empty_data)
+        result = consumer._consume(test_hash)
+        assert result == consumer.final_status
+        result = redis_client.hget(test_hash, 'status')
+        assert result == consumer.final_status
 
+        # consume with spot detection only
+        empty_data = {'input_file_name': 'file.tiff',
+                      'channels': '0,,'}
+        mocker.patch.object(consumer,
+                            '_analyze_images',
+                            lambda *x, **_: {'coords': np.random.randint(32, size=(1, 10, 2)),
+                                             'segmentation': []})
+        test_hash = 'some hash'
         redis_client.hmset(test_hash, empty_data)
         result = consumer._consume(test_hash)
         assert result == consumer.final_status
