@@ -98,7 +98,7 @@ class TestPolarisConsumer(object):
 
         mocker.patch.object(consumer,
                             '_analyze_images',
-                            lambda *x, **_: {'coords': np.random.randint(size=(1, 10, 2)),
+                            lambda *x, **_: {'coords': np.random.randint(32, size=(1, 10, 2)),
                                              'segmentation': np.random.random(size=(1, 32, 32, 1))})
         test_hash = 'some hash'
 
