@@ -71,24 +71,42 @@ class TestPolarisConsumer(object):
         result = redis_client.hget(test_im_hash, 'status')
         assert result == 'new'
 
-    def test__analyze_images(self, mocker, redis_client):
+    def test__analyze_images(self, tmpdir, mocker, redis_client):
         queue = 'polaris'
         storage = DummyStorage()
         consumer = consumers.PolarisConsumer(redis_client, storage, queue)
-        mocker.patch('redis_consumer.utils.get_image',
-                     lambda *x, **_: np.random.random(size=(1, 32, 32, 1)))
 
-        with tempfile.TemporaryDirectory() as tempdir:
-            test_hash = 'test hash'
-            fname = 'file.tiff'
-            input_size = (1, 32, 32, 1)
+        test_hash = 'test hash'
+        fname = 'file.tiff'
+        filepath = os.path.join(tmpdir, fname)
+        input_size = (1, 32, 32, 1)
+        empty_data = {'input_file_name': 'file.tiff',
+                        'segmentation_type': 'none',
+                        'channels': '0,,'}
 
-            empty_data = {'input_file_name': 'file.tiff',
-                          'segmentation_type': 'none',
-                          'channels': '0,,'}
-            redis_client.hmset(test_hash, empty_data)
-            res = consumer._analyze_images(test_hash, tempdir, fname)
-        assert np.shape(res['segmentation']) == input_size
+        # test successful workflow
+        def hget_successful_status(*_):
+            return consumer.final_status
+
+        def write_child_tiff(*_, **__):
+            letters = string.ascii_lowercase
+            name = ''.join(random.choice(letters) for i in range(12))
+            path = os.path.join(tmpdir, '{}.tiff'.format(name))
+            tifffile.imsave(path, _get_image(32, 32))
+            return [path]
+
+        mocker.patch.object(settings, 'INTERVAL', 0)
+        mocker.patch.object(redis_client, 'hget', hget_successful_status)
+        mocker.patch('redis_consumer.utils.iter_image_archive',
+                     write_child_tiff)
+
+        tifffile.imsave(filepath, np.random.random(input_size)
+        results = consumer._analyze_images(test_hash, tmpdir, fname)
+        coords, segmentation = results.get('coords'), results.get('segmentation')
+
+        assert isinstance(coords, np.ndarray)
+        assert isinstance(segmentation, np.ndarray)
+        assert np.shape(segmentation) == input_size
 
     def test__consume_finished_status(self, redis_client):
         queue = 'q'
