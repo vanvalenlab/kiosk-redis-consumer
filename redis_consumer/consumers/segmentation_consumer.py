@@ -41,6 +41,48 @@ from redis_consumer import settings
 class SegmentationConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
+    def detect_label(self, image):
+        """ DEPRECATED -- Send the image to the LABEL_DETECT_MODEL to
+        detect the type of image data. The model output is mapped with
+        settings.MODEL_CHOICES.
+
+        Args:
+            image (numpy.array): The image data.
+
+        Returns:
+            label (int): The detected label.
+        """
+        start = timeit.default_timer()
+
+        app = self.get_grpc_app(settings.LABEL_DETECT_MODEL, LabelDetection)
+
+        if not settings.LABEL_DETECT_ENABLED:
+            self.logger.debug('Label detection disabled. Label set to 0.')
+            return 0  # Use NuclearSegmentation as default model
+
+        batch_size = app.model.get_batch_size()
+        detected_label = app.predict(image, batch_size=batch_size)
+
+        self.logger.debug('Label %s detected in %s seconds',
+                          detected_label, timeit.default_timer() - start)
+
+        return int(detected_label)
+
+    def get_image_label(self, label, image, redis_hash):
+        """ DEPRACATED -- Calculate label of image."""
+        if not label:
+            # Detect scale of image (Default to 1)
+            label = self.detect_label(image)
+            self.logger.debug('Image label detected: %s.', label)
+            self.update_key(redis_hash, {'label': label})
+        else:
+            label = int(label)
+            self.logger.debug('Image label already calculated: %s.', label)
+            if label not in settings.APPLICATION_CHOICES:
+                raise ValueError('Label type {} is not supported'.format(label))
+
+        return label
+
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
