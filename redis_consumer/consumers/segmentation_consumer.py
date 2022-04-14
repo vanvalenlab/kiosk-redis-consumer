@@ -126,70 +126,39 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         scale = self.get_image_scale(scale, image, redis_hash)
 
         # Validate input image
-        channels = hvals.get('channels').split(',')
+        channels = hvals.get('channels').split(',')  # ex: channels = ['0','1','2']
 
-        if channels[0]:
-            nuc_image = image[..., int(channels[0])]
-            nuc_image = np.expand_dims(nuc_image, axis=-1)
-            # Grap appropriate model and application class
-            model = settings.MODEL_CHOICES[0]
-            app_cls = settings.APPLICATION_CHOICES[0]
+        results = []
+        for i in range(len(channels)):
+            if channels[i]:
+                slice_image = image[..., int(channels[i])]
+                slice_image = np.expand_dims(slice_image, axis=-1)
+                # Grap appropriate model and application class
+                model = settings.MODEL_CHOICES[i]
+                app_cls = settings.APPLICATION_CHOICES[i]
 
-            model_name, model_version = model.split(':')
+                model_name, model_version = model.split(':')
 
-            # detect dimension order and add to redis
-            dim_order = self.detect_dimension_order(nuc_image, model_name, model_version)
-            self.update_key(redis_hash, {
-                'dim_order': ','.join(dim_order)
-            })
+                # detect dimension order and add to redis
+                dim_order = self.detect_dimension_order(slice_image, model_name, model_version)
+                self.update_key(redis_hash, {
+                    'dim_order': ','.join(dim_order)
+                })
 
-            # Validate input image
-            nuc_image = self.validate_model_input(nuc_image, model_name, model_version)
+                # Validate input image
+                slice_image = self.validate_model_input(slice_image, model_name, model_version)
 
-            # Send data to the model
-            self.update_key(redis_hash, {'status': 'predicting'})
+                # Send data to the model
+                self.update_key(redis_hash, {'status': 'predicting'})
 
-            app = self.get_grpc_app(model, app_cls)
-            # with new batching update in deepcell.applications,
-            # app.predict() cannot handle a batch_size of None.
-            batch_size = min(32, app.model.get_batch_size())  # TODO: raise max batch size
-            nuc_results = app.predict(nuc_image, batch_size=batch_size,
-                                      image_mpp=scale * app.model_mpp)
+                app = self.get_grpc_app(model, app_cls)
+                # with new batching update in deepcell.applications,
+                # app.predict() cannot handle a batch_size of None.
+                batch_size = min(32, app.model.get_batch_size())  # TODO: raise max batch size
+                pred_results = app.predict(slice_image, batch_size=batch_size,
+                                           image_mpp=scale * app.model_mpp)
 
-        if channels[1]:
-            cyto_image = image[..., int(channels[1])]
-            cyto_image = np.expand_dims(cyto_image, axis=-1)
-            # Grap appropriate model and application class
-            model = settings.MODEL_CHOICES[1]
-            app_cls = settings.APPLICATION_CHOICES[1]
-
-            model_name, model_version = model.split(':')
-
-            # detect dimension order and add to redis
-            dim_order = self.detect_dimension_order(cyto_image, model_name, model_version)
-            self.update_key(redis_hash, {
-                'dim_order': ','.join(dim_order)
-            })
-
-            # Validate input image
-            cyto_image = self.validate_model_input(cyto_image, model_name, model_version)
-
-            # Send data to the model
-            self.update_key(redis_hash, {'status': 'predicting'})
-
-            app = self.get_grpc_app(model, app_cls)
-            # with new batching update in deepcell.applications,
-            # app.predict() cannot handle a batch_size of None.
-            batch_size = min(32, app.model.get_batch_size())  # TODO: raise max batch size
-            cyto_results = app.predict(cyto_image, batch_size=batch_size,
-                                       image_mpp=scale * app.model_mpp)
-
-        if channels[0] and channels[1]:
-            results = np.concatenate((nuc_results, cyto_results), axis=-1)
-        elif channels[0]:
-            results = nuc_results
-        elif channels[1]:
-            results = cyto_results
+                results.extend(pred_results)
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
