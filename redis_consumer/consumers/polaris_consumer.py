@@ -78,7 +78,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
             'updated_at': current_timestamp,
             'url': upload_file_url,
             'channels': channels,
-            'scale': 0.38}
+            'scale': 0.38}  # TODO don't hardcode
 
         # make a hash for this frame
         image_hash = '{prefix}:{file}:{hash}'.format(
@@ -127,7 +127,6 @@ class PolarisConsumer(TensorFlowServingConsumer):
         remaining_hashes.add(spots_hash)
 
         self.logger.debug('Starting segmentation')
-        self.logger.debug('Channels: {}'.format(channels))
         if segmentation_type == 'cell culture':
             if channels[1]:
                 # add channel 1 ind of tiff stack to nuclear queue
@@ -206,7 +205,6 @@ class PolarisConsumer(TensorFlowServingConsumer):
                             segmentation_stack = np.moveaxis(segmentation_stack, 0, 2)
                             segmentation_uid = os.path.split(file)[1][:10]
                             if segmentation_uid in segmentation_dict.keys():
-                                self.logger.debug('got here')
                                 segmentation_dict[segmentation_uid].append(segmentation_stack)
                             else:
                                 segmentation_dict[segmentation_uid] = [segmentation_stack]
