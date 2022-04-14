@@ -33,6 +33,7 @@ import numpy as np
 from redis_consumer import consumers
 from redis_consumer.testing_utils import Bunch
 from redis_consumer.testing_utils import DummyStorage
+from redis_consumer.testing_utils import redis_client
 
 
 class TestSpotConsumer(object):
