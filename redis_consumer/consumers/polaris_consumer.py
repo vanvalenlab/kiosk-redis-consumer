@@ -361,7 +361,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
         self.update_key(redis_hash, {
             'status': self.final_status,
             'output_url': output_url,
-            'upload_time': end,  # - _
+            'upload_time': end - _,
             'output_file_name': dest,
             'total_jobs': 1,
             'total_time': end - start,
