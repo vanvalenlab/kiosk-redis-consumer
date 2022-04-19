@@ -37,6 +37,7 @@ from redis_consumer.consumers.segmentation_consumer import SegmentationConsumer
 from redis_consumer.consumers.caliban_consumer import CalibanConsumer
 from redis_consumer.consumers.mesmer_consumer import MesmerConsumer
 from redis_consumer.consumers.polaris_consumer import PolarisConsumer
+from redis_consumer.consumers.spot_consumer import SpotConsumer
 # TODO: Import future custom Consumer classes.
 
 
@@ -49,6 +50,7 @@ CONSUMERS = {
     'mesmer': MesmerConsumer,
     'caliban': CalibanConsumer,
     'polaris': PolarisConsumer,
+    'spot': SpotConsumer,
     # TODO: Add future custom Consumer classes here.
 }
 

@@ -30,18 +30,110 @@ from __future__ import print_function
 
 import numpy as np
 
-import pytest
+import os
+import random
+import string
+import tifffile
+import uuid
 
 from redis_consumer import consumers
 from redis_consumer import settings
 from redis_consumer.testing_utils import _get_image
-from redis_consumer.testing_utils import Bunch
 from redis_consumer.testing_utils import DummyStorage
 from redis_consumer.testing_utils import redis_client
 
 
 class TestPolarisConsumer(object):
     # pylint: disable=R0201,W0621
+
+    def test__add_images(self, redis_client):
+        queue = 'polaris'
+        storage = DummyStorage()
+        consumer = consumers.PolarisConsumer(redis_client, storage, queue)
+
+        test_im = np.random.random(size=(1, 32, 32, 1))
+        test_im_name = 'test_im'
+
+        test_hvals = {'original_name': test_im_name}
+        uid = uuid.uuid4().hex
+
+        test_im_hash = consumer._add_images(test_hvals, uid, test_im, queue)
+        split_hash = test_im_hash.split(":")
+
+        assert split_hash[0] == queue
+        assert split_hash[1] == '{}-{}-{}-image.tif'.format(uid,
+                                                            test_hvals.get('original_name'),
+                                                            queue)
+
+        result = redis_client.hget(test_im_hash, 'status')
+        assert result == 'new'
+
+    def test__analyze_images(self, tmpdir, mocker, redis_client):
+        queue = 'polaris'
+        storage = DummyStorage()
+        consumer = consumers.PolarisConsumer(redis_client, storage, queue)
+
+        fname = 'file.tiff'
+        filepath = os.path.join(tmpdir, fname)
+        input_size = (1, 32, 32, 1)
+
+        # test successful workflow
+        def hget_successful_status(*_):
+            return consumer.final_status
+
+        def write_child_tiff(*_, **__):
+            letters = string.ascii_lowercase
+            name = ''.join(random.choice(letters) for i in range(12))
+            path = os.path.join(tmpdir, '{}.tiff'.format(name))
+            tifffile.imsave(path, _get_image(32, 32))
+            return [path]
+
+        mocker.patch.object(settings, 'INTERVAL', 0)
+        mocker.patch.object(redis_client, 'hget', hget_successful_status)
+        mocker.patch('redis_consumer.utils.iter_image_archive',
+                     write_child_tiff)
+
+        tifffile.imsave(filepath, np.random.random(input_size))
+
+        # No segmentation
+        test_hash = 'test hash'
+        empty_data = {'input_file_name': 'file.tiff',
+                      'segmentation_type': 'none',
+                      'channels': '0,,'}
+        redis_client.hmset(test_hash, empty_data)
+        results = consumer._analyze_images(test_hash, tmpdir, fname)
+        coords, segmentation = results.get('coords'), results.get('segmentation')
+
+        assert isinstance(coords, np.ndarray)
+        assert isinstance(segmentation, list)
+
+        # Cell culture segmentation
+        test_hash = 'test hash'
+        empty_data = {'input_file_name': 'file.tiff',
+                      'segmentation_type': 'cell culture',
+                      'channels': '0,1,2'}
+        redis_client.hmset(test_hash, empty_data)
+        results = consumer._analyze_images(test_hash, tmpdir, fname)
+        coords, segmentation = results.get('coords'), results.get('segmentation')
+
+        assert isinstance(coords, np.ndarray)
+        assert isinstance(segmentation, list)
+        assert np.shape(segmentation)[1] == input_size[1]
+        assert np.shape(segmentation)[2] == input_size[2]
+
+        # Tissue segmentation
+        test_hash = 'test hash'
+        empty_data = {'input_file_name': 'file.tiff',
+                      'segmentation_type': 'tissue',
+                      'channels': '0,1,2'}
+        redis_client.hmset(test_hash, empty_data)
+        results = consumer._analyze_images(test_hash, tmpdir, fname)
+        coords, segmentation = results.get('coords'), results.get('segmentation')
+
+        assert isinstance(coords, np.ndarray)
+        assert isinstance(segmentation, list)
+        assert np.shape(segmentation)[1] == input_size[1]
+        assert np.shape(segmentation)[2] == input_size[2]
 
     def test__consume_finished_status(self, redis_client):
         queue = 'q'
@@ -66,31 +158,51 @@ class TestPolarisConsumer(object):
 
     def test__consume(self, mocker, redis_client):
         # pylint: disable=W0613
-        queue = 'multiplex'
+        queue = 'polaris'
         storage = DummyStorage()
 
         consumer = consumers.PolarisConsumer(redis_client, storage, queue)
 
-        empty_data = {'input_file_name': 'file.tiff'}
-
-        output_shape = (1, 256, 256, 2)
-
-        mock_app = Bunch(
-            predict=lambda *x, **y: np.random.randint(1, 5, size=output_shape),
-            model_mpp=1,
-            model=Bunch(
-                get_batch_size=lambda *x: 1,
-                input_shape=(1, 32, 32, 1)
-            )
-        )
-
-        mocker.patch.object(consumer, 'get_grpc_app', lambda *x, **_: mock_app)
-        mocker.patch.object(consumer, 'get_image_scale', lambda *x, **_: 1)
-        mocker.patch.object(consumer, 'validate_model_input', lambda *x, **_: x[0])
-        mocker.patch.object(consumer, 'detect_dimension_order', lambda *x, **_: 'YXC')
-
+        # consume with cell culture segmentation and spot detection
+        empty_data = {'input_file_name': 'file.tiff',
+                      'segmentation_type': 'cell culture'}
+        mocker.patch.object(consumer,
+                            '_analyze_images',
+                            lambda *x, **_: {'coords': np.random.randint(32, size=(1, 10, 2)),
+                                             'segmentation': np.random.random(size=(1, 32, 32, 1))
+                                             }
+                            )
         test_hash = 'some hash'
+        redis_client.hmset(test_hash, empty_data)
+        result = consumer._consume(test_hash)
+        assert result == consumer.final_status
+        result = redis_client.hget(test_hash, 'status')
+        assert result == consumer.final_status
 
+        # consume with tissue segmentation and spot detection
+        empty_data = {'input_file_name': 'file.tiff',
+                      'segmentation_type': 'tissue'}
+        mocker.patch.object(consumer,
+                            '_analyze_images',
+                            lambda *x, **_: {'coords': np.random.randint(32, size=(1, 10, 2)),
+                                             'segmentation': np.random.random(size=(1, 32, 32, 1))
+                                             }
+                            )
+        test_hash = 'another hash'
+        redis_client.hmset(test_hash, empty_data)
+        result = consumer._consume(test_hash)
+        assert result == consumer.final_status
+        result = redis_client.hget(test_hash, 'status')
+        assert result == consumer.final_status
+
+        # consume with spot detection only
+        empty_data = {'input_file_name': 'file.tiff',
+                      'segmentation_type': 'none'}
+        mocker.patch.object(consumer,
+                            '_analyze_images',
+                            lambda *x, **_: {'coords': np.random.randint(32, size=(1, 10, 2)),
+                                             'segmentation': []})
+        test_hash = 'some other hash'
         redis_client.hmset(test_hash, empty_data)
         result = consumer._consume(test_hash)
         assert result == consumer.final_status

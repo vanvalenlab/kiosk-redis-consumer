@@ -42,8 +42,9 @@ class SegmentationConsumer(TensorFlowServingConsumer):
     """Consumes image files and uploads the results"""
 
     def detect_label(self, image):
-        """Send the image to the LABEL_DETECT_MODEL to detect the type of image
-        data. The model output is mapped with settings.MODEL_CHOICES.
+        """ DEPRECATED -- Send the image to the LABEL_DETECT_MODEL to
+        detect the type of image data. The model output is mapped with
+        settings.MODEL_CHOICES.
 
         Args:
             image (numpy.array): The image data.
@@ -68,7 +69,7 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         return int(detected_label)
 
     def get_image_label(self, label, image, redis_hash):
-        """Calculate label of image."""
+        """ DEPRACATED -- Calculate label of image."""
         if not label:
             # Detect scale of image (Default to 1)
             label = self.detect_label(image)
@@ -104,13 +105,15 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         # Load input image
         fname = hvals.get('input_file_name')
         image = self.download_image(fname)
+        image = np.squeeze(image)
         image = np.expand_dims(image, axis=0)  # add a batch dimension
+        if len(np.shape(image)) == 3:
+            image = np.expand_dims(image, axis=-1)  # add a channel dimension
 
-        # Validate input image
-        if hvals.get('channels'):
-            channels = [int(c) for c in hvals.get('channels').split(',')]
-        else:
-            channels = None
+        rank = 4  # (b,x,y,c)
+        channel_axis = image.shape[1:].index(min(image.shape[1:])) + 1
+        if channel_axis != rank - 1:
+            image = np.rollaxis(image, 1, rank)
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
@@ -122,34 +125,40 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         scale = hvals.get('scale', '')
         scale = self.get_image_scale(scale, image, redis_hash)
 
-        label = hvals.get('label', '')
-        label = self.get_image_label(label, image, redis_hash)
-
-        # Grap appropriate model and application class
-        model = settings.MODEL_CHOICES[label]
-        app_cls = settings.APPLICATION_CHOICES[label]
-
-        model_name, model_version = model.split(':')
-
-        # detect dimension order and add to redis
-        dim_order = self.detect_dimension_order(image, model_name, model_version)
-        self.update_key(redis_hash, {
-            'dim_order': ','.join(dim_order)
-        })
-
         # Validate input image
-        image = self.validate_model_input(image, model_name, model_version,
-                                          channels=channels)
+        channels = hvals.get('channels').split(',')  # ex: channels = ['0','1','2']
 
-        # Send data to the model
-        self.update_key(redis_hash, {'status': 'predicting'})
+        results = []
+        for i in range(len(channels)):
+            if channels[i]:
+                slice_image = image[..., int(channels[i])]
+                slice_image = np.expand_dims(slice_image, axis=-1)
+                # Grap appropriate model and application class
+                model = settings.MODEL_CHOICES[i]
+                app_cls = settings.APPLICATION_CHOICES[i]
 
-        app = self.get_grpc_app(model, app_cls)
-        # with new batching update in deepcell.applications,
-        # app.predict() cannot handle a batch_size of None.
-        batch_size = app.model.get_batch_size()
-        results = app.predict(image, batch_size=batch_size,
-                              image_mpp=scale * app.model_mpp)
+                model_name, model_version = model.split(':')
+
+                # detect dimension order and add to redis
+                dim_order = self.detect_dimension_order(slice_image, model_name, model_version)
+                self.update_key(redis_hash, {
+                    'dim_order': ','.join(dim_order)
+                })
+
+                # Validate input image
+                slice_image = self.validate_model_input(slice_image, model_name, model_version)
+
+                # Send data to the model
+                self.update_key(redis_hash, {'status': 'predicting'})
+
+                app = self.get_grpc_app(model, app_cls)
+                # with new batching update in deepcell.applications,
+                # app.predict() cannot handle a batch_size of None.
+                batch_size = min(32, app.model.get_batch_size())  # TODO: raise max batch size
+                pred_results = app.predict(slice_image, batch_size=batch_size,
+                                           image_mpp=scale * app.model_mpp)
+
+                results.extend(pred_results)
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()

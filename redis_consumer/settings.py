@@ -105,7 +105,7 @@ DEATH = config('DEATH', default=0.99, cast=float)
 # Scale detection settings
 SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:1')
 SCALE_DETECT_ENABLED = config('SCALE_DETECT_ENABLED', default=False, cast=bool)
-MAX_SCALE = config('MAX_SCALE', default=3, cast=float)
+MAX_SCALE = config('MAX_SCALE', default=10, cast=float)
 MIN_SCALE = config('MIN_SCALE', default=1 / MAX_SCALE, cast=float)
 
 # Type detection settings
@@ -122,12 +122,13 @@ MESMER_COMPARTMENT = config('MESMER_COMPARTMENT', default='whole-cell')
 POLARIS_MODEL = config('POLARIS_MODEL', default='SpotDetection:3', cast=str)
 POLARIS_THRESHOLD = config('POLARIS_THRESHOLD', default=0.95, cast=float)
 POLARIS_CLIP = config('POLARIS_CLIP', default=False, cast=bool)
+POLARIS_SCALE = config('POLARIS_SCALE', default=0.38, cast=float)
 
 # Set default models based on label type
 MODEL_CHOICES = {
-    0: config('NUCLEAR_MODEL', default='NuclearSegmentation:0', cast=str),
-    1: config('PHASE_MODEL', default='PhaseCytoSegmentation:0', cast=str),
-    2: config('CYTOPLASM_MODEL', default='FluoCytoSegmentation:0', cast=str)
+    0: config('NUCLEAR_MODEL', default='NuclearSegmentation:5', cast=str),
+    1: config('CYTOPLASM_MODEL', default='CytoplasmSegmentation:4', cast=str),
+    2: config('PHASE_MODEL', default='PhaseCytoSegmentation:0', cast=str)
 }
 
 APPLICATION_CHOICES = {
