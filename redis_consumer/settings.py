@@ -122,6 +122,7 @@ MESMER_COMPARTMENT = config('MESMER_COMPARTMENT', default='whole-cell')
 POLARIS_MODEL = config('POLARIS_MODEL', default='SpotDetection:3', cast=str)
 POLARIS_THRESHOLD = config('POLARIS_THRESHOLD', default=0.95, cast=float)
 POLARIS_CLIP = config('POLARIS_CLIP', default=False, cast=bool)
+POLARIS_SCALE = config('POLARIS_SCALE', default=0.38, cast=float)
 
 # Set default models based on label type
 MODEL_CHOICES = {
