@@ -163,7 +163,7 @@ class TestPolarisConsumer(object):
 
         consumer = consumers.PolarisConsumer(redis_client, storage, queue)
 
-        # consume with segmentation and spot detection
+        # consume with cell culture segmentation and spot detection
         empty_data = {'input_file_name': 'file.tiff',
                       'segmentation_type': 'cell culture'}
         mocker.patch.object(consumer,
@@ -173,6 +173,22 @@ class TestPolarisConsumer(object):
                                              }
                             )
         test_hash = 'some hash'
+        redis_client.hmset(test_hash, empty_data)
+        result = consumer._consume(test_hash)
+        assert result == consumer.final_status
+        result = redis_client.hget(test_hash, 'status')
+        assert result == consumer.final_status
+
+        # consume with tissue segmentation and spot detection
+        empty_data = {'input_file_name': 'file.tiff',
+                      'segmentation_type': 'tissue'}
+        mocker.patch.object(consumer,
+                            '_analyze_images',
+                            lambda *x, **_: {'coords': np.random.randint(32, size=(1, 10, 2)),
+                                             'segmentation': np.random.random(size=(1, 32, 32, 1))
+                                             }
+                            )
+        test_hash = 'another hash'
         redis_client.hmset(test_hash, empty_data)
         result = consumer._consume(test_hash)
         assert result == consumer.final_status
