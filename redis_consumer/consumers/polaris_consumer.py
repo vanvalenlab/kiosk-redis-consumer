@@ -351,6 +351,10 @@ class PolarisConsumer(TensorFlowServingConsumer):
         self.logger.debug('Coords shape: %s', np.shape(res['coords']))
         self.logger.debug('Segmentation result shape: %s', np.shape(res['segmentation']))
 
+        # Save the post-processed results to a file
+        _ = timeit.default_timer()
+        self.update_key(redis_hash, {'status': 'saving-results'})
+
         if hvals.get('segmentation_type') == 'none':
             dest, output_url = self.save_coords(res, hvals)
         else:
