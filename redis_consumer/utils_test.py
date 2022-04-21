@@ -29,6 +29,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import random
 import tarfile
 import tempfile
 import zipfile
@@ -116,17 +117,14 @@ def test_get_image_files_from_dir(tmpdir):
 def test_get_image(tmpdir):
     tmpdir = str(tmpdir)
     # test tiff files
-    test_img_path = os.path.join(tmpdir, 'phase.tif')
-    _write_image(test_img_path, 300, 300)
-    test_img = utils.get_image(test_img_path)
-    print(test_img.shape)
-    np.testing.assert_equal(test_img.shape, (300, 300, 1))
-    # test png files
-    test_img_path = os.path.join(tmpdir, 'feature_0.png')
-    _write_image(test_img_path, 400, 400)
-    test_img = utils.get_image(test_img_path)
-    # assert test_img.shape == 0
-    np.testing.assert_equal(test_img.shape, (400, 400, 1))
+    exts = ['png', 'jpg', 'tiff', 'tif']
+    for ext in exts:
+        width = random.randint(200, 401)
+        height = random.randint(200, 401)
+        test_img_path = os.path.join(tmpdir, 'test.{}'.format(ext))
+        _write_image(test_img_path, width, height)
+        test_img = utils.get_image(test_img_path)
+        np.testing.assert_equal(test_img.shape, (height, width, 1))
 
 
 def test_save_numpy_array(tmpdir):
