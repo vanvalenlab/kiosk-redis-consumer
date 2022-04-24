@@ -69,7 +69,7 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         return int(detected_label)
 
     def get_image_label(self, label, image, redis_hash):
-        """ DEPRACATED -- Calculate label of image."""
+        """ DEPRECATED -- Calculate label of image."""
         if not label:
             # Detect scale of image (Default to 1)
             label = self.detect_label(image)

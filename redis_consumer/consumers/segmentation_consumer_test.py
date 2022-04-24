@@ -118,7 +118,15 @@ class TestSegmentationConsumer(object):
             assert result == status
             test_hash += 1
 
-    def test__consume(self, mocker, redis_client):
+    @pytest.mark.parametrize(
+        'shape,channels',
+        [
+            pytest.param((1, 32, 32, 1), '0,,', id='basic-c0'),
+            pytest.param((1, 32, 32, 1), ',1,', id='basic-c1'),
+            pytest.param((1, 32, 32, 2), '0,1,', id='basic 2 channel last')
+        ]
+    )
+    def test__consume(self, mocker, redis_client, shape, channels):
         # pylint: disable=W0613
         queue = 'predict'
         storage = DummyStorage()
@@ -126,16 +134,16 @@ class TestSegmentationConsumer(object):
         consumer = consumers.SegmentationConsumer(redis_client, storage, queue)
 
         empty_data = {'input_file_name': 'file.tiff',
-                      'channels': '0,'}
+                      'channels': channels}
 
-        output_shape = (1, 32, 32, 1)
+        output_shape = shape
 
         mock_app = Bunch(
             predict=lambda *x, **y: np.random.randint(1, 5, size=output_shape),
             model_mpp=1,
             model=Bunch(
                 get_batch_size=lambda *x: 1,
-                input_shape=(1, 32, 32, 1)
+                input_shape=shape
             )
         )
 
