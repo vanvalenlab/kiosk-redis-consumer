@@ -86,6 +86,10 @@ class SegmentationConsumer(TensorFlowServingConsumer):
     def image_dimensions_to_bxyc(self, dim_order, image):
         """Modifies image dimensions to be BXYC."""
 
+        if len(np.shape(image)) != len(dim_order):
+            raise ValueError('Input dimension order was {} but input '
+                             'image has {} dimensions'.format(dim_order, len(np.shape(image))))
+
         if dim_order == 'BXYC':
             return(image)
 
