@@ -28,6 +28,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
 import timeit
 
 import numpy as np
@@ -36,6 +38,7 @@ from deepcell.applications import LabelDetection
 
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import settings
+from redis_consumer import utils
 
 
 class SegmentationConsumer(TensorFlowServingConsumer):
@@ -112,6 +115,34 @@ class SegmentationConsumer(TensorFlowServingConsumer):
 
         elif dim_order == 'CXYB':
             return(np.swapaxes(image, 0, -1))
+
+    def save_output(self, image, save_name):
+        """Save output images into a zip file and upload it."""
+        with tempfile.TemporaryDirectory() as tempdir:
+            # Save each result channel as an image file
+            subdir = os.path.dirname(save_name.replace(tempdir, ''))
+            name = os.path.splitext(os.path.basename(save_name))[0]
+
+            if not isinstance(image, list):
+                image = [image]
+
+            outpaths = []
+            for i, img in enumerate(image):
+                outpaths.extend(utils.save_numpy_array(
+                    img,
+                    name=str(name) + '_batch_{}'.format(i),
+                    subdir=subdir, output_dir=tempdir))
+
+            # Save each prediction image as zip file
+            zip_file = utils.zip_files(outpaths, tempdir)
+
+            # Upload the zip file to cloud storage bucket
+            cleaned = zip_file.replace(tempdir, '')
+            subdir = os.path.dirname(utils.strip_bucket_path(cleaned))
+            subdir = subdir if subdir else None
+            dest, output_url = self.storage.upload(zip_file, subdir=subdir)
+
+        return dest, output_url
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
