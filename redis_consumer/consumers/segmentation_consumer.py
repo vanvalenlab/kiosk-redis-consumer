@@ -83,6 +83,32 @@ class SegmentationConsumer(TensorFlowServingConsumer):
 
         return label
 
+    def image_dimensions_to_bxyc(self, dim_order, image):
+        """Modifies image dimensions to be BXYC."""
+
+        if dim_order == 'BXYC':
+            return(image)
+
+        elif dim_order == 'XY':
+            return(np.expand_dims(image, axis=[0, -1]))
+
+        elif dim_order == 'BXY':
+            return(np.expand_dims(image, axis=-1))
+
+        elif dim_order == 'XYC':
+            return(np.expand_dims(image, axis=0))
+
+        elif dim_order == 'XYB':
+            image = np.moveaxis(image, -1, 0)
+            return(np.expand_dims(image, axis=-1))
+
+        elif dim_order == 'CXY':
+            image = np.moveaxis(image, 0, -1)
+            return(np.expand_dims(image, axis=0))
+
+        elif dim_order == 'CXYB':
+            return(np.swapaxes(image, 0, -1))
+
     def _consume(self, redis_hash):
         start = timeit.default_timer()
         hvals = self.redis.hgetall(redis_hash)
@@ -105,15 +131,10 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         # Load input image
         fname = hvals.get('input_file_name')
         image = self.download_image(fname)
-        image = np.squeeze(image)
-        image = np.expand_dims(image, axis=0)  # add a batch dimension
-        if len(np.shape(image)) == 3:
-            image = np.expand_dims(image, axis=-1)  # add a channel dimension
+        dim_order = hvals.get('dimension_order')
 
-        rank = 4  # (b,x,y,c)
-        channel_axis = image.shape[1:].index(min(image.shape[1:])) + 1
-        if channel_axis != rank - 1:
-            image = np.rollaxis(image, 1, rank)
+        # Modify image dimensions to be BXYC
+        image = self.image_dimensions_to_bxyc(dim_order, image)
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
@@ -138,12 +159,6 @@ class SegmentationConsumer(TensorFlowServingConsumer):
                 app_cls = settings.APPLICATION_CHOICES[i]
 
                 model_name, model_version = model.split(':')
-
-                # detect dimension order and add to redis
-                dim_order = self.detect_dimension_order(slice_image, model_name, model_version)
-                self.update_key(redis_hash, {
-                    'dim_order': ','.join(dim_order)
-                })
 
                 # Validate input image
                 slice_image = self.validate_model_input(slice_image, model_name, model_version)
