@@ -134,7 +134,8 @@ class TestSegmentationConsumer(object):
         consumer = consumers.SegmentationConsumer(redis_client, storage, queue)
 
         empty_data = {'input_file_name': 'file.tiff',
-                      'channels': channels}
+                      'channels': channels,
+                      'dimension_order': 'BXYC'}
 
         output_shape = shape
 
