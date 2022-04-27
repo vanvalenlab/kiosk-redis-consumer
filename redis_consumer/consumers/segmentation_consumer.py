@@ -93,28 +93,19 @@ class SegmentationConsumer(TensorFlowServingConsumer):
             raise ValueError('Input dimension order was {} but input '
                              'image has {} dimensions'.format(dim_order, len(np.shape(image))))
 
-        if dim_order == 'BXYC':
-            return(image)
-
-        elif dim_order == 'XY':
-            return(np.expand_dims(image, axis=[0, -1]))
-
-        elif dim_order == 'BXY':
-            return(np.expand_dims(image, axis=-1))
-
-        elif dim_order == 'XYC':
-            return(np.expand_dims(image, axis=0))
-
-        elif dim_order == 'XYB':
+        if dim_order == 'XYB':
             image = np.moveaxis(image, -1, 0)
-            return(np.expand_dims(image, axis=-1))
-
         elif dim_order == 'CXY':
             image = np.moveaxis(image, 0, -1)
-            return(np.expand_dims(image, axis=0))
-
         elif dim_order == 'CXYB':
-            return(np.swapaxes(image, 0, -1))
+            image = np.swapaxes(image, 0, -1)
+
+        if 'B' not in dim_order:
+            image = np.expand_dims(image, axis=0)
+        if 'C' not in dim_order:
+            image = np.expand_dims(image, axis=-1)
+
+        return(image)
 
     def save_output(self, image, save_name):
         """Save output images into a zip file and upload it."""
