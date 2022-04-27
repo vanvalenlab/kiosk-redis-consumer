@@ -91,7 +91,7 @@ class SegmentationConsumer(TensorFlowServingConsumer):
 
         if len(np.shape(image)) != len(dim_order):
             raise ValueError('Input dimension order was {} but input '
-                             'image has {} dimensions'.format(dim_order, len(np.shape(image))))
+                             'image has shape {}'.format(dim_order, np.shape(image)))
 
         if dim_order == 'XYB':
             image = np.moveaxis(image, -1, 0)
