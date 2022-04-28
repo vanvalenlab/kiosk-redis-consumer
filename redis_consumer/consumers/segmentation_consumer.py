@@ -158,7 +158,7 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         fname = hvals.get('input_file_name')
         image = self.download_image(fname)
         # Squeeze out dimension added by get_image
-        image = np.squeeze(image, axis=-1)
+        # image = np.squeeze(image, axis=-1)
         dim_order = hvals.get('dimension_order')
 
         # Modify image dimensions to be BXYC
@@ -202,6 +202,10 @@ class SegmentationConsumer(TensorFlowServingConsumer):
                                            image_mpp=scale * app.model_mpp)
 
                 results.extend(pred_results)
+
+        self.logger.debug('Results shape before: {}'.format(np.shape(results)))
+        results = np.swapaxes(np.array(results), 0, 1)  # c,b,x,y,1 to b,c,x,y,1
+        self.logger.debug('Results shape before: {}'.format(np.shape(results)))
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
