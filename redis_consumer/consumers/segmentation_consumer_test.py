@@ -119,25 +119,39 @@ class TestSegmentationConsumer(object):
             test_hash += 1
 
     @pytest.mark.parametrize(
-        'shape,channels',
+        'shape,channels,dim_order',
         [
-            pytest.param((1, 32, 32, 1), '0,,', id='basic-c0'),
-            pytest.param((1, 32, 32, 1), ',1,', id='basic-c1'),
-            pytest.param((1, 32, 32, 2), '0,1,', id='basic 2 channel last')
+            pytest.param((None, 32, 32, None), '0,,', 'XY', id='xy-nuc'),
+            pytest.param((None, 32, 32, None), ',0,', 'XY', id='xy-cyto'),
+            pytest.param((1, 32, 32, None), '0,,', 'BXY', id='bxy-nuc'),
+            pytest.param((1, 32, 32, None), ',0,', 'BXY', id='bxy-cyto'),
+            pytest.param((None, 32, 32, 1), '0,,', 'XYB', id='xyb-nuc'),
+            pytest.param((None, 32, 32, 1), '0,,', 'XYC', id='xyc-nuc'),
+            pytest.param((None, 32, 32, 1), ',0,', 'XYC', id='xyc-cyto'),
+            pytest.param((1, 32, 32, None), '0,,', 'CXY', id='cxy-nuc'),
+            pytest.param((1, 32, 32, 1), '0,,', 'BXYC', id='bxyc-nuc'),
+            pytest.param((1, 32, 32, 1), ',0,', 'BXYC', id='bxyc-cyto'),
+            pytest.param((1, 32, 32, 2), '0,1,', 'BXYC', id='bxyc-nuc-cyto'),
+            pytest.param((1, 32, 32, 2), '1,0,', 'BXYC', id='bxyc-nuc-cyto'),
+            pytest.param((2, 32, 32, 2), '0,1,', 'BXYC', id='bxyc-nuc-cyto-multibatch'),
+            pytest.param((2, 32, 32, 1), '0,1,', 'CXYB', id='cxyb-nuc-cyto')
         ]
     )
-    def test__consume(self, mocker, redis_client, shape, channels):
+    def test__consume(self, mocker, redis_client, shape, channels, dim_order):
         # pylint: disable=W0613
         queue = 'predict'
-        storage = DummyStorage()
+        storage = DummyStorage(batch=shape[0],
+                               img_h=shape[1],
+                               img_w=shape[2],
+                               channel=shape[3])
 
         consumer = consumers.SegmentationConsumer(redis_client, storage, queue)
 
         empty_data = {'input_file_name': 'file.tiff',
                       'channels': channels,
-                      'dimension_order': 'BXYC'}
+                      'dimension_order': dim_order}
 
-        output_shape = shape
+        output_shape = tuple(i for i in shape if i is not None)
 
         mock_app = Bunch(
             predict=lambda *x, **y: np.random.randint(1, 5, size=output_shape),
@@ -151,7 +165,7 @@ class TestSegmentationConsumer(object):
         mocker.patch.object(consumer, 'get_grpc_app', lambda *x, **_: mock_app)
         mocker.patch.object(consumer, 'get_image_scale', lambda *x, **_: 1)
         mocker.patch.object(consumer, 'validate_model_input', lambda *x, **_: True)
-        mocker.patch.object(consumer, 'detect_dimension_order', lambda *x, **_: 'YXC')
+        mocker.patch.object(consumer, 'detect_dimension_order', lambda *x, **_: dim_order)
 
         test_hash = 'some hash'
 
