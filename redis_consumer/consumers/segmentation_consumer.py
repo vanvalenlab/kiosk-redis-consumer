@@ -114,9 +114,6 @@ class SegmentationConsumer(TensorFlowServingConsumer):
             subdir = os.path.dirname(save_name.replace(tempdir, ''))
             name = os.path.splitext(os.path.basename(save_name))[0]
 
-            if not isinstance(image, list):
-                image = [image]
-
             outpaths = []
             for i, img in enumerate(image):
                 outpaths.extend(utils.save_numpy_array(
@@ -201,11 +198,10 @@ class SegmentationConsumer(TensorFlowServingConsumer):
                 pred_results = app.predict(slice_image, batch_size=batch_size,
                                            image_mpp=scale * app.model_mpp)
 
-                results.extend(pred_results)
+                results.append(pred_results)
 
-        self.logger.debug('Results shape before: {}'.format(np.shape(results)))
-        results = np.swapaxes(np.array(results), 0, 1)  # c,b,x,y,1 to b,c,x,y,1
-        self.logger.debug('Results shape before: {}'.format(np.shape(results)))
+        results = np.squeeze(np.array(results), axis=-1)  # c,b,x,y,1 to c,b,x,y
+        results = np.moveaxis(results, 0, -1)  # c,b,x,y to b,x,y,c
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()
