@@ -157,6 +157,8 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         # Load input image
         fname = hvals.get('input_file_name')
         image = self.download_image(fname)
+        # Squeeze out dimension added by get_image
+        image = np.squeeze(image, axis=-1)
         dim_order = hvals.get('dimension_order')
 
         # Modify image dimensions to be BXYC
