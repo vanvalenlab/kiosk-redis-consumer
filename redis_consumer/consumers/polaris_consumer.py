@@ -78,7 +78,8 @@ class PolarisConsumer(TensorFlowServingConsumer):
             'updated_at': current_timestamp,
             'url': upload_file_url,
             'channels': channels,
-            'scale': settings.POLARIS_SCALE}  # scaling not supported for spots model
+            'scale': settings.POLARIS_SCALE,  # scaling not supported for spots model
+            'dimension_order': 'BXY'}
 
         # make a hash for this frame
         image_hash = '{prefix}:{file}:{hash}'.format(

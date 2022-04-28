@@ -116,7 +116,7 @@ class CalibanConsumer(TensorFlowServingConsumer):
                 segment_fname = '{}-{}-tracking-frame-{}.tif'.format(
                     uid, hvalues.get('original_name'), i)
                 segment_local_path = os.path.join(tempdir, segment_fname)
-                tifffile.imsave(segment_local_path, img)
+                tifffile.imsave(segment_local_path, np.squeeze(img))
                 upload_file_name, upload_file_url = self.storage.upload(
                     segment_local_path)
 
@@ -130,7 +130,8 @@ class CalibanConsumer(TensorFlowServingConsumer):
                 'created_at': current_timestamp,
                 'updated_at': current_timestamp,
                 'url': upload_file_url,
-                'channels': '0,,',  # encodes that images are nuclear
+                'channels': '0,,',  # encodes that images are nuclear,
+                'dimension_order': 'XY'
             }
 
             # make a hash for this frame
