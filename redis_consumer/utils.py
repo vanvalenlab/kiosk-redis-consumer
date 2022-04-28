@@ -101,7 +101,7 @@ def get_image(filepath):
     if os.path.splitext(filepath)[-1].lower() in {'.tif', '.tiff'}:
         img = tifffile.TiffFile(filepath).asarray()
         # tiff files should not have a channel dim
-        img = np.expand_dims(img, axis=-1)
+        # img = np.expand_dims(img, axis=-1)
     else:
         img = img_to_array(PIL.Image.open(filepath))
 
