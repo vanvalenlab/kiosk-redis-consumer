@@ -86,10 +86,8 @@ class CalibanConsumer(TensorFlowServingConsumer):
             raise ValueError('_load_data takes in only .tiff, .trk, or .trks')
 
         # push a key per frame and let ImageFileConsumers segment
-        raw = utils.get_image(os.path.join(subdir, fname))
+        tiff_stack = utils.get_image(os.path.join(subdir, fname))
 
-        # remove the last dimensions added by `get_image`
-        tiff_stack = np.squeeze(raw, -1)
         if len(tiff_stack.shape) != 3:
             raise ValueError('This tiff file has shape {}, which is not 3 '
                              'dimensions. Tracking can only be done on images '
