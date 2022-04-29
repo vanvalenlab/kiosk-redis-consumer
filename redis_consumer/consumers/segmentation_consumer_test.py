@@ -132,7 +132,7 @@ class TestSegmentationConsumer(object):
             pytest.param((1, 32, 32, 1), '0,,', 'BXYC', id='bxyc-nuc'),
             pytest.param((1, 32, 32, 1), ',0,', 'BXYC', id='bxyc-cyto'),
             pytest.param((1, 32, 32, 2), '0,1,', 'BXYC', id='bxyc-nuc-cyto'),
-            pytest.param((1, 32, 32, 2), '1,0,', 'BXYC', id='bxyc-nuc-cyto'),
+            pytest.param((1, 32, 32, 2), '1,0,', 'BXYC', id='bxyc-cyto-nuc'),
             pytest.param((2, 32, 32, 2), '0,1,', 'BXYC', id='bxyc-nuc-cyto-multibatch'),
             pytest.param((2, 32, 32, 1), '0,1,', 'CXYB', id='cxyb-nuc-cyto')
         ]
@@ -151,7 +151,7 @@ class TestSegmentationConsumer(object):
                       'channels': channels,
                       'dimension_order': dim_order}
 
-        output_shape = tuple(i for i in shape if i is not None)
+        output_shape = (1, shape[1], shape[2], 1)
 
         mock_app = Bunch(
             predict=lambda *x, **y: np.random.randint(1, 5, size=output_shape),
