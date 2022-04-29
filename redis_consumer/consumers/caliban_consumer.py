@@ -95,6 +95,11 @@ class CalibanConsumer(TensorFlowServingConsumer):
                                  tiff_stack.shape))
 
         num_frames = len(tiff_stack)
+
+        if num_frames > settings.TF_MAX_BATCH_SIZE:
+            raise ValueError('This file has {} frames. Maximum allowed number of frames '
+                             'is {}.'.format(num_frames, settings.TF_MAX_BATCH_SIZE))
+
         hash_to_frame = {}
         remaining_hashes = set()
         frames = {}
@@ -190,11 +195,11 @@ class CalibanConsumer(TensorFlowServingConsumer):
         labels = [frames[i] for i in range(num_frames)]
 
         # Cast y to int to avoid issues during fourier transform/drift correction
-        y = np.array(labels, dtype='uint16')
+        y = np.expand_dims(np.array(labels, dtype='uint16'), axis=-1)
         # TODO: Why is there an extra dimension?
         # Not a problem in tests, only with application based results.
         # Issue with batch dimension from outputs?
-        y = y[:, 0] if y.shape[1] == 1 else y
+        # y = y[:, 0] if y.shape[1] == 1 else y
         return {'X': np.expand_dims(tiff_stack, axis=-1), 'y': y}
 
     def _consume(self, redis_hash):
