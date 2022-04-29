@@ -224,9 +224,6 @@ class PolarisConsumer(TensorFlowServingConsumer):
         if segmentation_type == 'cell culture':
             for key in segmentation_dict.keys():
                 labeled_im = np.array(segmentation_dict[key])
-                # labeled_im = np.squeeze(labeled_im, -1)  # c,x,y,1 to c,x,y
-                # labeled_im = np.moveaxis(labeled_im, 0, 2)  # c,x,y to x,y,c
-                # segmentation_results.append(labeled_im) # to b,x,y,c
                 labeled_im = np.swapaxes(labeled_im, 0, -1)  # c,x,y,b to b,x,y,c
                 segmentation_results.extend(labeled_im)
 
