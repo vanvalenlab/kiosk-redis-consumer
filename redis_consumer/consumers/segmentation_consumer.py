@@ -161,6 +161,12 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         # Modify image dimensions to be BXYC
         image = self.image_dimensions_to_bxyc(dim_order, image)
 
+        channels = hvals.get('channels').split(',')  # ex: channels = ['0','1','2']
+        filled_channels = [c for c in channels if c]
+        if len(filled_channels) != np.shape(image)[3]:
+            raise ValueError('Input image has {} channels but {} channels were specified '
+                             'for segmentation'.format(np.shape(image)[3], len(filled_channels)))
+
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
             'status': 'pre-processing',
@@ -170,9 +176,6 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         # Calculate scale of image and rescale
         scale = hvals.get('scale', '')
         scale = self.get_image_scale(scale, image, redis_hash)
-
-        # Validate input image
-        channels = hvals.get('channels').split(',')  # ex: channels = ['0','1','2']
 
         results = []
         for i in range(len(channels)):
