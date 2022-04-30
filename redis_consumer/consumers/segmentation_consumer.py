@@ -163,7 +163,7 @@ class SegmentationConsumer(TensorFlowServingConsumer):
 
         channels = hvals.get('channels').split(',')  # ex: channels = ['0','1','2']
         filled_channels = [c for c in channels if c]
-        if len(filled_channels) != np.shape(image)[3]:
+        if len(filled_channels) > np.shape(image)[3]:
             raise ValueError('Input image has {} channels but {} channels were specified '
                              'for segmentation'.format(np.shape(image)[3], len(filled_channels)))
 
