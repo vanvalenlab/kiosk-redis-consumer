@@ -101,10 +101,14 @@ class PolarisConsumer(TensorFlowServingConsumer):
         data.
         """
         hvals = self.redis.hgetall(redis_hash)
-        raw = utils.get_image(os.path.join(subdir, fname))
+        tiff_stack = utils.get_image(os.path.join(subdir, fname))
 
-        # remove the last dimensions added by `get_image`
-        tiff_stack = np.squeeze(raw)
+        channels = hvals.get('channels').split(',')  # ex: channels = ['0','1','2']
+        filled_channels = [c for c in channels if c]
+        if len(filled_channels) > np.shape(tiff_stack)[-1]:
+            raise ValueError('Input image has {} channels but {} channels were specified '
+                             'for segmentation'.format(np.shape(tiff_stack)[-1],
+                                                       len(filled_channels)))
 
         self.logger.debug('Got tiffstack shape %s.', tiff_stack.shape)
 
