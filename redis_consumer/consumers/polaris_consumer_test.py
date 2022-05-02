@@ -75,7 +75,7 @@ class TestPolarisConsumer(object):
 
         fname = 'file.tiff'
         filepath = os.path.join(tmpdir, fname)
-        input_size = (1, 32, 32, 1)
+        input_size = (1, 32, 32, 3)
 
         # test successful workflow
         def hget_successful_status(*_):

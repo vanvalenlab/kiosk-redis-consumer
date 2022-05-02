@@ -120,7 +120,7 @@ def test_get_image(tmpdir):
     _write_image(test_img_path, 300, 300)
     test_img = utils.get_image(test_img_path)
     print(test_img.shape)
-    np.testing.assert_equal(test_img.shape, (300, 300, 1))
+    np.testing.assert_equal(test_img.shape, (300, 300))
     # test png files
     test_img_path = os.path.join(tmpdir, 'feature_0.png')
     _write_image(test_img_path, 400, 400)

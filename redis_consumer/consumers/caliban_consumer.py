@@ -86,10 +86,8 @@ class CalibanConsumer(TensorFlowServingConsumer):
             raise ValueError('_load_data takes in only .tiff, .trk, or .trks')
 
         # push a key per frame and let ImageFileConsumers segment
-        raw = utils.get_image(os.path.join(subdir, fname))
+        tiff_stack = utils.get_image(os.path.join(subdir, fname))
 
-        # remove the last dimensions added by `get_image`
-        tiff_stack = np.squeeze(raw, -1)
         if len(tiff_stack.shape) != 3:
             raise ValueError('This tiff file has shape {}, which is not 3 '
                              'dimensions. Tracking can only be done on images '
@@ -97,6 +95,11 @@ class CalibanConsumer(TensorFlowServingConsumer):
                                  tiff_stack.shape))
 
         num_frames = len(tiff_stack)
+
+        if num_frames > settings.TF_MAX_BATCH_SIZE:
+            raise ValueError('This file has {} frames. Maximum allowed number of frames '
+                             'is {}.'.format(num_frames, settings.TF_MAX_BATCH_SIZE))
+
         hash_to_frame = {}
         remaining_hashes = set()
         frames = {}
@@ -116,7 +119,7 @@ class CalibanConsumer(TensorFlowServingConsumer):
                 segment_fname = '{}-{}-tracking-frame-{}.tif'.format(
                     uid, hvalues.get('original_name'), i)
                 segment_local_path = os.path.join(tempdir, segment_fname)
-                tifffile.imsave(segment_local_path, img)
+                tifffile.imsave(segment_local_path, np.squeeze(img))
                 upload_file_name, upload_file_url = self.storage.upload(
                     segment_local_path)
 
@@ -130,7 +133,8 @@ class CalibanConsumer(TensorFlowServingConsumer):
                 'created_at': current_timestamp,
                 'updated_at': current_timestamp,
                 'url': upload_file_url,
-                'channels': '0,,',  # encodes that images are nuclear
+                'channels': '0,,',  # encodes that images are nuclear,
+                'dimension_order': 'XY'
             }
 
             # make a hash for this frame
@@ -191,11 +195,11 @@ class CalibanConsumer(TensorFlowServingConsumer):
         labels = [frames[i] for i in range(num_frames)]
 
         # Cast y to int to avoid issues during fourier transform/drift correction
-        y = np.array(labels, dtype='uint16')
+        y = np.expand_dims(np.array(labels, dtype='uint16'), axis=-1)
         # TODO: Why is there an extra dimension?
         # Not a problem in tests, only with application based results.
         # Issue with batch dimension from outputs?
-        y = y[:, 0] if y.shape[1] == 1 else y
+        # y = y[:, 0] if y.shape[1] == 1 else y
         return {'X': np.expand_dims(tiff_stack, axis=-1), 'y': y}
 
     def _consume(self, redis_hash):

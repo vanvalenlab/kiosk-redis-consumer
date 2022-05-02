@@ -28,6 +28,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
 import timeit
 
 import numpy as np
@@ -36,6 +38,7 @@ from deepcell.applications import LabelDetection
 
 from redis_consumer.consumers import TensorFlowServingConsumer
 from redis_consumer import settings
+from redis_consumer import utils
 
 
 class SegmentationConsumer(TensorFlowServingConsumer):
@@ -69,7 +72,7 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         return int(detected_label)
 
     def get_image_label(self, label, image, redis_hash):
-        """ DEPRACATED -- Calculate label of image."""
+        """ DEPRECATED -- Calculate label of image."""
         if not label:
             # Detect scale of image (Default to 1)
             label = self.detect_label(image)
@@ -82,6 +85,52 @@ class SegmentationConsumer(TensorFlowServingConsumer):
                 raise ValueError('Label type {} is not supported'.format(label))
 
         return label
+
+    def image_dimensions_to_bxyc(self, dim_order, image):
+        """Modifies image dimensions to be BXYC."""
+
+        if len(np.shape(image)) != len(dim_order):
+            raise ValueError('Input dimension order was {} but input '
+                             'image has shape {}'.format(dim_order, np.shape(image)))
+
+        if dim_order == 'XYB':
+            image = np.moveaxis(image, -1, 0)
+        elif dim_order == 'CXY':
+            image = np.moveaxis(image, 0, -1)
+        elif dim_order == 'CXYB':
+            image = np.swapaxes(image, 0, -1)
+
+        if 'B' not in dim_order:
+            image = np.expand_dims(image, axis=0)
+        if 'C' not in dim_order:
+            image = np.expand_dims(image, axis=-1)
+
+        return(image)
+
+    def save_output(self, image, save_name):
+        """Save output images into a zip file and upload it."""
+        with tempfile.TemporaryDirectory() as tempdir:
+            # Save each result channel as an image file
+            subdir = os.path.dirname(save_name.replace(tempdir, ''))
+            name = os.path.splitext(os.path.basename(save_name))[0]
+
+            outpaths = []
+            for i, img in enumerate(image):
+                outpaths.extend(utils.save_numpy_array(
+                    img,
+                    name=str(name) + '_batch_{}'.format(i),
+                    subdir=subdir, output_dir=tempdir))
+
+            # Save each prediction image as zip file
+            zip_file = utils.zip_files(outpaths, tempdir)
+
+            # Upload the zip file to cloud storage bucket
+            cleaned = zip_file.replace(tempdir, '')
+            subdir = os.path.dirname(utils.strip_bucket_path(cleaned))
+            subdir = subdir if subdir else None
+            dest, output_url = self.storage.upload(zip_file, subdir=subdir)
+
+        return dest, output_url
 
     def _consume(self, redis_hash):
         start = timeit.default_timer()
@@ -105,15 +154,16 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         # Load input image
         fname = hvals.get('input_file_name')
         image = self.download_image(fname)
-        image = np.squeeze(image)
-        image = np.expand_dims(image, axis=0)  # add a batch dimension
-        if len(np.shape(image)) == 3:
-            image = np.expand_dims(image, axis=-1)  # add a channel dimension
+        dim_order = hvals.get('dimension_order')
 
-        rank = 4  # (b,x,y,c)
-        channel_axis = image.shape[1:].index(min(image.shape[1:])) + 1
-        if channel_axis != rank - 1:
-            image = np.rollaxis(image, 1, rank)
+        # Modify image dimensions to be BXYC
+        image = self.image_dimensions_to_bxyc(dim_order, image)
+
+        channels = hvals.get('channels').split(',')  # ex: channels = ['0','1','2']
+        filled_channels = [c for c in channels if c]
+        if len(filled_channels) > np.shape(image)[3]:
+            raise ValueError('Input image has {} channels but {} channels were specified '
+                             'for segmentation'.format(np.shape(image)[3], len(filled_channels)))
 
         # Pre-process data before sending to the model
         self.update_key(redis_hash, {
@@ -125,9 +175,6 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         scale = hvals.get('scale', '')
         scale = self.get_image_scale(scale, image, redis_hash)
 
-        # Validate input image
-        channels = hvals.get('channels').split(',')  # ex: channels = ['0','1','2']
-
         results = []
         for i in range(len(channels)):
             if channels[i]:
@@ -138,12 +185,6 @@ class SegmentationConsumer(TensorFlowServingConsumer):
                 app_cls = settings.APPLICATION_CHOICES[i]
 
                 model_name, model_version = model.split(':')
-
-                # detect dimension order and add to redis
-                dim_order = self.detect_dimension_order(slice_image, model_name, model_version)
-                self.update_key(redis_hash, {
-                    'dim_order': ','.join(dim_order)
-                })
 
                 # Validate input image
                 slice_image = self.validate_model_input(slice_image, model_name, model_version)
@@ -158,7 +199,10 @@ class SegmentationConsumer(TensorFlowServingConsumer):
                 pred_results = app.predict(slice_image, batch_size=batch_size,
                                            image_mpp=scale * app.model_mpp)
 
-                results.extend(pred_results)
+                results.append(pred_results)
+
+        results = np.squeeze(np.array(results), axis=-1)  # c,b,x,y,1 to c,b,x,y
+        results = np.moveaxis(results, 0, -1)  # c,b,x,y to b,x,y,c
 
         # Save the post-processed results to a file
         _ = timeit.default_timer()

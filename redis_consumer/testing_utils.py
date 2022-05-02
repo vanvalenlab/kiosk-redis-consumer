@@ -48,7 +48,12 @@ def redis_client():
     yield client
 
 
-def _get_image(img_h=300, img_w=300, channels=None):
+def _get_image(img_h=None, img_w=None, channels=None):
+    if not img_h:
+        img_h = 300
+    if not img_w:
+        img_w = 300
+
     shape = [img_w, img_h]
     if channels:
         shape.append(channels)
@@ -66,24 +71,37 @@ class Bunch(object):
 
 class DummyStorage(object):
     # pylint: disable=W0613,R0201
-    def __init__(self, num=3):
-        self.num = num
+    def __init__(self, batch=3, img_h=None, img_w=None, channel=None):
+        self.batch = batch
+        self.img_h = img_h
+        self.img_w = img_w
+        self.channels = channel
 
     def download(self, path, dest):
-        if path.lower().endswith('.zip'):
+        if not self.batch:
+            img = _get_image(self.img_h, self.img_w, self.channels)
+            outpath = os.path.join(dest, path)
+            tifffile.imsave(outpath, img)
+            return outpath
+
+        elif path.lower().endswith('.zip'):
             paths = []
-            for i in range(self.num):
-                img = _get_image()
+            for i in range(self.batch):
+                img = _get_image(self.img_h, self.img_w, self.channels)
                 base, ext = os.path.splitext(path)
                 _path = '{}{}{}'.format(base, i, ext)
                 outpath = os.path.join(dest, _path)
                 tifffile.imsave(outpath, img)
                 paths.append(outpath)
             return utils.zip_files(paths, dest)
-        img = _get_image()
-        outpath = os.path.join(dest, path)
-        tifffile.imsave(outpath, img)
-        return outpath
+
+        else:
+            img_stack = []
+            for i in range(self.batch):
+                img_stack.append(_get_image(self.img_h, self.img_w, self.channels))
+            outpath = os.path.join(dest, path)
+            tifffile.imsave(outpath, img_stack)
+            return outpath
 
     def upload(self, zip_path, subdir=None):
         return 'zip_path.zip', 'blob.public_url'

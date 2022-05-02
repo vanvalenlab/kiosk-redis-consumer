@@ -55,7 +55,8 @@ REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
 TF_HOST = config('TF_HOST', default='tf-serving')
 TF_PORT = config('TF_PORT', default=8500, cast=int)
 # maximum batch allowed by TensorFlow Serving
-TF_MAX_BATCH_SIZE = config('TF_MAX_BATCH_SIZE', default=128, cast=int)
+# must be manually matched to the helmfile for the TF-serving pod
+TF_MAX_BATCH_SIZE = config('TF_MAX_BATCH_SIZE', default=64, cast=int)
 # minimum expected model size, dynamically change batches proportionately.
 TF_MIN_MODEL_SIZE = config('TF_MIN_MODEL_SIZE', default=128, cast=int)
 

@@ -539,7 +539,7 @@ class TestZipFileConsumer(object):
 
     def test__upload_archived_images(self, mocker, redis_client):
         N = 3
-        storage = DummyStorage(num=N)
+        storage = DummyStorage(batch=N, img_h=300, img_w=300)
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         # mocker.patch.object(consumer.storage, 'download')
         hvalues = {'input_file_name': 'test.zip', 'children': 'none'}
@@ -550,7 +550,7 @@ class TestZipFileConsumer(object):
     def test__upload_finished_children(self, mocker, redis_client):
         finished_children = ['predict:1.tiff', 'predict:2.zip', '']
         N = 3
-        storage = DummyStorage(num=N)
+        storage = DummyStorage(batch=N, img_h=300, img_w=300)
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
         mocker.patch.object(consumer, '_get_output_file_name', lambda x: x)
 
@@ -595,7 +595,7 @@ class TestZipFileConsumer(object):
 
     def test__parse_failures(self, mocker, redis_client):
         N = 3
-        storage = DummyStorage(num=N)
+        storage = DummyStorage(batch=N, img_h=300, img_w=300)
 
         keys = [str(x) for x in range(4)]
         consumer = consumers.ZipFileConsumer(redis_client, storage, 'predict')
@@ -619,7 +619,7 @@ class TestZipFileConsumer(object):
         queue = 'predict'
         done = [str(i) for i in range(N)]
         failed = [str(i) for i in range(N + 1, N * 2)]
-        storage = DummyStorage(num=N)
+        storage = DummyStorage(batch=N, img_h=300, img_w=300)
         consumer = consumers.ZipFileConsumer(redis_client, storage, queue)
 
         redis_hash = 'some job hash'
@@ -642,7 +642,7 @@ class TestZipFileConsumer(object):
 
     def test__consume(self, mocker, redis_client):
         N = 3
-        storage = DummyStorage(num=N)
+        storage = DummyStorage(batch=N, img_h=300, img_w=300)
         children = list('abcdefg')
         queue = 'q'
         test_hash = 0

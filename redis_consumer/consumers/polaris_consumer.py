@@ -78,7 +78,8 @@ class PolarisConsumer(TensorFlowServingConsumer):
             'updated_at': current_timestamp,
             'url': upload_file_url,
             'channels': channels,
-            'scale': settings.POLARIS_SCALE}  # scaling not supported for spots model
+            'scale': settings.POLARIS_SCALE,  # scaling not supported for spots model
+            'dimension_order': 'BXY'}
 
         # make a hash for this frame
         image_hash = '{prefix}:{file}:{hash}'.format(
@@ -100,10 +101,14 @@ class PolarisConsumer(TensorFlowServingConsumer):
         data.
         """
         hvals = self.redis.hgetall(redis_hash)
-        raw = utils.get_image(os.path.join(subdir, fname))
+        tiff_stack = utils.get_image(os.path.join(subdir, fname))
 
-        # remove the last dimensions added by `get_image`
-        tiff_stack = np.squeeze(raw)
+        channels = hvals.get('channels').split(',')  # ex: channels = ['0','1','2']
+        filled_channels = [c for c in channels if c]
+        if len(filled_channels) > np.shape(tiff_stack)[-1]:
+            raise ValueError('Input image has {} channels but {} channels were specified '
+                             'for segmentation'.format(np.shape(tiff_stack)[-1],
+                                                       len(filled_channels)))
 
         self.logger.debug('Got tiffstack shape %s.', tiff_stack.shape)
 
@@ -131,6 +136,9 @@ class PolarisConsumer(TensorFlowServingConsumer):
             if channels[1]:
                 # add channel 1 ind of tiff stack to nuclear queue
                 nuc_image = tiff_stack[..., int(channels[1])]
+                # add batch dimension if it doesn't exist
+                if len(np.shape(nuc_image)) == 2:
+                    nuc_image = np.expand_dims(nuc_image, axis=0)
                 nuc_hash = self._add_images(hvals, uid, nuc_image,
                                             queue='segmentation', channels='0,')
                 remaining_hashes.add(nuc_hash)
@@ -138,6 +146,9 @@ class PolarisConsumer(TensorFlowServingConsumer):
             if channels[2]:
                 # add channel 2 ind of tiff stack to segmentation queue
                 cyto_image = tiff_stack[..., int(channels[2])]
+                # add batch dimension if it doesn't exist
+                if len(np.shape(cyto_image)) == 2:
+                    cyto_image = np.expand_dims(cyto_image, axis=0)
                 cyto_hash = self._add_images(hvals, uid, cyto_image,
                                              queue='segmentation', channels=',0')
                 remaining_hashes.add(cyto_hash)
@@ -217,9 +228,8 @@ class PolarisConsumer(TensorFlowServingConsumer):
         if segmentation_type == 'cell culture':
             for key in segmentation_dict.keys():
                 labeled_im = np.array(segmentation_dict[key])
-                labeled_im = np.squeeze(labeled_im, -1)
-                labeled_im = np.moveaxis(labeled_im, 0, 2)
-                segmentation_results.append(labeled_im)
+                labeled_im = np.swapaxes(labeled_im, 0, -1)  # c,x,y,b to b,x,y,c
+                segmentation_results.extend(labeled_im)
 
         return {'coords': np.array(coords), 'segmentation': segmentation_results}
 
@@ -244,7 +254,7 @@ class PolarisConsumer(TensorFlowServingConsumer):
                 # Save labeled image
                 outpaths.extend(utils.save_numpy_array(
                     labeled_im[i],
-                    name=str(name),
+                    name=str(name) + '_batch_{}'.format(i),
                     subdir=subdir, output_dir=tempdir))
 
                 # Save spot locations and assignments in .csv file
