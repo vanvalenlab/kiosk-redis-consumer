@@ -1,14 +1,12 @@
 # deepcell packages
 deepcell-cpu~=0.11.0
-# deepcell-spots~=0.3.0
+deepcell-spots~=0.2.1
 deepcell-toolbox~=0.10.3
 deepcell-tracking~=0.5.2
 tensorflow-cpu~=2.5.2
 tifffile>=2020.9.3
 numpy>=1.16.6
 matplotlib>=2.1.1
-
-git+https://github.com/vanvalenlab/deepcell-spots@5321818970a61473ccf03055c504a8a3061c296e
 
 # tensorflow-serving-apis and gRPC dependencies
 grpcio>=1.0,<2
