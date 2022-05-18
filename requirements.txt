@@ -5,7 +5,7 @@ deepcell-toolbox~=0.10.3
 deepcell-tracking~=0.5.2
 tensorflow-cpu~=2.5.2
 tifffile>=2020.9.3
-imagecodecs<=2021.11.20
+imagecodecs
 numpy>=1.16.6
 matplotlib>=2.1.1
 
