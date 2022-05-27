@@ -92,7 +92,7 @@ EXPIRE_TIME = config('EXPIRE_TIME', default=3600, cast=int)
 METADATA_EXPIRE_TIME = config('METADATA_EXPIRE_TIME', default=30, cast=int)
 
 # Tracking settings
-TRACKING_MODEL = config('TRACKING_MODEL', default='TrackingModelInf:5', cast=str)
+TRACKING_MODEL = config('TRACKING_MODEL', default='TrackingModelInf:4', cast=str)
 CALIBAN_MODEL = config('CALIBAN_MODEL', default=TRACKING_MODEL, cast=str)
 NEIGHBORHOOD_ENCODER = config('NEIGHBORHOOD_ENCODER', default='TrackingModelNE:2', cast=str)
 
@@ -115,20 +115,20 @@ LABEL_DETECT_ENABLED = config('LABEL_DETECT_ENABLED', default=False, cast=bool)
 
 # Mesmer model Settings
 # deprecated model name, use MESMER_MODEL instead.
-MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MultiplexSegmentation:9', cast=str)
+MULTIPLEX_MODEL = config('MULTIPLEX_MODEL', default='MultiplexSegmentation:5', cast=str)
 MESMER_MODEL = config('MESMER_MODEL', default=MULTIPLEX_MODEL, cast=str)
 MESMER_COMPARTMENT = config('MESMER_COMPARTMENT', default='whole-cell')
 
 # Polaris model Settings
-POLARIS_MODEL = config('POLARIS_MODEL', default='SpotDetection:6', cast=str)
+POLARIS_MODEL = config('POLARIS_MODEL', default='SpotDetection:3', cast=str)
 POLARIS_THRESHOLD = config('POLARIS_THRESHOLD', default=0.95, cast=float)
 POLARIS_CLIP = config('POLARIS_CLIP', default=False, cast=bool)
 POLARIS_SCALE = config('POLARIS_SCALE', default=0.38, cast=float)
 
 # Set default models based on label type
 MODEL_CHOICES = {
-    0: config('NUCLEAR_MODEL', default='NuclearSegmentation:6', cast=str),
-    1: config('CYTOPLASM_MODEL', default='CytoplasmSegmentation:5', cast=str),
+    0: config('NUCLEAR_MODEL', default='NuclearSegmentation:5', cast=str),
+    1: config('CYTOPLASM_MODEL', default='CytoplasmSegmentation:4', cast=str),
     2: config('PHASE_MODEL', default='PhaseCytoSegmentation:0', cast=str)
 }
 
