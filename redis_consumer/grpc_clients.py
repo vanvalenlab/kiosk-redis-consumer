@@ -333,8 +333,8 @@ class GrpcModelWrapper(object):
 
         self._client.logger.debug('Predicting...')
         prediction = self._client.predict(req_data, settings.GRPC_TIMEOUT)
-        self.output_names = prediction.keys()
-        results = [prediction[k] for k in sorted(self.output_names)]
+        self.output_names = sorted(list(prediction.keys()))
+        results = [prediction[k] for k in self.output_names]
 
         self._client.logger.debug('Got prediction results of shape %s in %s s.',
                                   [r.shape for r in results],
