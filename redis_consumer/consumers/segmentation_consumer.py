@@ -159,6 +159,15 @@ class SegmentationConsumer(TensorFlowServingConsumer):
         # Modify image dimensions to be BXYC
         image = self.image_dimensions_to_bxyc(dim_order, image)
 
+        num_pixels = 1
+        for dim in np.shape(image):
+            num_pixels *= dim
+
+        if num_pixels > settings.MAX_PIXELS:
+            raise ValueError('This tiff file has {} pixels but the maximum '
+                             'number of allowed pixels is {}.'.format(
+                                 num_pixels, settings.MAX_PIXELS))
+
         channels = hvals.get('channels').split(',')  # ex: channels = ['0','1','2']
         filled_channels = [c for c in channels if c]
         if len(filled_channels) > np.shape(image)[3]:
