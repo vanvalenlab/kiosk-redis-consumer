@@ -126,13 +126,14 @@ class MesmerConsumer(TensorFlowServingConsumer):
 
         # Send data to the model
         self.update_key(redis_hash, {'status': 'predicting'})
-
+        self.logger.debug('Get grpc app')
         app = self.get_grpc_app(settings.MESMER_MODEL, Mesmer)
 
         compartment = hvals.get('compartment', settings.MESMER_COMPARTMENT)
         # with new batching update in deepcell.applications,
         # app.predict() cannot handle a batch_size of None.
         batch_size = app.model.get_batch_size()
+        self.logger.debug('Starting predict with batch size', batch_size)
         results = app.predict(image, batch_size=batch_size,
                               compartment=compartment,
                               image_mpp=scale * app.model_mpp)

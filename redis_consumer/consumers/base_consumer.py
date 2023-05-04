@@ -246,8 +246,11 @@ class TensorFlowServingConsumer(Consumer):
     def download_image(self, image_path):
         """Download file from bucket and load it as an image"""
         with tempfile.TemporaryDirectory() as tempdir:
+            self.logger.debug('Starting download')
             fname = self.storage.download(image_path, tempdir)
+            self.logger.debug('Loading image')
             image = utils.get_image(fname)
+            self.logger.debug('Loading image complete')
         return image
 
     def detect_dimension_order(self, image, model_name, model_version):
