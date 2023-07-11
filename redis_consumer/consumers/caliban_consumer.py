@@ -240,7 +240,7 @@ class CalibanConsumer(TensorFlowServingConsumer):
                                 death=settings.DEATH,
                                 division=settings.DIVISION,
                                 track_length=settings.TRACK_LENGTH,
-                                embedding_axis=0,
+                                embedding_axis=1,  # This must be 1, not 0 like in the locally used application
                                 crop_mode=settings.CROP_MODE,
                                 norm=settings.CALIBAN_NORM)
 
