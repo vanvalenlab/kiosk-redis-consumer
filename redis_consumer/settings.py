@@ -103,7 +103,7 @@ DIVISION = config('DIVISION', default=0.9, cast=float)
 BIRTH = config('BIRTH', default=0.99, cast=float)
 DEATH = config('DEATH', default=0.99, cast=float)
 APPEARANCE_DIM = config('APPEARANCE_DIM', default=32, cast=int)
-CROP_MODE = config('CROP_MODE', dafault='resize', cast=str)
+CROP_MODE = config('CROP_MODE', default='resize', cast=str)
 CALIBAN_NORM = config('CALIBAN_NORM', default=True, cast=bool)
 
 # Scale detection settings
