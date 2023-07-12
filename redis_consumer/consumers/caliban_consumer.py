@@ -234,11 +234,15 @@ class CalibanConsumer(TensorFlowServingConsumer):
         # Send data to the model
         app = self.get_grpc_app(settings.CALIBAN_MODEL, CellTracking,
                                 neighborhood_encoder=neighborhood_encoder,
+                                distance_threshold=settings.MAX_DISTANCE,
+                                appearance_dim=settings.APPEARANCE_DIM,
                                 birth=settings.BIRTH,
                                 death=settings.DEATH,
                                 division=settings.DIVISION,
                                 track_length=settings.TRACK_LENGTH,
-                                embedding_axis=1)
+                                embedding_axis=1,  # This must be 1, not 0 like in the locally used application
+                                crop_mode=settings.CROP_MODE,
+                                norm=settings.CALIBAN_NORM)
 
         self.logger.debug('Tracking...')
         self.update_key(redis_hash, {'status': 'predicting'})

@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: [3.7, 3.8, 3.9]
+        python-version: ['3.7', '3.8', '3.9']
 
     steps:
     - uses: actions/checkout@v2
@@ -36,10 +36,11 @@ jobs:
         pip install -r requirements.txt
         pip install --no-deps -r requirements-no-deps.txt
         pip install -r requirements-test.txt
+        pip list
 
     - name: PyTest
       run: |
-        pytest --cov redis_consumer --pep8
+        pytest --cov redis_consumer
 
     - name: Coveralls
       if: env.COVERALLS_REPO_TOKEN != null

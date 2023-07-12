@@ -97,11 +97,14 @@ CALIBAN_MODEL = config('CALIBAN_MODEL', default=TRACKING_MODEL, cast=str)
 NEIGHBORHOOD_ENCODER = config('NEIGHBORHOOD_ENCODER', default='NuclearTrackingNE:6', cast=str)
 
 # tracking.cell_tracker settings TODO: can we extract from model_metadata?
-MAX_DISTANCE = config('MAX_DISTANCE', default=50, cast=int)
+MAX_DISTANCE = config('MAX_DISTANCE', default=50, cast=int) # distance_threshold in application
 TRACK_LENGTH = config('TRACK_LENGTH', default=8, cast=int)
 DIVISION = config('DIVISION', default=0.9, cast=float)
 BIRTH = config('BIRTH', default=0.99, cast=float)
 DEATH = config('DEATH', default=0.99, cast=float)
+APPEARANCE_DIM = config('APPEARANCE_DIM', default=32, cast=int)
+CROP_MODE = config('CROP_MODE', default='resize', cast=str)
+CALIBAN_NORM = config('CALIBAN_NORM', default=True, cast=bool)
 
 # Scale detection settings
 SCALE_DETECT_MODEL = config('SCALE_DETECT_MODEL', default='ScaleDetection:1')
